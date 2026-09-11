@@ -22,6 +22,10 @@ export const pool = new Pool({
   // com seu próprio pool — um max alto multiplicaria pelo número de
   // instâncias simultâneas e poderia esgotar o pooler do Supabase.
   max: process.env.VERCEL ? 3 : 10,
+  // Sem isso, uma DATABASE_URL ausente/errada ou uma rede que não responde
+  // trava a requisição para sempre em vez de falhar com um erro claro.
+  connectionTimeoutMillis: 8000,
+  idleTimeoutMillis: 30000,
 });
 
 pool.on('error', (err) => {
