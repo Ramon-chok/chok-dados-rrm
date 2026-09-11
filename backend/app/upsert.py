@@ -9,7 +9,7 @@ from typing import Any
 from psycopg import Connection
 
 from app.import_types import ImportTypeConfig
-from app.parse import parse_date_only, parse_integer, parse_numeric, parse_text
+from app.parse import parse_boolean, parse_date_only, parse_integer, parse_numeric, parse_text
 
 CHUNK_SIZE = 500
 
@@ -62,6 +62,8 @@ def map_and_validate_rows(
                 parsed_ok, parsed_val = parse_integer(raw_value)
             elif col.kind == "date":
                 parsed_ok, parsed_val = parse_date_only(raw_value)
+            elif col.kind == "boolean":
+                parsed_ok, parsed_val = parse_boolean(raw_value)
             else:
                 parsed_ok, parsed_val = parse_text(raw_value)
 

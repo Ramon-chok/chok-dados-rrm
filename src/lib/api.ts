@@ -57,8 +57,14 @@ export interface DashboardResponse {
     margem: number;
     metaCobertura: number;
     realizadoCobertura: number;
+    gapCobertura: number;
+    pctCobertura: number;
+    metaSortimento: number;
+    realizadoSortimento: number;
+    gapSortimento: number;
+    pctSortimento: number;
   };
-  serieMensal: Array<{ ano: number; mes: number; meta: number; realizado: number }>;
+  serieMensal: Array<{ ano: number; mes: number; meta: number; realizado: number; margem: number }>;
   fabricantes: Array<{
     fabricante: string;
     meta: number;
@@ -70,7 +76,7 @@ export interface DashboardResponse {
     pctCob: number;
     pctMargem: number;
   }>;
-  topClientes: Array<{ nome: string; equipe: string | null; valor: number }>;
+  topClientes: Array<{ nome: string; equipe: string | null; valor: number; eRede: boolean; codigo: string | null }>;
 }
 
 export interface AnalyticsTreeNode {

@@ -62,7 +62,9 @@ def dashboard(
               COALESCE(SUM(iv.realizado_faturamento), 0) AS realizado,
               COALESCE(AVG(iv.pct_margem), 0) AS margem,
               COALESCE(SUM(iv.meta_cobertura), 0) AS meta_cobertura,
-              COALESCE(SUM(iv.realizado_cobertura), 0) AS realizado_cobertura
+              COALESCE(SUM(iv.realizado_cobertura), 0) AS realizado_cobertura,
+              COALESCE(SUM(iv.meta_sortimento), 0) AS meta_sortimento,
+              COALESCE(SUM(iv.realizado_sortimento), 0) AS realizado_sortimento
             FROM indicadores_vendedor iv
             {where}
             """,
@@ -81,7 +83,8 @@ def dashboard(
             f"""
             SELECT iv.ano_referencia, iv.mes_referencia,
                    COALESCE(SUM(iv.meta_faturamento), 0) AS meta,
-                   COALESCE(SUM(iv.realizado_faturamento), 0) AS realizado
+                   COALESCE(SUM(iv.realizado_faturamento), 0) AS realizado,
+                   COALESCE(AVG(iv.pct_margem), 0) AS margem
             FROM indicadores_vendedor iv
             WHERE {" AND ".join(serie_where_parts)}
             GROUP BY iv.ano_referencia, iv.mes_referencia
@@ -137,6 +140,12 @@ def dashboard(
             f"""
             SELECT COALESCE(c.razao_social, v.cod_cliente) AS nome,
                    ve.equipe,
+                   -- Uma "rede" agrupa vários cod_cliente sob o mesmo nome
+                   -- comercial: se qualquer código do grupo estiver marcado
+                   -- como rede, o grupo inteiro é tratado como rede (não faz
+                   -- sentido expor um único código nesse caso).
+                   BOOL_OR(COALESCE(c.e_rede, false)) AS e_rede,
+                   MIN(v.cod_cliente) AS codigo,
                    COALESCE(SUM(v.valor_total), 0) AS valor
             FROM vendas v
             LEFT JOIN clientes c ON c.cod_cliente = v.cod_cliente
@@ -149,10 +158,19 @@ def dashboard(
             top_params,
         ).fetchall()
 
+    def pct(realizado_v: float, meta_v: float) -> float:
+        return round((realizado_v / meta_v * 100) if meta_v else 0, 1)
+
     meta = num(kpis["meta"])
     realizado = num(kpis["realizado"])
     gap = realizado - meta
     atingimento = (realizado / meta * 100) if meta else 0
+
+    meta_cobertura = num(kpis["meta_cobertura"])
+    realizado_cobertura = num(kpis["realizado_cobertura"])
+    meta_sortimento = num(kpis["meta_sortimento"])
+    realizado_sortimento = num(kpis["realizado_sortimento"])
+
     return {
         "kpis": {
             "meta": meta,
@@ -160,8 +178,14 @@ def dashboard(
             "gap": gap,
             "atingimento": round(atingimento, 2),
             "margem": round(num(kpis["margem"]), 2),
-            "metaCobertura": num(kpis["meta_cobertura"]),
-            "realizadoCobertura": num(kpis["realizado_cobertura"]),
+            "metaCobertura": meta_cobertura,
+            "realizadoCobertura": realizado_cobertura,
+            "gapCobertura": realizado_cobertura - meta_cobertura,
+            "pctCobertura": pct(realizado_cobertura, meta_cobertura),
+            "metaSortimento": meta_sortimento,
+            "realizadoSortimento": realizado_sortimento,
+            "gapSortimento": realizado_sortimento - meta_sortimento,
+            "pctSortimento": pct(realizado_sortimento, meta_sortimento),
         },
         "serieMensal": [
             {
@@ -169,6 +193,7 @@ def dashboard(
                 "mes": r["mes_referencia"],
                 "meta": num(r["meta"]),
                 "realizado": num(r["realizado"]),
+                "margem": round(num(r["margem"]), 2),
             }
             for r in serie
         ],
@@ -192,7 +217,14 @@ def dashboard(
             for r in fabricantes
         ],
         "topClientes": [
-            {"nome": r["nome"], "equipe": r["equipe"], "valor": num(r["valor"])} for r in top_clientes
+            {
+                "nome": r["nome"],
+                "equipe": r["equipe"],
+                "valor": num(r["valor"]),
+                "eRede": bool(r["e_rede"]),
+                "codigo": None if r["e_rede"] else r["codigo"],
+            }
+            for r in top_clientes
         ],
     }
 

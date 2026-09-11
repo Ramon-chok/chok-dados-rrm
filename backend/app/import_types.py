@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-ColumnKind = Literal["text", "numeric", "integer", "date"]
+ColumnKind = Literal["text", "numeric", "integer", "date", "boolean"]
 
 
 @dataclass(frozen=True)
@@ -71,6 +71,7 @@ IMPORT_TYPE_CONFIGS: dict[str, ImportTypeConfig] = {
             ImportColumn("cnpj", "text"),
             ImportColumn("cod_vendedor", "text"),
             ImportColumn("status", "text"),
+            ImportColumn("e_rede", "boolean"),
         ),
     ),
     "vendedores": ImportTypeConfig(

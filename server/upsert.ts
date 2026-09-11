@@ -4,7 +4,7 @@
 // adicionar um novo indicador no futuro (regra 29).
 import type { PoolClient } from 'pg';
 import { ImportTypeConfig } from './importTypes.js';
-import { parseDateOnly, parseInteger, parseNumeric, parseText } from './parse.js';
+import { parseBoolean, parseDateOnly, parseInteger, parseNumeric, parseText } from './parse.js';
 
 export interface RowError {
   linha: number; // 1-based, relativo aos dados enviados (sem contar cabeçalho)
@@ -51,6 +51,9 @@ export function mapAndValidateRows(
           break;
         case 'date':
           parsed = parseDateOnly(rawValue);
+          break;
+        case 'boolean':
+          parsed = parseBoolean(rawValue);
           break;
         default:
           parsed = parseText(rawValue);

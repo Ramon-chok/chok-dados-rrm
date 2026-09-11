@@ -85,3 +85,22 @@ def parse_text(raw: object) -> ParseResult[str]:
         return True, None
     s = str(raw).strip()
     return True, None if s == "" else s
+
+
+TRUE_VALUES = {"sim", "s", "true", "verdadeiro", "1", "x", "yes", "y"}
+FALSE_VALUES = {"nao", "não", "n", "false", "falso", "0", "", "no"}
+
+
+def parse_boolean(raw: object) -> ParseResult[bool]:
+    if raw is None or raw == "":
+        return True, False
+    if isinstance(raw, bool):
+        return True, raw
+    if isinstance(raw, (int, float)):
+        return True, bool(raw)
+    s = str(raw).strip().lower()
+    if s in TRUE_VALUES:
+        return True, True
+    if s in FALSE_VALUES:
+        return True, False
+    return False, f'valor booleano inválido: "{raw}" (use sim/não)'

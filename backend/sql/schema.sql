@@ -53,6 +53,10 @@ CREATE TABLE IF NOT EXISTS clientes (
   cnpj          TEXT,
   cod_vendedor  TEXT,
   status        TEXT,
+  -- true = cliente é uma rede (vários pontos sob um mesmo nome comercial).
+  -- Usado no Dashboard para decidir se o Top Clientes mostra o código
+  -- individual ou só a posição do ranking.
+  e_rede        BOOLEAN NOT NULL DEFAULT false,
   atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
