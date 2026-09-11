@@ -1,7 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+﻿import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
-import { RoleBadge } from './RoleBadge';
 import {
   Mail,
   Lock,
@@ -17,19 +16,19 @@ import {
   X,
   Check,
 } from 'lucide-react';
-import { Role } from '../../types';
 
 export const LoginView: React.FC = () => {
-  const { login, isLoading, availableUsers, switchUser } = useAuth();
+  const { login, isLoading } = useAuth();
   const { mode, toggleTheme, t } = useTheme();
 
-  const [email, setEmail] = useState('ramon21.empresa@gmail.com');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [emailFocused, setEmailFocused] = useState(false);
   const [passwordFocused, setPasswordFocused] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   // Forgot password modal
   const [isForgotModalOpen, setIsForgotModalOpen] = useState(false);
@@ -171,19 +170,18 @@ export const LoginView: React.FC = () => {
       setErrorMessage('Por favor, informe seu e-mail corporativo.');
       return;
     }
-
-    const res = await login(email, password, rememberMe);
-    if (!res.success) {
-      setErrorMessage(res.error || 'Falha ao autenticar.');
+    setSubmitting(true);
+    try {
+      const res = await login(email, password, rememberMe);
+      if (!res.success) {
+        setErrorMessage(res.error || 'Falha ao autenticar.');
+      }
+    } finally {
+      setSubmitting(false);
     }
   };
 
-  const handleQuickLogin = async (userEmail: string, userId: string) => {
-    setEmail(userEmail);
-    setPassword('••••••••••••');
-    setErrorMessage(null);
-    switchUser(userId);
-  };
+  
 
   const handleForgotSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -192,7 +190,7 @@ export const LoginView: React.FC = () => {
   };
 
   // ============================================
-  // TOKENS — RR MIND
+  // TOKENS â€” RR MIND
   // ============================================
   const RR_RED = '#D71920';
   const RR_RED_DARK = '#8B0000';
@@ -709,7 +707,7 @@ export const LoginView: React.FC = () => {
               {/* Submit */}
               <button
                 type="submit"
-                disabled={isLoading}
+                disabled={isLoading || submitting}
                 style={{
                   width: '100%',
                   padding: '14px 24px',
@@ -719,14 +717,14 @@ export const LoginView: React.FC = () => {
                   color: '#FFFFFF',
                   fontSize: '14px',
                   fontWeight: 600,
-                  cursor: isLoading ? 'not-allowed' : 'pointer',
+                  cursor: isLoading || submitting ? 'not-allowed' : 'pointer',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   gap: '10px',
                   transition: 'all 0.2s ease',
                   boxShadow: '0 8px 24px rgba(215,25,32,0.28)',
-                  opacity: isLoading ? 0.75 : 1,
+                  opacity: isLoading || submitting ? 0.75 : 1,
                   position: 'relative',
                   overflow: 'hidden',
                   fontFamily: "'Space Grotesk', 'Inter', sans-serif",
@@ -745,7 +743,7 @@ export const LoginView: React.FC = () => {
                   e.currentTarget.style.boxShadow = '0 8px 24px rgba(215,25,32,0.28)';
                 }}
               >
-                {isLoading ? (
+                {isLoading || submitting ? (
                   <>
                     <span
                       style={{
@@ -790,7 +788,7 @@ export const LoginView: React.FC = () => {
           </div>
 
           {/* ============================================
-              SIDE PANEL — QUICK LOGIN + HIERARQUIA
+              SIDE PANEL â€” QUICK LOGIN + HIERARQUIA
               ============================================ */}
           <div
             style={{
@@ -800,7 +798,7 @@ export const LoginView: React.FC = () => {
               animation: 'rr-fadeInUp 0.7s cubic-bezier(0.4,0,0.2,1) 0.1s both',
             }}
           >
-            {/* Perfis */}
+            {/* Token JWT info */}
             <div
               style={{
                 background: mode === 'dark' ? 'rgba(15,15,15,0.7)' : 'rgba(255,255,255,0.8)',
@@ -811,210 +809,26 @@ export const LoginView: React.FC = () => {
                 padding: '28px',
               }}
             >
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '10px',
-                  marginBottom: '16px',
-                }}
-              >
-                <span
-                  style={{
-                    fontFamily: "'Space Grotesk', sans-serif",
-                    fontSize: '11px',
-                    color: RR_RED,
-                    letterSpacing: '2px',
-                    fontWeight: 600,
-                  }}
-                >
-                  02
-                </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
+                <span style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: '11px', color: RR_RED, letterSpacing: '2px', fontWeight: 600 }}>02</span>
                 <div style={{ width: '32px', height: '1px', background: RR_RED, opacity: 0.5 }} />
-                <span
-                  style={{
-                    fontSize: '10.5px',
-                    color: t.textMuted,
-                    textTransform: 'uppercase',
-                    letterSpacing: '2px',
-                    fontWeight: 500,
-                  }}
-                >
-                  Perfis de Teste
-                </span>
+                <span style={{ fontSize: '10.5px', color: t.textMuted, textTransform: 'uppercase', letterSpacing: '2px', fontWeight: 500 }}>Token JWT</span>
               </div>
-
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
-                <h2
-                  style={{
-                    margin: 0,
-                    fontSize: '17px',
-                    fontWeight: 700,
-                    color: t.text,
-                    letterSpacing: '-0.02em',
-                    fontFamily: "'Space Grotesk', 'Inter', sans-serif",
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                  }}
-                >
-                  <Sparkles size={16} color={RR_RED} />
-                  Acessos rápidos
-                </h2>
-                <span style={{ fontSize: '11px', color: t.textMuted }}>Clique para testar</span>
-              </div>
-
-              <p
-                style={{
-                  margin: '0 0 18px',
-                  fontSize: '12.5px',
-                  color: t.textSecondary,
-                  lineHeight: 1.55,
-                }}
-              >
-                6 perfis com escopos hierárquicos e permissões diferenciadas. Selecione qualquer perfil para autenticar instantaneamente.
+              <h2 style={{ margin: '0 0 10px', fontSize: '17px', fontWeight: 700, color: t.text, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Sparkles size={16} color={RR_RED} />
+                Acesso seguro
+              </h2>
+              <p style={{ margin: '0 0 14px', fontSize: '12.5px', color: t.textSecondary, lineHeight: 1.55 }}>
+                O login cria um token JWT no backend. Todas as páginas enviam <strong>Authorization: Bearer</strong> nas chamadas <code>/api/*</code>.
               </p>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                {availableUsers.map((u) => {
-                  const isSelected = email.toLowerCase() === u.email.toLowerCase();
-                  return (
-                    <div
-                      key={u.id}
-                      onClick={() => handleQuickLogin(u.email, u.id)}
-                      onMouseEnter={(e) => {
-                        if (!isSelected) {
-                          e.currentTarget.style.borderColor = RR_RED;
-                          e.currentTarget.style.transform = 'translateX(3px)';
-                        }
-                      }}
-                      onMouseLeave={(e) => {
-                        if (!isSelected) {
-                          e.currentTarget.style.borderColor = t.border;
-                          e.currentTarget.style.transform = 'translateX(0)';
-                        }
-                      }}
-                      style={{
-                        padding: '13px 15px',
-                        borderRadius: '12px',
-                        background: isSelected
-                          ? 'rgba(215,25,32,0.06)'
-                          : mode === 'dark'
-                          ? 'rgba(255,255,255,0.02)'
-                          : 'rgba(0,0,0,0.015)',
-                        border: `1px solid ${isSelected ? RR_RED : t.border}`,
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        gap: '10px',
-                        transition: 'all 0.2s ease',
-                        position: 'relative',
-                      }}
-                    >
-                      {isSelected && (
-                        <div
-                          style={{
-                            position: 'absolute',
-                            left: 0,
-                            top: '20%',
-                            bottom: '20%',
-                            width: '3px',
-                            background: RR_RED,
-                            borderRadius: '0 3px 3px 0',
-                          }}
-                        />
-                      )}
-
-                      <div
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '12px',
-                          minWidth: 0,
-                          flex: 1,
-                        }}
-                      >
-                        <div
-                          style={{
-                            width: '36px',
-                            height: '36px',
-                            borderRadius: '10px',
-                            background: isSelected ? RR_RED : mode === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)',
-                            border: `1px solid ${isSelected ? RR_RED : t.border}`,
-                            color: isSelected ? '#fff' : t.textSecondary,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            fontSize: '12.5px',
-                            fontWeight: 700,
-                            flexShrink: 0,
-                            fontFamily: "'Space Grotesk', sans-serif",
-                            transition: 'all 0.2s ease',
-                          }}
-                        >
-                          {u.avatarInitials}
-                        </div>
-                        <div style={{ minWidth: 0, flex: 1 }}>
-                          <div
-                            style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '8px',
-                              marginBottom: '3px',
-                            }}
-                          >
-                            <span
-                              style={{
-                                fontSize: '13.5px',
-                                fontWeight: 600,
-                                color: t.text,
-                                whiteSpace: 'nowrap',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                              }}
-                            >
-                              {u.name}
-                            </span>
-                            <RoleBadge role={u.role as Role} size="sm" />
-                          </div>
-                          <div
-                            style={{
-                              fontSize: '11.5px',
-                              color: t.textMuted,
-                              whiteSpace: 'nowrap',
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                            }}
-                          >
-                            {u.scope.description}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div
-                        style={{
-                          fontSize: '11.5px',
-                          fontWeight: 600,
-                          color: isSelected ? RR_RED : t.textMuted,
-                          whiteSpace: 'nowrap',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '4px',
-                          textTransform: 'uppercase',
-                          letterSpacing: '1px',
-                        }}
-                      >
-                        {isSelected ? 'Ativo' : 'Acessar'}
-                        <ArrowRight size={12} />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+              <ul style={{ margin: 0, paddingLeft: 18, color: t.textSecondary, fontSize: 12.5, lineHeight: 1.7 }}>
+                <li>Assinatura HS256 com expiração configurável</li>
+                <li>Persistência em localStorage (lembrar) ou sessionStorage</li>
+                <li>401 limpa a sessão e volta para o login</li>
+                <li>Escopo RBAC aplicado no servidor por rota</li>
+              </ul>
             </div>
 
-            {/* Hierarquia */}
             <div
               style={{
                 background: mode === 'dark' ? 'rgba(15,15,15,0.7)' : 'rgba(255,255,255,0.8)',
@@ -1025,67 +839,12 @@ export const LoginView: React.FC = () => {
                 padding: '22px 28px',
               }}
             >
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '10px',
-                  marginBottom: '12px',
-                }}
-              >
-                <span
-                  style={{
-                    fontFamily: "'Space Grotesk', sans-serif",
-                    fontSize: '11px',
-                    color: RR_RED,
-                    letterSpacing: '2px',
-                    fontWeight: 600,
-                  }}
-                >
-                  03
-                </span>
-                <div style={{ width: '32px', height: '1px', background: RR_RED, opacity: 0.5 }} />
-                <h3
-                  style={{
-                    margin: 0,
-                    fontSize: '13px',
-                    fontWeight: 600,
-                    color: t.text,
-                    letterSpacing: '-0.01em',
-                  }}
-                >
-                  Estrutura hierárquica de dados
-                </h3>
-              </div>
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  fontSize: '11px',
-                  color: t.textMuted,
-                  flexWrap: 'wrap',
-                  fontFamily: "'Space Grotesk', sans-serif",
-                  letterSpacing: '0.5px',
-                }}
-              >
+              <h3 style={{ margin: '0 0 10px', fontSize: '13px', fontWeight: 600, color: t.text }}>Hierarquia de dados</h3>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', color: t.textMuted, flexWrap: 'wrap' }}>
                 {['EMPRESA', 'GERÊNCIA', 'SUPERVISÃO', 'VENDEDOR', 'CLIENTE'].map((level, idx, arr) => (
                   <React.Fragment key={level}>
-                    <span
-                      style={{
-                        color: idx === 0 ? RR_RED : t.textSecondary,
-                        fontWeight: idx === 0 ? 700 : 500,
-                        padding: '4px 8px',
-                        borderRadius: '5px',
-                        background: idx === 0 ? 'rgba(215,25,32,0.08)' : 'transparent',
-                        border: idx === 0 ? `1px solid rgba(215,25,32,0.2)` : `1px solid transparent`,
-                      }}
-                    >
-                      {level}
-                    </span>
-                    {idx < arr.length - 1 && (
-                      <span style={{ color: RR_RED, opacity: 0.5 }}>→</span>
-                    )}
+                    <span style={{ color: idx === 0 ? RR_RED : t.textSecondary, fontWeight: idx === 0 ? 700 : 500, padding: '4px 8px', borderRadius: 5, background: idx === 0 ? 'rgba(215,25,32,0.08)' : 'transparent', border: idx === 0 ? '1px solid rgba(215,25,32,0.2)' : '1px solid transparent' }}>{level}</span>
+                    {idx < arr.length - 1 && <span style={{ color: RR_RED, opacity: 0.5 }}>→</span>}
                   </React.Fragment>
                 ))}
               </div>
@@ -1187,7 +946,7 @@ export const LoginView: React.FC = () => {
                     letterSpacing: '-0.02em',
                   }}
                 >
-                  Instruções enviadas
+                  InstruÃ§Ãµes enviadas
                 </h3>
                 <p
                   style={{
@@ -1197,7 +956,7 @@ export const LoginView: React.FC = () => {
                     lineHeight: 1.55,
                   }}
                 >
-                  Enviamos o link de recuperação para{' '}
+                  Enviamos o link de recuperaÃ§Ã£o para{' '}
                   <strong style={{ color: t.text }}>{forgotEmail || email}</strong>. Verifique sua caixa de entrada e pasta de spam.
                 </p>
                 <button
@@ -1241,7 +1000,7 @@ export const LoginView: React.FC = () => {
                       fontWeight: 600,
                     }}
                   >
-                    →
+                    â†’
                   </span>
                   <span
                     style={{
@@ -1252,7 +1011,7 @@ export const LoginView: React.FC = () => {
                       fontWeight: 500,
                     }}
                   >
-                    Recuperação
+                    RecuperaÃ§Ã£o
                   </span>
                 </div>
                 <h3
@@ -1275,7 +1034,7 @@ export const LoginView: React.FC = () => {
                     lineHeight: 1.55,
                   }}
                 >
-                  Informe seu e-mail cadastrado. Nossa equipe de segurança enviará um token de redefinição.
+                  Informe seu e-mail cadastrado. Nossa equipe de seguranÃ§a enviarÃ¡ um token de redefiniÃ§Ã£o.
                 </p>
 
                 <form onSubmit={handleForgotSubmit}>

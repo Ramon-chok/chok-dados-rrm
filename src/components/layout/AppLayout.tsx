@@ -1,8 +1,7 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
-import { PageId, Role } from '../../types';
-import { RoleBadge } from '../auth/RoleBadge';
+import { PageId } from '../../types';
 import { LogoutModal } from '../auth/LogoutModal';
 import { APP_CONFIG } from '../../config/appConfig';
 import {
@@ -65,11 +64,10 @@ interface NavGroup {
 }
 
 export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, children }) => {
-  const { currentUser, setIsLogoutModalOpen, switchUser, availableUsers, canAccessPage } = useAuth();
+  const { currentUser, setIsLogoutModalOpen, canAccessPage } = useAuth();
   const { mode, toggleTheme, t } = useTheme();
 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isNavbarCollapsed, setIsNavbarCollapsed] = useState(() => {
     try {
@@ -140,7 +138,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, c
       label: 'Administração',
       items: [
         { id: 'users', name: 'Usuários & RBAC', icon: <Users size={17} />, adminOnly: true },
-        { id: 'imports', name: 'Importação', icon: <UploadCloud size={17} />, adminOnly: true },
+        { id: 'imports', name: 'ImportaÃ§Ã£o', icon: <UploadCloud size={17} />, adminOnly: true },
       ],
     },
   ];
@@ -248,7 +246,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, c
             <div
               style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
               onClick={toggleNavbarCollapse}
-              title="Expandir barra de navegação"
+              title="Expandir barra de navegaÃ§Ã£o"
             >
               <svg width="26" height="26" viewBox="0 0 26 26">
                 <path d="M13 1 L25 7 L25 19 L13 25 L1 19 L1 7 Z" fill="none" stroke={t.primary} strokeWidth="1.8" />
@@ -275,8 +273,8 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, c
               padding: 0,
               transition: 'all 0.15s ease',
             }}
-            title="Recolher barra de navegação"
-            aria-label="Recolher barra de navegação"
+            title="Recolher barra de navegaÃ§Ã£o"
+            aria-label="Recolher barra de navegaÃ§Ã£o"
           >
             <ChevronLeft size={15} />
           </button>
@@ -318,8 +316,8 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, c
                 padding: 0,
                 transition: 'all 0.15s ease',
               }}
-              title="Expandir barra de navegação"
-              aria-label="Expandir barra de navegação"
+              title="Expandir barra de navegaÃ§Ã£o"
+              aria-label="Expandir barra de navegaÃ§Ã£o"
             >
               <ChevronRight size={15} />
             </button>
@@ -421,7 +419,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, c
               display: 'flex',
               justifyContent: 'center',
             }}
-            title={isNavbarCollapsed ? `${currentUser.name} (${currentUser.role} · ${currentUser.scope.level})` : undefined}
+            title={isNavbarCollapsed ? `${currentUser.name} (${currentUser.role} Â· ${currentUser.scope.level})` : undefined}
           >
             {isNavbarCollapsed ? (
               <div
@@ -465,7 +463,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, c
                     {currentUser.name}
                   </div>
                   <div style={{ fontSize: '11px', color: t.textMuted }}>
-                    {currentUser.role} · {currentUser.scope.level}
+                    {currentUser.role} Â· {currentUser.scope.level}
                   </div>
                 </div>
               </div>
@@ -530,76 +528,26 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, c
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexShrink: 0 }}>
-            {/* Quick Profile Switcher (PRD Testing Tool) */}
-            <div style={{ position: 'relative' }}>
-              <button
-                onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  padding: '6px 12px',
-                  borderRadius: '8px',
-                  border: `1px solid ${t.border}`,
-                  background: t.surface,
-                  color: t.text,
-                  fontSize: '12.5px',
-                  fontWeight: 500,
-                  cursor: 'pointer',
-                }}
-                title="Alternar Perfil para teste de Permissões RBAC"
-              >
-                <div style={{ width: 8, height: 8, borderRadius: '50%', background: t.primary, flexShrink: 0 }} />
-                <span className="profile-switcher-label">Perfil: <strong>{currentUser?.role}</strong></span>
-              </button>
-
-              {isUserMenuOpen && (
-                <div
-                  style={{
-                    position: 'absolute',
-                    top: '100%',
-                    right: 0,
-                    marginTop: '8px',
-                    width: 'min(280px, calc(100vw - 32px))',
-                    background: t.surfaceElevated,
-                    border: `1px solid ${t.border}`,
-                    borderRadius: '12px',
-                    padding: '8px',
-                    boxShadow: '0 10px 25px rgba(0, 0, 0, 0.35)',
-                    zIndex: 100,
-                  }}
-                >
-                  <div style={{ padding: '8px 10px', fontSize: '11.5px', color: t.textMuted, fontWeight: 600, borderBottom: `1px solid ${t.border}`, marginBottom: '4px' }}>
-                    Simular Perfil do PRD (RBAC)
-                  </div>
-                  {availableUsers.map((u) => (
-                    <div
-                      key={u.id}
-                      onClick={() => {
-                        switchUser(u.id);
-                        setIsUserMenuOpen(false);
-                      }}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        padding: '8px 10px',
-                        borderRadius: '6px',
-                        cursor: 'pointer',
-                        background: currentUser?.id === u.id ? `${t.primary}18` : 'transparent',
-                        color: t.text,
-                        fontSize: '12.5px',
-                      }}
-                    >
-                      <div style={{ minWidth: 0, flex: 1 }}>
-                        <div style={{ fontWeight: 600 }}>{u.name}</div>
-                        <div style={{ fontSize: '11px', color: t.textMuted }}>{u.roleLabel}</div>
-                      </div>
-                      <RoleBadge role={u.role as Role} size="sm" />
-                    </div>
-                  ))}
-                </div>
-              )}
+            {/* Perfil autenticado via JWT (sem simulação) */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '6px 12px',
+                borderRadius: '8px',
+                border: `1px solid ${t.border}`,
+                background: t.surface,
+                color: t.text,
+                fontSize: '12.5px',
+                fontWeight: 500,
+              }}
+              title="Sessão autenticada com token JWT"
+            >
+              <div style={{ width: 8, height: 8, borderRadius: '50%', background: t.primary, flexShrink: 0 }} />
+              <span className="profile-switcher-label">
+                Perfil: <strong>{currentUser?.role}</strong>
+              </span>
             </div>
 
             {/* Theme Toggle Button */}
@@ -644,21 +592,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, c
                 <strong>Escopo Ativo ({currentUser.role}):</strong> {currentUser.scope.description}
               </span>
             </div>
-            <button
-              onClick={() => switchUser('user-admin')}
-              style={{
-                background: 'transparent',
-                border: 'none',
-                color: t.primary,
-                fontSize: '12px',
-                fontWeight: 600,
-                cursor: 'pointer',
-                padding: 0,
-                textDecoration: 'underline',
-              }}
-            >
-              Voltar ao Administrador
-            </button>
+            
           </div>
         )}
 
@@ -719,3 +653,4 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, c
     </div>
   );
 };
+

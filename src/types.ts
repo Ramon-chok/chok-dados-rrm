@@ -1,4 +1,4 @@
-export type Role = 'ADMIN' | 'GERENTE' | 'SUPERVISOR' | 'VENDEDOR';
+﻿export type Role = 'ADMIN' | 'GERENTE' | 'SUPERVISOR' | 'VENDEDOR';
 
 export type Permission =
   | 'dashboard.view'
@@ -55,7 +55,7 @@ export interface User {
   supervisor?: string;
   manager?: string;
   status: 'Ativo' | 'Inativo';
-  lastLoginAt: string;
+  lastLoginAt?: string | null;
   scope: DataScope;
   permissions: Permission[];
 }
@@ -107,3 +107,4 @@ export type PageId =
   | 'credits'
   | 'users'
   | 'audit';
+

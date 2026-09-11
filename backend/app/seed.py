@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from app.config import get_settings
 from app.db import get_connection
@@ -6,7 +6,6 @@ from app.security import hash_password
 
 SEED_USERS = [
     {
-        "id": "1",
         "name": "Ramon Sanchez",
         "email": "ramon21.empresa@gmail.com",
         "role": "ADMIN",
@@ -16,12 +15,11 @@ SEED_USERS = [
         "municipio": "Ribeirão Preto",
         "estado": "SP",
         "cep": "14020-260",
-        "codigo": 100,
+        "codigo": "100",
         "equipe": None,
-        "supervisor": None
+        "supervisor": None,
     },
     {
-        "id": "2",
         "name": "Carlos Mendes",
         "email": "carlos.mendes@chok.com.br",
         "role": "GERENTE",
@@ -36,7 +34,6 @@ SEED_USERS = [
         "supervisor": None,
     },
     {
-        "id": "3",
         "name": "Marcos Valério",
         "email": "marcos.valerio@chok.com.br",
         "role": "SUPERVISOR",
@@ -51,7 +48,6 @@ SEED_USERS = [
         "supervisor": "Supervisor A",
     },
     {
-        "id": "4",
         "name": "João Souza",
         "email": "joao.vendedor003@chok.com.br",
         "role": "VENDEDOR",
@@ -73,31 +69,44 @@ def seed_users() -> None:
     password_hash = hash_password(settings.seed_password)
     with get_connection() as conn:
         for user in SEED_USERS:
-            conn.execute(
-                """
-                INSERT INTO usuarios (
-                    id, name, email, password_hash, role, telefone, endereco, bairro,
-                    municipio, estado, cep, codigo, equipe, supervisor, status
-                ) VALUES (
-                    %(id)s, %(name)s, %(email)s, %(password_hash)s, %(role)s, %(telefone)s,
-                    %(endereco)s, %(bairro)s, %(municipio)s, %(estado)s, %(cep)s,
-                    %(codigo)s, %(equipe)s, %(supervisor)s, 'Ativo'
+            existing = conn.execute(
+                "SELECT id FROM usuarios WHERE lower(email) = %s",
+                (user["email"].lower(),),
+            ).fetchone()
+            if existing:
+                conn.execute(
+                    """
+                    UPDATE usuarios SET
+                      name = %(name)s,
+                      password_hash = %(password_hash)s,
+                      role = %(role)s,
+                      telefone = %(telefone)s,
+                      endereco = %(endereco)s,
+                      bairro = %(bairro)s,
+                      municipio = %(municipio)s,
+                      estado = %(estado)s,
+                      cep = %(cep)s,
+                      codigo = %(codigo)s,
+                      equipe = %(equipe)s,
+                      supervisor = %(supervisor)s,
+                      status = 'Ativo',
+                      updated_at = now()
+                    WHERE lower(email) = lower(%(email)s)
+                    """,
+                    {**user, "password_hash": password_hash},
                 )
-                ON CONFLICT (id) DO UPDATE SET
-                    name = EXCLUDED.name,
-                    email = EXCLUDED.email,
-                    role = EXCLUDED.role,
-                    telefone = EXCLUDED.telefone,
-                    endereco = EXCLUDED.endereco,
-                    bairro = EXCLUDED.bairro,
-                    municipio = EXCLUDED.municipio,
-                    estado = EXCLUDED.estado,
-                    cep = EXCLUDED.cep,
-                    codigo = EXCLUDED.codigo,
-                    equipe = EXCLUDED.equipe,
-                    supervisor = EXCLUDED.supervisor,
-                    updated_at = now()
-                """,
-                {**user, "password_hash": password_hash},
-            )
+            else:
+                conn.execute(
+                    """
+                    INSERT INTO usuarios (
+                        name, email, password_hash, role, telefone, endereco, bairro,
+                        municipio, estado, cep, codigo, equipe, supervisor, status
+                    ) VALUES (
+                        %(name)s, %(email)s, %(password_hash)s, %(role)s, %(telefone)s,
+                        %(endereco)s, %(bairro)s, %(municipio)s, %(estado)s, %(cep)s,
+                        %(codigo)s, %(equipe)s, %(supervisor)s, 'Ativo'
+                    )
+                    """,
+                    {**user, "password_hash": password_hash},
+                )
         conn.commit()

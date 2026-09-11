@@ -56,7 +56,7 @@ export const SettingsPage: React.FC = () => {
                 cursor: 'pointer',
               }}
             >
-              Tema Escuro (Padrão)
+              Tema Origin (Padrão)
             </button>
             <button
               type="button"
@@ -73,7 +73,7 @@ export const SettingsPage: React.FC = () => {
                 cursor: 'pointer',
               }}
             >
-              Tema Claro
+              Tema RR Mind
             </button>
           </div>
         </div>

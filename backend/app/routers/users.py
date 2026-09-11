@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import uuid
 from typing import Any
@@ -7,16 +7,10 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.db import get_connection
 from app.schemas import UserCreate, UserOut, UserUpdate
-from app.security import hash_password, require_roles
+from app.security import USER_SELECT, hash_password, require_roles
 from app.services import user_to_out
 
 router = APIRouter(prefix="/users", tags=["users"])
-
-USER_SELECT = """
-    SELECT id, name, email, role, phone, address, neighborhood, city, state, cep,
-           seller_code, team, supervisor, manager, status, last_login_at, extra_permissions
-    FROM usuarios
-"""
 
 
 @router.get("", response_model=list[UserOut])
@@ -28,7 +22,6 @@ def list_users(_admin: dict[str, Any] = Depends(require_roles("ADMIN"))) -> list
 
 @router.post("", response_model=UserOut, status_code=201)
 def create_user(payload: UserCreate, _admin: dict[str, Any] = Depends(require_roles("ADMIN"))) -> UserOut:
-    user_id = f"user-{uuid.uuid4().hex[:10]}"
     with get_connection() as conn:
         existing = conn.execute(
             "SELECT id FROM usuarios WHERE lower(email) = %s",
@@ -39,14 +32,14 @@ def create_user(payload: UserCreate, _admin: dict[str, Any] = Depends(require_ro
         conn.execute(
             """
             INSERT INTO usuarios (
-                id, name, email, password_hash, role, phone, address, neighborhood,
-                city, state, cep, seller_code, team, supervisor, manager, status
+                name, email, password_hash, role, telefone, endereco, bairro,
+                municipio, estado, cep, codigo, equipe, supervisor, status
             ) VALUES (
-                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
             )
+            RETURNING id
             """,
             (
-                user_id,
                 payload.name,
                 payload.email.lower(),
                 hash_password(payload.password),
@@ -60,12 +53,13 @@ def create_user(payload: UserCreate, _admin: dict[str, Any] = Depends(require_ro
                 payload.sellerCode,
                 payload.team,
                 payload.supervisor,
-                payload.manager,
                 payload.status,
             ),
         )
+        # psycopg3 cursor may not return via execute; fetch via last id
+        row_id = conn.execute("SELECT id::text AS id FROM usuarios WHERE lower(email) = %s", (payload.email.lower(),)).fetchone()
         conn.commit()
-        row = conn.execute(USER_SELECT + " WHERE id = %s", (user_id,)).fetchone()
+        row = conn.execute(USER_SELECT + " WHERE id::text = %s", (row_id["id"],)).fetchone()
     return user_to_out(dict(row))
 
 
@@ -82,16 +76,15 @@ def update_user(
         "name": "name",
         "email": "email",
         "role": "role",
-        "phone": "phone",
-        "address": "address",
-        "neighborhood": "neighborhood",
-        "city": "city",
-        "state": "state",
+        "phone": "telefone",
+        "address": "endereco",
+        "neighborhood": "bairro",
+        "city": "municipio",
+        "state": "estado",
         "cep": "cep",
-        "sellerCode": "seller_code",
-        "team": "team",
+        "sellerCode": "codigo",
+        "team": "equipe",
         "supervisor": "supervisor",
-        "manager": "manager",
         "status": "status",
     }
     for key, column in mapping.items():
@@ -110,20 +103,20 @@ def update_user(
     values.append(user_id)
     with get_connection() as conn:
         result = conn.execute(
-            f"UPDATE usuarios SET {', '.join(fields)} WHERE id = %s",
+            f"UPDATE usuarios SET {', '.join(fields)} WHERE id::text = %s",
             values,
         )
         if result.rowcount == 0:
             raise HTTPException(status_code=404, detail="Usuário não encontrado.")
         conn.commit()
-        row = conn.execute(USER_SELECT + " WHERE id = %s", (user_id,)).fetchone()
+        row = conn.execute(USER_SELECT + " WHERE id::text = %s", (user_id,)).fetchone()
     return user_to_out(dict(row))
 
 
 @router.delete("/{user_id}")
 def delete_user(user_id: str, _admin: dict[str, Any] = Depends(require_roles("ADMIN"))) -> dict[str, bool]:
     with get_connection() as conn:
-        result = conn.execute("DELETE FROM usuarios WHERE id = %s", (user_id,))
+        result = conn.execute("DELETE FROM usuarios WHERE id::text = %s", (user_id,))
         if result.rowcount == 0:
             raise HTTPException(status_code=404, detail="Usuário não encontrado.")
         conn.commit()

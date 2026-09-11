@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { ThemeProvider, useTheme } from './context/ThemeContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { GlobalFilterProvider } from './context/GlobalFilterContext';
@@ -28,9 +28,17 @@ import { ImportacaoPage } from './pages/admin/Importacao';
 import { ShieldAlert, ArrowLeft } from 'lucide-react';
 
 function MainApp() {
-  const { isAuthenticated, currentUser, canAccessPage } = useAuth();
+  const { isAuthenticated, currentUser, canAccessPage, isLoading } = useAuth();
   const { t } = useTheme();
   const [currentPage, setCurrentPage] = useState<PageId>('dashboard');
+
+  if (isLoading) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: t.bg, color: t.textSecondary, fontSize: 14 }}>
+        Validando token de sessão...
+      </div>
+    );
+  }
 
   if (!isAuthenticated) {
     return <LoginView />;
@@ -179,3 +187,4 @@ export default function App() {
     </ThemeProvider>
   );
 }
+

@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from datetime import UTC, datetime
 
@@ -18,8 +18,25 @@ def login(payload: LoginRequest) -> LoginResponse:
     with get_connection() as conn:
         row = conn.execute(
             """
-            SELECT id, name, email, password_hash, role, telefone, endereco, bairro, municipio, estado, cep,
-                   codigo, equipe, supervisor, status, last_login_at, extra_permissions
+            SELECT
+              id::text AS id,
+              name,
+              email,
+              password_hash,
+              role,
+              telefone AS phone,
+              endereco AS address,
+              bairro AS neighborhood,
+              municipio AS city,
+              estado AS state,
+              cep,
+              codigo AS seller_code,
+              equipe AS team,
+              supervisor,
+              NULL::text AS manager,
+              status,
+              last_login_at,
+              COALESCE(extra_permissions, '{}'::text[]) AS extra_permissions
             FROM usuarios
             WHERE lower(email) = %s
             """,
@@ -35,18 +52,32 @@ def login(payload: LoginRequest) -> LoginResponse:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Usuário inativo.")
 
         conn.execute(
-            "UPDATE usuarios SET last_login_at = %s WHERE id = %s",
+            "UPDATE usuarios SET last_login_at = %s, updated_at = now() WHERE id::text = %s",
             (datetime.now(UTC), row["id"]),
         )
         conn.commit()
-        row = dict(row)
-        row["last_login_at"] = datetime.now(UTC)
+        data = dict(row)
+        data["last_login_at"] = datetime.now(UTC)
+        data.pop("password_hash", None)
 
-    token = create_access_token(row["id"], row["email"], row["role"])
-    return LoginResponse(token=token, user=user_to_out(row))
+    token, expires_in = create_access_token(
+        data["id"],
+        data["email"],
+        data["role"],
+        remember_me=payload.rememberMe,
+        extra={
+            "sellerCode": data.get("seller_code"),
+            "team": data.get("team"),
+        },
+    )
+    return LoginResponse(token=token, tokenType="Bearer", expiresIn=expires_in, user=user_to_out(data))
 
 
 @router.get("/me", response_model=UserOut)
 def me(user: dict = Depends(get_current_user)) -> UserOut:
     return user_to_out(user)
-    
+
+
+@router.post("/logout")
+def logout(_user: dict = Depends(get_current_user)) -> dict[str, bool]:
+    return {"ok": True}

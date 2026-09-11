@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from datetime import date, datetime
 from typing import Any
@@ -8,7 +8,7 @@ from app.security import ROLE_LABELS, permissions_for
 
 
 def initials(name: str) -> str:
-    parts = [p for p in name.split() if p]
+    parts = [p for p in (name or "").split() if p]
     if not parts:
         return "?"
     if len(parts) == 1:
@@ -61,12 +61,12 @@ def build_scope(row: dict[str, Any]) -> DataScope:
 def user_to_out(row: dict[str, Any]) -> UserOut:
     extra = list(row.get("extra_permissions") or [])
     return UserOut(
-        id=row["id"],
+        id=str(row["id"]),
         name=row["name"],
         email=row["email"],
         role=row["role"],
         roleLabel=ROLE_LABELS.get(row["role"], row["role"]),
-        avatarInitials=initials(row["name"]),
+        avatarInitials=initials(row["name"] or ""),
         phone=row.get("phone"),
         address=row.get("address"),
         neighborhood=row.get("neighborhood"),

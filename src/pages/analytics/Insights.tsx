@@ -1,101 +1,89 @@
-import React from 'react';
+﻿import React, { useEffect, useState } from 'react';
 import { useTheme } from '../../context/ThemeContext';
 import { useGlobalFilter } from '../../context/GlobalFilterContext';
 import { PeriodSelector } from '../../components/common/PeriodSelector';
-import { Sparkles, TrendingUp, AlertCircle, CheckCircle2, ArrowRight } from 'lucide-react';
+import { EmptyBlock, ErrorBlock, LoadingBlock } from '../../components/common/DataState';
+import { fetchDashboard, fetchNotPositivated, DashboardResponse, NotPositivatedResponse } from '../../lib/api';
+import { Sparkles } from 'lucide-react';
 
 export const InsightsPage: React.FC = () => {
   const { t } = useTheme();
-  const { selectedPeriod, periodMetrics } = useGlobalFilter();
+  const { ano, mes, startDate, endDate, periodType, selectedPeriod } = useGlobalFilter();
+  const [dash, setDash] = useState<DashboardResponse | null>(null);
+  const [np, setNp] = useState<NotPositivatedResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const insights = [
-    {
-      tipo: 'oportunidade',
-      titulo: 'Recuperação de 42 Clientes Inativos em ARCOR',
-      descricao:
-        'A equipe TRAB ALFA possui 42 clientes que compravam balas e chocolates nos últimos 60 dias, mas ainda não positivaram no período selecionado. O potencial estimado é de R$ 74.000 em faturamento adicional.',
-      impacto: '+R$ 74.000',
-      prioridade: 'Alta',
-    },
-    {
-      tipo: 'alerta',
-      titulo: 'Concentração Elevada no Top 5 de Clientes',
-      descricao:
-        'Os 5 principais clientes respondem por 35,6% do faturamento total. Recomenda-se diversificar a carteira para mitigar risco operacional de crédito e sazonalidade.',
-      impacto: 'Risco Médio',
-      prioridade: 'Média',
-    },
-    {
-      tipo: 'sucesso',
-      titulo: 'Superação de Meta em UNILEVER na Gerência TRAD',
-      descricao:
-        'O atingimento do mix de sabão em pó e amaciante superou a cota mensal em 105,4%, gerando aumento de 0,8 p.p. na margem bruta consolidada.',
-      impacto: '+0,8 p.p. Margem',
-      prioridade: 'Positiva',
-    },
-  ];
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      setLoading(true); setError(null);
+      try {
+        const [d, n] = await Promise.all([
+          fetchDashboard({
+            ano: periodType === 'personalizado' ? undefined : ano,
+            mes: periodType === 'mensal' ? mes : undefined,
+            start: startDate || undefined,
+            end: endDate || undefined,
+          }),
+          fetchNotPositivated({ start: startDate || undefined, end: endDate || undefined }),
+        ]);
+        if (mounted) { setDash(d); setNp(n); }
+      } catch (e) {
+        if (mounted) setError(e instanceof Error ? e.message : 'Falha ao carregar insights');
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    })();
+    return () => { mounted = false; };
+  }, [ano, mes, startDate, endDate, periodType]);
+
+  const cards: Array<{ titulo: string; descricao: string }> = [];
+  if (dash) {
+    cards.push({
+      titulo: `Atingimento ${dash.kpis.atingimento.toFixed(1)}% no período ${selectedPeriod}`,
+      descricao: `Meta ${dash.kpis.meta.toLocaleString('pt-BR')} · Realizado ${dash.kpis.realizado.toLocaleString('pt-BR')} · GAP ${dash.kpis.gap.toLocaleString('pt-BR')}.`,
+    });
+    if ((dash.fabricantes || []).length > 0) {
+      const top = [...dash.fabricantes].sort((a, b) => b.realizado - a.realizado)[0];
+      cards.push({
+        titulo: `Maior realizado: ${top.fabricante}`,
+        descricao: `Realizado R$ ${top.realizado.toLocaleString('pt-BR')} (${top.pctR.toFixed(1)}% da meta) · margem ${top.pctMargem.toFixed(1)}%.`,
+      });
+    }
+  }
+  if (np) {
+    cards.push({
+      titulo: `${np.kpis.naoPositivados} clientes não positivados`,
+      descricao: `Base ${np.kpis.baseClientes} · positivados ${np.kpis.positivados} · taxa ${np.kpis.positivacaoPct}%.`,
+    });
+  }
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
         <div>
-          <h1 className="num" style={{ margin: '0 0 4px', fontSize: '24px', fontWeight: 700, color: t.text }}>
-            Insights Comerciais & Recomendações
-          </h1>
-          <p style={{ margin: 0, fontSize: '13px', color: t.textSecondary }}>
-            Diagnósticos automatizados de gaps, oportunidades de positivação e variações críticas de faturamento.
-          </p>
+          <h1 className="num" style={{ margin: '0 0 4px', fontSize: 24, fontWeight: 700, color: t.text }}>Insights</h1>
+          <p style={{ margin: 0, fontSize: 13, color: t.textSecondary }}>Resumos gerados apenas com KPIs reais do database.</p>
         </div>
-
         <PeriodSelector />
       </div>
-
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-        {insights.map((ins, idx) => (
-          <div
-            key={idx}
-            style={{
-              background: t.surface,
-              border: `1px solid ${t.border}`,
-              borderRadius: '12px',
-              padding: '20px',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '12px',
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
-                <Sparkles size={16} color={t.primary} style={{ flexShrink: 0 }} />
-                <span style={{ fontSize: '14.5px', fontWeight: 700, color: t.text }}>{ins.titulo}</span>
+      {loading && <LoadingBlock />}
+      {error && <ErrorBlock message={error} />}
+      {!loading && !error && cards.length === 0 && <EmptyBlock />}
+      {!loading && !error && cards.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {cards.map((c) => (
+            <div key={c.titulo} style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 12, padding: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                <Sparkles size={16} color={t.primary} />
+                <strong style={{ color: t.text }}>{c.titulo}</strong>
               </div>
-              <span
-                style={{
-                  fontSize: '12px',
-                  fontWeight: 600,
-                  padding: '3px 10px',
-                  borderRadius: '6px',
-                  background: ins.tipo === 'sucesso' ? 'rgba(61, 214, 140, 0.12)' : ins.tipo === 'oportunidade' ? 'rgba(232, 179, 57, 0.12)' : 'rgba(227, 6, 19, 0.12)',
-                  color: ins.tipo === 'sucesso' ? '#3DD68C' : ins.tipo === 'oportunidade' ? '#E8B339' : t.primaryHover,
-                }}
-              >
-                {ins.impacto}
-              </span>
+              <div style={{ fontSize: 13, color: t.textSecondary }}>{c.descricao}</div>
             </div>
-
-            <p style={{ margin: 0, fontSize: '13px', color: t.textSecondary, lineHeight: 1.6 }}>
-              {ins.descricao}
-            </p>
-
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px', paddingTop: '8px', borderTop: `1px solid ${t.border}` }}>
-              <span style={{ fontSize: '12px', color: t.textMuted }}>Contexto ativo: {selectedPeriod}</span>
-              <span style={{ fontSize: '12px', fontWeight: 600, color: t.primary, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                Explorar Plano de Ação <ArrowRight size={13} />
-              </span>
-            </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 };

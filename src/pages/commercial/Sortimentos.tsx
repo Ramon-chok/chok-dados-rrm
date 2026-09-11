@@ -1,203 +1,87 @@
-import React, { useState, useMemo } from 'react';
+﻿import React, { useEffect, useMemo, useState } from 'react';
 import { useTheme } from '../../context/ThemeContext';
-import { useAuth } from '../../context/AuthContext';
 import { ExportExcelButton } from '../../components/common/ExportExcelButton';
+import { EmptyBlock, ErrorBlock, LoadingBlock } from '../../components/common/DataState';
+import { fetchProducts, ProductRow } from '../../lib/api';
 import { Search } from 'lucide-react';
 
-const allProdutos = [
-  { codigo: 'A-1042', nome: 'Bala de goma 500g', fabricante: 'ARCOR', categoria: 'Doces', status: 'Ativo', meta: 45000, realizado: 41200, gap: -3800, atingimento: 91.6, cobertura: 384 },
-  { codigo: 'A-1088', nome: 'Chocolate ao leite 900g', fabricante: 'ARCOR', categoria: 'Chocolates', status: 'Ativo', meta: 62000, realizado: 58900, gap: -3100, atingimento: 95.0, cobertura: 420 },
-  { codigo: 'H-2210', nome: 'Ketchup 1kg', fabricante: 'HEINZ', categoria: 'Condimentos', status: 'Ativo', meta: 58000, realizado: 54100, gap: -3900, atingimento: 93.3, cobertura: 512 },
-  { codigo: 'H-2255', nome: 'Maionese 500g', fabricante: 'HEINZ', categoria: 'Condimentos', status: 'Ativo', meta: 42000, realizado: 39900, gap: -2100, atingimento: 95.0, cobertura: 490 },
-  { codigo: 'N-3301', nome: 'Achocolatado 400g', fabricante: 'NESTLÉ', categoria: 'Bebidas', status: 'Ativo', meta: 85000, realizado: 71200, gap: -13800, atingimento: 83.8, cobertura: 620 },
-  { codigo: 'N-3355', nome: 'Leite condensado 395g', fabricante: 'NESTLÉ', categoria: 'Laticínios', status: 'Inativo', meta: 40000, realizado: 28500, gap: -11500, atingimento: 71.3, cobertura: 310 },
-  { codigo: 'U-4410', nome: 'Sabão em pó 1kg', fabricante: 'UNILEVER', categoria: 'Limpeza', status: 'Ativo', meta: 75000, realizado: 72800, gap: -2200, atingimento: 97.1, cobertura: 680 },
-  { codigo: 'U-4488', nome: 'Amaciante 2L', fabricante: 'UNILEVER', categoria: 'Limpeza', status: 'Ativo', meta: 52000, realizado: 48900, gap: -3100, atingimento: 94.0, cobertura: 540 },
-];
-
-const CATEGORIAS = ['Todas', 'Doces', 'Chocolates', 'Condimentos', 'Bebidas', 'Laticínios', 'Limpeza'];
-const STATUSES = ['Todos', 'Ativo', 'Inativo'];
-
-const fmt = (v: number) => `R$ ${v.toLocaleString('pt-BR')}`;
+const fmt = (v: number) => `R$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
 
 export const SortimentosPage: React.FC = () => {
   const { t } = useTheme();
-  const { currentUser } = useAuth();
+  const [rows, setRows] = useState<ProductRow[]>([]);
   const [query, setQuery] = useState('');
-  const [fabricante, setFabricante] = useState('Todos');
-  const [categoria, setCategoria] = useState('Todas');
-  const [status, setStatus] = useState('Todos');
+  const [fab, setFab] = useState('Todos');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  // RBAC Filtering for Sortimentos:
-  // Admin / Gerência: Todos os fabricantes
-  // Supervisor: Fabricantes vinculados à equipe
-  // Vendedor: Fabricantes da carteira do vendedor
-  const produtosBase = useMemo(() => {
-    if (!currentUser || currentUser.role === 'ADMIN' || currentUser.role === 'GERENTE') {
-      return allProdutos;
-    }
-    if (currentUser.role === 'SUPERVISOR') {
-      return allProdutos.filter((p) => ['ARCOR', 'HEINZ', 'UNILEVER'].includes(p.fabricante));
-    }
-    if (currentUser.role === 'VENDEDOR') {
-      return allProdutos.filter((p) => ['ARCOR', 'HEINZ'].includes(p.fabricante));
-    }
-    return allProdutos;
-  }, [currentUser]);
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      setLoading(true); setError(null);
+      try {
+        const data = await fetchProducts({ q: query || undefined, fabricante: fab === 'Todos' ? undefined : fab });
+        if (mounted) setRows(data);
+      } catch (e) {
+        if (mounted) setError(e instanceof Error ? e.message : 'Falha ao carregar sortimentos');
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    })();
+    return () => { mounted = false; };
+  }, [query, fab]);
 
-  const fabricantesOptions = useMemo(() => {
-    const list = Array.from(new Set(produtosBase.map((p) => p.fabricante)));
-    return ['Todos', ...list];
-  }, [produtosBase]);
+  const fabs = useMemo(() => ['Todos', ...Array.from(new Set(rows.map((r) => r.fabricante).filter(Boolean) as string[]))], [rows]);
 
-  const filtrados = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return produtosBase.filter((p) => {
-      if (fabricante !== 'Todos' && p.fabricante !== fabricante) return false;
-      if (categoria !== 'Todas' && p.categoria !== categoria) return false;
-      if (status !== 'Todos' && p.status !== status) return false;
-      if (q && !p.nome.toLowerCase().includes(q) && !p.codigo.toLowerCase().includes(q)) return false;
-      return true;
-    });
-  }, [produtosBase, query, fabricante, categoria, status]);
-
-  const handleExportExcel = () => {
-    const data = filtrados.map((p) => ({
-      Código: p.codigo,
-      'Descrição do Produto': p.nome,
-      Fabricante: p.fabricante,
-      Categoria: p.categoria,
-      'Meta (R$)': p.meta,
-      'Realizado (R$)': p.realizado,
-      'GAP (R$)': p.gap,
-      'Atingimento %': p.atingimento,
-      Status: p.status,
-    }));
-    return [{ sheetName: 'Sortimentos', data }];
-  };
+  const handleExport = () => [{
+    sheetName: 'Sortimentos',
+    data: rows.map((p) => ({ Código: p.codigo, Produto: p.nome, Fabricante: p.fabricante, Categoria: p.categoria, Preço: p.preco, Status: p.status })),
+  }];
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
         <div>
-          <h2 className="num" style={{ margin: '0 0 4px', fontSize: '22px', fontWeight: 700, color: t.text }}>
-            Sortimentos
-          </h2>
-          <div style={{ fontSize: '12.5px', color: t.textMuted }}>
-            Acompanhamento comercial de metas e faturamento por item de sortimento
-          </div>
+          <h1 className="num" style={{ margin: '0 0 4px', fontSize: 24, fontWeight: 700, color: t.text }}>Sortimentos</h1>
+          <p style={{ margin: 0, fontSize: 13, color: t.textSecondary }}>Produtos cadastrados na tabela produtos.</p>
         </div>
-
-        <ExportExcelButton
-          filename="Sortimentos_Comercial.xlsx"
-          onPrepareData={handleExportExcel}
-        />
+        <ExportExcelButton getSheets={handleExport} fileName="sortimentos" />
       </div>
-
-      {/* Busca instantânea + filtros */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', marginBottom: '18px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', border: `1px solid ${t.border}`, borderRadius: '8px', padding: '10px 14px', flex: '1 1 280px', background: t.surface }}>
+      <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, border: `1px solid ${t.border}`, borderRadius: 8, padding: '10px 14px', background: t.surface, flex: '1 1 240px' }}>
           <Search size={16} color={t.textMuted} />
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Buscar por código ou descrição do produto..."
-            style={{ border: 'none', outline: 'none', background: 'transparent', color: t.text, fontSize: '14px', width: '100%', fontFamily: "'Inter', sans-serif" }}
-          />
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar produto..." style={{ border: 'none', outline: 'none', background: 'transparent', color: t.text, width: '100%' }} />
         </div>
-        {[
-          { value: fabricante, set: setFabricante, options: fabricantesOptions },
-          { value: categoria, set: setCategoria, options: CATEGORIAS },
-          { value: status, set: setStatus, options: STATUSES },
-        ].map((f, i) => (
-          <select
-            key={i}
-            value={f.value}
-            onChange={(e) => f.set(e.target.value)}
-            style={{
-              fontSize: '13px',
-              color: t.textSecondary,
-              border: `1px solid ${t.border}`,
-              borderRadius: '8px',
-              padding: '10px 12px',
-              background: t.surface,
-              cursor: 'pointer',
-              fontFamily: "'Inter', sans-serif",
-            }}
-          >
-            {f.options.map((o) => (
-              <option key={o} value={o}>{o}</option>
-            ))}
-          </select>
-        ))}
+        <select value={fab} onChange={(e) => setFab(e.target.value)} style={{ padding: '8px 10px', borderRadius: 8, border: `1px solid ${t.border}`, background: t.surface, color: t.text }}>
+          {fabs.map((f) => <option key={f} value={f}>{f}</option>)}
+        </select>
       </div>
-
-      <div style={{ fontSize: '12.5px', color: t.textMuted, marginBottom: '10px' }}>
-        {filtrados.length} produto{filtrados.length !== 1 ? 's' : ''} encontrado{filtrados.length !== 1 ? 's' : ''}
-      </div>
-
-      {/* Tabela */}
-      <div style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: '12px', overflow: 'hidden' }}>
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+      {loading && <LoadingBlock />}
+      {error && <ErrorBlock message={error} />}
+      {!loading && !error && rows.length === 0 && <EmptyBlock />}
+      {!loading && !error && rows.length > 0 && (
+        <div style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 12, overflow: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
             <thead>
-              <tr style={{ color: t.textMuted }}>
-                {['Código', 'Descrição do Produto', 'Fabricante', 'Categoria', 'Meta', 'Realizado', 'GAP', '% Atingimento', 'Status'].map((h, idx) => (
-                  <th
-                    key={h}
-                    style={{
-                      textAlign: idx >= 4 && idx <= 7 ? 'right' : 'left',
-                      padding: '12px 14px',
-                      borderBottom: `1px solid ${t.border}`,
-                      fontWeight: 500,
-                      whiteSpace: 'nowrap',
-                      background: t.bgSecondary,
-                    }}
-                  >
-                    {h}
-                  </th>
-                ))}
+              <tr style={{ color: t.textMuted, textAlign: 'left', borderBottom: `1px solid ${t.border}` }}>
+                <th style={{ padding: 12 }}>Código</th><th>Produto</th><th>Fabricante</th><th>Categoria</th><th>Preço</th><th>Status</th>
               </tr>
             </thead>
             <tbody>
-              {filtrados.map((p) => (
-                <tr key={p.codigo} style={{ borderBottom: `1px solid ${t.border}` }}>
-                  <td className="num" style={{ padding: '12px 14px', color: t.textSecondary }}>{p.codigo}</td>
-                  <td style={{ padding: '12px 14px', fontWeight: 500, color: t.text }}>{p.nome}</td>
-                  <td style={{ padding: '12px 14px', color: t.textSecondary }}>{p.fabricante}</td>
-                  <td style={{ padding: '12px 14px', color: t.textSecondary }}>{p.categoria}</td>
-                  <td className="num" style={{ padding: '12px 14px', textAlign: 'right', color: t.textSecondary }}>{fmt(p.meta)}</td>
-                  <td className="num" style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 600, color: t.text }}>{fmt(p.realizado)}</td>
-                  <td className="num" style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 600, color: t.primaryHover }}>{fmt(p.gap)}</td>
-                  <td
-                    className="num"
-                    style={{
-                      padding: '12px 14px',
-                      textAlign: 'right',
-                      fontWeight: 600,
-                      color: p.atingimento >= 90 ? '#3DD68C' : p.atingimento >= 80 ? t.text : t.primaryHover,
-                    }}
-                  >
-                    {p.atingimento.toFixed(1)}%
-                  </td>
-                  <td style={{ padding: '12px 14px' }}>
-                    <span style={{ fontSize: '12px', fontWeight: 600, color: p.status === 'Ativo' ? '#3DD68C' : t.textMuted }}>
-                      ● {p.status}
-                    </span>
-                  </td>
+              {rows.map((p) => (
+                <tr key={p.codigo} style={{ borderTop: `1px solid ${t.border}`, color: t.text }}>
+                  <td style={{ padding: 12 }}>{p.codigo}</td>
+                  <td>{p.nome}</td>
+                  <td>{p.fabricante || '—'}</td>
+                  <td>{p.categoria || '—'}</td>
+                  <td>{fmt(p.preco || 0)}</td>
+                  <td>{p.status}</td>
                 </tr>
               ))}
-              {filtrados.length === 0 && (
-                <tr>
-                  <td colSpan={9} style={{ padding: '28px 14px', textAlign: 'center', color: t.textMuted, fontSize: '13.5px' }}>
-                    Nenhum produto encontrado para os filtros selecionados.
-                  </td>
-                </tr>
-              )}
             </tbody>
           </table>
         </div>
-      </div>
+      )}
     </div>
   );
 };

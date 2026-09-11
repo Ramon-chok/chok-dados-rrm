@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -12,6 +12,29 @@ from app.config import get_settings
 from app.db import get_connection
 
 bearer_scheme = HTTPBearer(auto_error=False)
+
+# SELECT canônico: colunas PT do auth.sql → aliases EN usados pela API/JWT
+USER_SELECT = """
+    SELECT
+      id::text AS id,
+      name,
+      email,
+      role,
+      telefone AS phone,
+      endereco AS address,
+      bairro AS neighborhood,
+      municipio AS city,
+      estado AS state,
+      cep,
+      codigo AS seller_code,
+      equipe AS team,
+      supervisor,
+      NULL::text AS manager,
+      status,
+      last_login_at,
+      COALESCE(extra_permissions, '{}'::text[]) AS extra_permissions
+    FROM usuarios
+"""
 
 ROLE_PERMISSIONS: dict[str, list[str]] = {
     "ADMIN": ["admin.full_access"],
@@ -69,17 +92,38 @@ def verify_password(plain: str, hashed: str) -> bool:
         return False
 
 
-def create_access_token(user_id: str, email: str, role: str) -> str:
+def token_ttl_minutes(remember_me: bool = True) -> int:
     settings = get_settings()
+    base = settings.jwt_expire_minutes
+    return base * 7 if remember_me else base
+
+
+def create_access_token(
+    user_id: str,
+    email: str,
+    role: str,
+    *,
+    remember_me: bool = True,
+    extra: dict[str, Any] | None = None,
+) -> tuple[str, int]:
+    """Retorna (jwt, expires_in_seconds)."""
+    settings = get_settings()
+    minutes = token_ttl_minutes(remember_me)
     now = datetime.now(UTC)
-    payload = {
-        "sub": user_id,
+    payload: dict[str, Any] = {
+        "sub": str(user_id),
         "email": email,
         "role": role,
+        "typ": "access",
         "iat": int(now.timestamp()),
-        "exp": int((now + timedelta(minutes=settings.jwt_expire_minutes)).timestamp()),
+        "exp": int((now + timedelta(minutes=minutes)).timestamp()),
     }
-    return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
+    if extra:
+        payload.update(extra)
+    token = jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
+    if isinstance(token, bytes):
+        token = token.decode("utf-8")
+    return token, minutes * 60
 
 
 def decode_token(token: str) -> dict[str, Any]:
@@ -125,15 +169,7 @@ def get_current_user(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token inválido.")
 
     with get_connection() as conn:
-        row = conn.execute(
-            """
-            SELECT id, name, email, role, phone, address, neighborhood, city, state, cep,
-                   seller_code, team, supervisor, manager, status, last_login_at, extra_permissions
-            FROM usuarios
-            WHERE id = %s
-            """,
-            (user_id,),
-        ).fetchone()
+        row = conn.execute(USER_SELECT + " WHERE id::text = %s", (str(user_id),)).fetchone()
 
     if not row:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Usuário não encontrado.")

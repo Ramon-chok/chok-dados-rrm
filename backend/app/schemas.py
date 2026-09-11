@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from typing import Any, Literal
 
@@ -18,27 +18,28 @@ class DataScope(BaseModel):
     level: Literal["VENDEDOR", "SUPERVISOR", "GERENTE", "EMPRESA"]
     description: str
     sellerCode: str | None = None
-    equipe: str | None = None
+    team: str | None = None
     supervisor: str | None = None
     manager: str | None = None
 
 
 class UserOut(BaseModel):
-    id: int
+    id: str
     name: str
     email: str
     role: Role
     roleLabel: str
     avatarInitials: str
-    telefone: str | None = None
-    endereco: str | None = None
-    bairro: str | None = None
-    municipio: str | None = None
-    estado: str | None = None
+    phone: str | None = None
+    address: str | None = None
+    neighborhood: str | None = None
+    city: str | None = None
+    state: str | None = None
     cep: str | None = None
-    codigo: str | None = None
-    equipe: str | None = None
+    sellerCode: str | None = None
+    team: str | None = None
     supervisor: str | None = None
+    manager: str | None = None
     status: Literal["Ativo", "Inativo"]
     lastLoginAt: str | None = None
     scope: DataScope
@@ -47,6 +48,8 @@ class UserOut(BaseModel):
 
 class LoginResponse(BaseModel):
     token: str
+    tokenType: str = "Bearer"
+    expiresIn: int
     user: UserOut
 
 
@@ -55,15 +58,16 @@ class UserCreate(BaseModel):
     email: str
     password: str = Field(min_length=6)
     role: Role
-    telefone: str | None = None
-    endereco: str | None = None
-    bairro: str | None = None
-    municipio: str | None = None
-    estado: str | None = None
+    phone: str | None = None
+    address: str | None = None
+    neighborhood: str | None = None
+    city: str | None = None
+    state: str | None = None
     cep: str | None = None
-    codigo: str | None = None
-    equipe: str | None = None
+    sellerCode: str | None = None
+    team: str | None = None
     supervisor: str | None = None
+    manager: str | None = None
     status: Literal["Ativo", "Inativo"] = "Ativo"
 
 
@@ -72,15 +76,16 @@ class UserUpdate(BaseModel):
     email: str | None = None
     password: str | None = Field(default=None, min_length=6)
     role: Role | None = None
-    telefone: str | None = None
-    endereco: str | None = None
-    bairro: str | None = None
-    municipio: str | None = None
-    estado: str | None = None
+    phone: str | None = None
+    address: str | None = None
+    neighborhood: str | None = None
+    city: str | None = None
+    state: str | None = None
     cep: str | None = None
-    codigo: str | None = None
-    equipe: str | None = None
+    sellerCode: str | None = None
+    team: str | None = None
     supervisor: str | None = None
+    manager: str | None = None
     status: Literal["Ativo", "Inativo"] | None = None
 
 
@@ -118,7 +123,3 @@ class PeriodQuery(BaseModel):
     end: str | None = None
     ano: int | None = None
     mes: int | None = None
-    equipe: str | None = None
-    vendedor: str | None = None
-    fabricante: str | None = None
-    gerencia: str | None = None
