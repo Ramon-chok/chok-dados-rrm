@@ -1,0 +1,6 @@
+{
+  "name": "Chok - Inteligência de Dados e Gestão Comercial",
+  "description": "Plataforma corporativa de Business Intelligence, gestão comercial, acompanhamento de metas e análise hierárquica.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
