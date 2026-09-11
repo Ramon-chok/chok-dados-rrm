@@ -92,6 +92,22 @@ export interface UpsertOutcome {
 }
 
 /**
+ * Mantém só a última ocorrência de cada chave. Uma mesma chave repetida
+ * dentro do MESMO comando INSERT ... ON CONFLICT faz o Postgres estourar
+ * "ON CONFLICT DO UPDATE command cannot affect row a second time" —
+ * planilhas reais frequentemente têm linhas duplicadas (reenvio, correção
+ * manual etc.), então a última linha da planilha é a versão vigente.
+ */
+function dedupeByKey(rows: MappedRow[], keyColumns: string[]): MappedRow[] {
+  const deduped = new Map<string, MappedRow>();
+  for (const row of rows) {
+    const key = JSON.stringify(keyColumns.map((k) => row.values[k] ?? null));
+    deduped.set(key, row);
+  }
+  return [...deduped.values()];
+}
+
+/**
  * Executa o upsert em lotes dentro de uma transação já aberta pelo chamador.
  * Usa `RETURNING (xmax = 0)` (truque padrão do Postgres) para contar, por
  * linha, se foi INSERT (novo) ou UPDATE (atualizado).
@@ -106,16 +122,25 @@ export async function upsertRows(
 ): Promise<UpsertOutcome> {
   if (rows.length === 0) return { novos: 0, atualizados: 0 };
 
+  rows = dedupeByKey(rows, cfg.keyColumns);
+
+  const tracksImport = cfg.tracksImport ?? true;
   const valueColumns = cfg.columns.map((c) => c.name);
-  const extraColumns = cfg.snapshot
-    ? ['data_referencia', 'mes_referencia', 'ano_referencia', 'data_importacao', 'importacao_id']
-    : ['data_importacao', 'importacao_id'];
+  const extraColumns: string[] = [];
+  if (cfg.snapshot) extraColumns.push('data_referencia', 'mes_referencia', 'ano_referencia');
+  if (tracksImport) extraColumns.push('data_importacao', 'importacao_id');
   const insertColumns = [...valueColumns, ...extraColumns];
 
-  const updateSet = insertColumns
+  const updateParts = insertColumns
     .filter((c) => !cfg.keyColumns.includes(c))
-    .map((c) => `${c} = EXCLUDED.${c}`)
-    .join(', ');
+    .map((c) => `${c} = EXCLUDED.${c}`);
+  if (!tracksImport) {
+    // Tabelas de cadastro não recebem data_importacao/importacao_id (não têm
+    // essas colunas) — em vez disso, tocam atualizado_em no UPDATE. No
+    // INSERT, o DEFAULT now() da coluna já cobre a linha nova.
+    updateParts.push('atualizado_em = now()');
+  }
+  const updateSet = updateParts.join(', ');
 
   let novos = 0;
   let atualizados = 0;
@@ -130,7 +155,9 @@ export async function upsertRows(
       if (cfg.snapshot && snapshot) {
         rowParams.push(snapshot.dataReferencia, snapshot.mesReferencia, snapshot.anoReferencia);
       }
-      rowParams.push(dataImportacao, importacaoId);
+      if (tracksImport) {
+        rowParams.push(dataImportacao, importacaoId);
+      }
 
       const placeholders = rowParams.map((_, j) => `$${params.length + j + 1}`);
       tuples.push(`(${placeholders.join(', ')})`);

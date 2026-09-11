@@ -22,6 +22,11 @@ class ImportTypeConfig:
     key_columns: tuple[str, ...]
     columns: tuple[ImportColumn, ...]
     snapshot: bool
+    # Tabelas de cadastro (clientes, vendedores, gerências, ...) não têm colunas
+    # data_importacao/importacao_id — só atualizado_em (DEFAULT now()). Tabelas
+    # transacionais (vendas, metas, visitas) e os indicadores diários (snapshot)
+    # têm essas colunas de auditoria. Ver app.upsert.upsert_rows.
+    tracks_import: bool = True
 
 
 IMPORT_TYPE_CONFIGS: dict[str, ImportTypeConfig] = {
@@ -59,6 +64,7 @@ IMPORT_TYPE_CONFIGS: dict[str, ImportTypeConfig] = {
         table="clientes",
         key_columns=("cod_cliente",),
         snapshot=False,
+        tracks_import=False,
         columns=(
             ImportColumn("cod_cliente", "text"),
             ImportColumn("razao_social", "text"),
@@ -73,6 +79,7 @@ IMPORT_TYPE_CONFIGS: dict[str, ImportTypeConfig] = {
         table="vendedores",
         key_columns=("cod_vendedor",),
         snapshot=False,
+        tracks_import=False,
         columns=(
             ImportColumn("cod_vendedor", "text"),
             ImportColumn("nome", "text"),
@@ -86,6 +93,7 @@ IMPORT_TYPE_CONFIGS: dict[str, ImportTypeConfig] = {
         table="equipes",
         key_columns=("nome_equipe",),
         snapshot=False,
+        tracks_import=False,
         columns=(
             ImportColumn("nome_equipe", "text"),
             ImportColumn("supervisor", "text"),
@@ -98,6 +106,7 @@ IMPORT_TYPE_CONFIGS: dict[str, ImportTypeConfig] = {
         table="supervisores",
         key_columns=("nome_supervisor",),
         snapshot=False,
+        tracks_import=False,
         columns=(
             ImportColumn("nome_supervisor", "text"),
             ImportColumn("gerencia", "text"),
@@ -110,6 +119,7 @@ IMPORT_TYPE_CONFIGS: dict[str, ImportTypeConfig] = {
         table="gerencias",
         key_columns=("codigo_gerencia",),
         snapshot=False,
+        tracks_import=False,
         columns=(
             ImportColumn("codigo_gerencia", "text"),
             ImportColumn("nome_gerencia", "text"),
@@ -121,6 +131,7 @@ IMPORT_TYPE_CONFIGS: dict[str, ImportTypeConfig] = {
         table="fabricantes",
         key_columns=("nome_fabricante",),
         snapshot=False,
+        tracks_import=False,
         columns=(
             ImportColumn("nome_fabricante", "text"),
             ImportColumn("razao_social", "text"),
@@ -133,6 +144,7 @@ IMPORT_TYPE_CONFIGS: dict[str, ImportTypeConfig] = {
         table="categorias",
         key_columns=("cod_categoria",),
         snapshot=False,
+        tracks_import=False,
         columns=(
             ImportColumn("cod_categoria", "text"),
             ImportColumn("nome_categoria", "text"),
@@ -145,6 +157,7 @@ IMPORT_TYPE_CONFIGS: dict[str, ImportTypeConfig] = {
         table="produtos",
         key_columns=("cod_produto",),
         snapshot=False,
+        tracks_import=False,
         columns=(
             ImportColumn("cod_produto", "text"),
             ImportColumn("descricao", "text"),

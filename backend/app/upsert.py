@@ -83,6 +83,22 @@ def map_and_validate_rows(
     return valid, errors
 
 
+def _dedupe_by_key(rows: list[MappedRow], key_columns: tuple[str, ...]) -> list[MappedRow]:
+    """Mantém só a última ocorrência de cada chave.
+
+    Uma mesma chave repetida dentro do MESMO comando INSERT ... ON CONFLICT
+    faz o Postgres estourar "ON CONFLICT DO UPDATE command cannot affect row
+    a second time" — planilhas reais frequentemente têm linhas duplicadas
+    (reenvio, correção manual etc.), então a última linha da planilha é
+    considerada a versão vigente.
+    """
+    deduped: dict[tuple[Any, ...], MappedRow] = {}
+    for row in rows:
+        key = tuple(row.values.get(k) for k in key_columns)
+        deduped[key] = row
+    return list(deduped.values())
+
+
 def upsert_rows(
     conn: Connection,
     cfg: ImportTypeConfig,
@@ -94,16 +110,22 @@ def upsert_rows(
     if not rows:
         return UpsertOutcome(0, 0)
 
+    rows = _dedupe_by_key(rows, cfg.key_columns)
+
     value_columns = [c.name for c in cfg.columns]
-    extra_columns = (
-        ["data_referencia", "mes_referencia", "ano_referencia", "data_importacao", "importacao_id"]
-        if cfg.snapshot
-        else ["data_importacao", "importacao_id"]
-    )
+    extra_columns: list[str] = []
+    if cfg.snapshot:
+        extra_columns.extend(["data_referencia", "mes_referencia", "ano_referencia"])
+    if cfg.tracks_import:
+        extra_columns.extend(["data_importacao", "importacao_id"])
     insert_columns = [*value_columns, *extra_columns]
-    update_set = ", ".join(
-        f"{c} = EXCLUDED.{c}" for c in insert_columns if c not in cfg.key_columns
-    )
+    update_parts = [f"{c} = EXCLUDED.{c}" for c in insert_columns if c not in cfg.key_columns]
+    if not cfg.tracks_import:
+        # Tabelas de cadastro não recebem data_importacao/importacao_id (não
+        # têm essas colunas) — em vez disso, tocam atualizado_em no UPDATE.
+        # No INSERT, o DEFAULT now() da coluna já cobre a linha nova.
+        update_parts.append("atualizado_em = now()")
+    update_set = ", ".join(update_parts)
 
     novos = 0
     atualizados = 0
@@ -119,7 +141,8 @@ def upsert_rows(
                 row_params.extend(
                     [snapshot.data_referencia, snapshot.mes_referencia, snapshot.ano_referencia]
                 )
-            row_params.extend([data_importacao, importacao_id])
+            if cfg.tracks_import:
+                row_params.extend([data_importacao, importacao_id])
 
             placeholders = ", ".join(["%s"] * len(row_params))
             tuples.append(f"({placeholders})")

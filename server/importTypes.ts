@@ -26,6 +26,12 @@ export interface ImportTypeConfig {
   columns: ImportColumn[];
   /** true = indicador diário/estado-no-tempo; false = cadastro ou fato transacional com data própria. */
   snapshot: boolean;
+  /**
+   * true = a tabela tem colunas data_importacao/importacao_id (fatos
+   * transacionais e indicadores snapshot). false = tabela de cadastro, que só
+   * tem atualizado_em (DEFAULT now()) — ver server/upsert.ts. Padrão: true.
+   */
+  tracksImport?: boolean;
 }
 
 export const IMPORT_TYPE_CONFIGS: Record<string, ImportTypeConfig> = {
@@ -63,6 +69,7 @@ export const IMPORT_TYPE_CONFIGS: Record<string, ImportTypeConfig> = {
     table: 'clientes',
     keyColumns: ['cod_cliente'],
     snapshot: false,
+    tracksImport: false,
     columns: [
       { name: 'cod_cliente', kind: 'text' },
       { name: 'razao_social', kind: 'text' },
@@ -77,6 +84,7 @@ export const IMPORT_TYPE_CONFIGS: Record<string, ImportTypeConfig> = {
     table: 'vendedores',
     keyColumns: ['cod_vendedor'],
     snapshot: false,
+    tracksImport: false,
     columns: [
       { name: 'cod_vendedor', kind: 'text' },
       { name: 'nome', kind: 'text' },
@@ -90,6 +98,7 @@ export const IMPORT_TYPE_CONFIGS: Record<string, ImportTypeConfig> = {
     table: 'equipes',
     keyColumns: ['nome_equipe'],
     snapshot: false,
+    tracksImport: false,
     columns: [
       { name: 'nome_equipe', kind: 'text' },
       { name: 'supervisor', kind: 'text' },
@@ -102,6 +111,7 @@ export const IMPORT_TYPE_CONFIGS: Record<string, ImportTypeConfig> = {
     table: 'supervisores',
     keyColumns: ['nome_supervisor'],
     snapshot: false,
+    tracksImport: false,
     columns: [
       { name: 'nome_supervisor', kind: 'text' },
       { name: 'gerencia', kind: 'text' },
@@ -114,6 +124,7 @@ export const IMPORT_TYPE_CONFIGS: Record<string, ImportTypeConfig> = {
     table: 'gerencias',
     keyColumns: ['codigo_gerencia'],
     snapshot: false,
+    tracksImport: false,
     columns: [
       { name: 'codigo_gerencia', kind: 'text' },
       { name: 'nome_gerencia', kind: 'text' },
@@ -125,6 +136,7 @@ export const IMPORT_TYPE_CONFIGS: Record<string, ImportTypeConfig> = {
     table: 'fabricantes',
     keyColumns: ['nome_fabricante'],
     snapshot: false,
+    tracksImport: false,
     columns: [
       { name: 'nome_fabricante', kind: 'text' },
       { name: 'razao_social', kind: 'text' },
@@ -137,6 +149,7 @@ export const IMPORT_TYPE_CONFIGS: Record<string, ImportTypeConfig> = {
     table: 'categorias',
     keyColumns: ['cod_categoria'],
     snapshot: false,
+    tracksImport: false,
     columns: [
       { name: 'cod_categoria', kind: 'text' },
       { name: 'nome_categoria', kind: 'text' },
@@ -149,6 +162,7 @@ export const IMPORT_TYPE_CONFIGS: Record<string, ImportTypeConfig> = {
     table: 'produtos',
     keyColumns: ['cod_produto'],
     snapshot: false,
+    tracksImport: false,
     columns: [
       { name: 'cod_produto', kind: 'text' },
       { name: 'descricao', kind: 'text' },
