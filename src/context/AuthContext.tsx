@@ -1,6 +1,11 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { User, Permission, PageId } from '../types';
 
+interface LoginResponse {
+  token: string;
+  user: User;
+}
+
 export const MOCK_USERS: User[] = [
   {
     id: 'user-admin',
@@ -185,40 +190,79 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const found = MOCK_USERS.find((u) => u.id === savedUserId);
       if (found) return found;
     }
-    // Default to Ramon (Admin) so user can immediately evaluate the screens as instructed in PRD
-    return MOCK_USERS[0];
+    // Default to unauthenticated so app opens the login screen on dev by default
+    return null;
   });
 
   const [isLoading, setIsLoading] = useState(false);
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
 
-  const login = async (email: string, _password?: string, rememberMe = true): Promise<{ success: boolean; error?: string }> => {
+  // on mount, try to restore session from stored token
+  useEffect(() => {
+    const token = localStorage.getItem('chok_auth_token') || sessionStorage.getItem('chok_auth_token');
+    if (!token) return;
+
+    let mounted = true;
+    (async () => {
+      setIsLoading(true);
+      try {
+        const res = await fetch('/api/auth/me', {
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        });
+        if (!res.ok) throw new Error('não autorizado');
+        const user = await res.json();
+        if (mounted) setCurrentUser(user);
+      } catch {
+        // token inválido/expirado — limpa o armazenamento
+        localStorage.removeItem('chok_auth_token');
+        sessionStorage.removeItem('chok_auth_token');
+      } finally {
+        if (mounted) setIsLoading(false);
+      }
+    })();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const login = async (email: string, password = '', rememberMe = true): Promise<{ success: boolean; error?: string }> => {
     setIsLoading(true);
-    // Simulate brief authentication latency
-    await new Promise((res) => setTimeout(res, 450));
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password, rememberMe }),
+      });
 
-    const normalizedEmail = email.trim().toLowerCase();
-    const user = MOCK_USERS.find((u) => u.email.toLowerCase() === normalizedEmail);
+      if (!res.ok) {
+        let msg = 'Falha ao autenticar.';
+        try {
+          const body = await res.json();
+          if (body?.detail) msg = body.detail;
+          else if (body?.error) msg = body.error;
+        } catch {}
+        setIsLoading(false);
+        return { success: false, error: msg };
+      }
 
-    if (!user) {
+      const body = (await res.json()) as LoginResponse;
+      setCurrentUser(body.user);
+      // store token
+      if (rememberMe) localStorage.setItem('chok_auth_token', body.token);
+      else sessionStorage.setItem('chok_auth_token', body.token);
+
       setIsLoading(false);
-      return {
-        success: false,
-        error: 'E-mail ou credenciais corporativas não encontradas no sistema.',
-      };
+      return { success: true };
+    } catch (err) {
+      setIsLoading(false);
+      return { success: false, error: (err as Error).message || 'Falha ao autenticar.' };
     }
-
-    setCurrentUser(user);
-    if (rememberMe) {
-      localStorage.setItem('chok_auth_user_id', user.id);
-    } else {
-      sessionStorage.setItem('chok_auth_user_id', user.id);
-    }
-    setIsLoading(false);
-    return { success: true };
   };
 
   const logout = () => {
+    localStorage.removeItem('chok_auth_token');
+    sessionStorage.removeItem('chok_auth_token');
     localStorage.removeItem('chok_auth_user_id');
     sessionStorage.removeItem('chok_auth_user_id');
     setCurrentUser(null);
@@ -228,8 +272,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const switchUser = (userId: string) => {
     const user = MOCK_USERS.find((u) => u.id === userId);
     if (user) {
-      setCurrentUser(user);
-      localStorage.setItem('chok_auth_user_id', user.id);
+      // Attempt quick-login against backend using seeded dev password
+      // default seed password (see backend/README.md) is 'Chok@2026'
+      login(user.email, 'Chok@2026', true).catch(() => {
+        // fallback to client-side switch if backend unavailable
+        setCurrentUser(user);
+        localStorage.setItem('chok_auth_user_id', user.id);
+      });
     }
   };
 

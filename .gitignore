@@ -4,6 +4,11 @@ dist/
 coverage/
 .DS_Store
 *.log
-.env*
-!.env.example
 server.js
+.venv/
+.pytest_cache/
+tests/
+pytest.
+.env
+.env.*
+!.env.example

@@ -82,7 +82,7 @@ export default defineConfig(() => {
       // durante o desenvolvimento, para o frontend poder chamar fetch('/api/...') sem CORS.
       proxy: {
         '/api': {
-          target: `http://localhost:${process.env.SERVER_PORT || 8787}`,
+          target: `http://127.0.0.1:8000`,
           changeOrigin: true,
         },
       },

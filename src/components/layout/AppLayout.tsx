@@ -513,28 +513,6 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, c
             >
               <Menu size={16} />
             </button>
-            <button
-              onClick={toggleNavbarCollapse}
-              className="desktop-header-collapse-btn"
-              style={{
-                width: '34px',
-                height: '34px',
-                borderRadius: '8px',
-                border: `1px solid ${t.border}`,
-                background: 'transparent',
-                cursor: 'pointer',
-                color: t.textSecondary,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                transition: 'all 0.15s ease',
-                flexShrink: 0,
-              }}
-              title={isNavbarCollapsed ? 'Expandir barra de navegação' : 'Recolher barra de navegação'}
-              aria-label={isNavbarCollapsed ? 'Expandir barra de navegação' : 'Recolher barra de navegação'}
-            >
-              {isNavbarCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
-            </button>
             <div
               className="num"
               style={{
@@ -573,7 +551,6 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, c
               >
                 <div style={{ width: 8, height: 8, borderRadius: '50%', background: t.primary, flexShrink: 0 }} />
                 <span className="profile-switcher-label">Perfil: <strong>{currentUser?.role}</strong></span>
-                <ChevronDown size={14} color={t.textMuted} />
               </button>
 
               {isUserMenuOpen && (

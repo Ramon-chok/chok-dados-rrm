@@ -7,6 +7,7 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import { importsRouter } from './routes/imports.js';
+import { authRouter } from './routes/auth.js';
 
 const app = express();
 
@@ -22,6 +23,7 @@ app.get('/api/health', (_req, res) => {
 });
 
 app.use('/api/imports', importsRouter);
+app.use('/api/auth', authRouter);
 
 // Rede de segurança: qualquer erro que escape de uma rota (ex: JSON malformado
 // no corpo da requisição) cai aqui em vez de deixar a requisição sem resposta.
