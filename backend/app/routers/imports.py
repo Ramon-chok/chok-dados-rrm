@@ -47,59 +47,61 @@ def create_import(
 
     try:
         with get_connection() as conn:
-            with conn.transaction():
-                seq = conn.execute(
-                    "SELECT nextval(pg_get_serial_sequence('importacoes', 'id')) AS id"
-                ).fetchone()
-                importacao_id = int(seq["id"])
+            seq = conn.execute(
+                "SELECT nextval(pg_get_serial_sequence('importacoes', 'id')) AS id"
+            ).fetchone()
+            importacao_id = int(seq["id"])
 
-                outcome = upsert_rows(
-                    conn,
-                    cfg,
-                    valid,
+            outcome = upsert_rows(
+                conn,
+                cfg,
+                valid,
+                importacao_id,
+                data_importacao,
+                SnapshotContext(data_referencia, mes_referencia, ano_referencia) if cfg.snapshot else None,
+            )
+
+            status_label = (
+                "CONCLUIDO"
+                if not errors
+                else "CONCLUIDO_COM_AVISOS"
+                if valid
+                else "FALHA"
+            )
+
+            conn.execute(
+                """
+                INSERT INTO importacoes
+                  (id, tipo, arquivo, usuario_nome, usuario_email, data_referencia, mes_referencia, ano_referencia,
+                   data_importacao, total_linhas, novos, atualizados, rejeitados, status)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                """,
+                (
                     importacao_id,
+                    cfg.id,
+                    body.arquivo,
+                    body.usuarioNome,
+                    body.usuarioEmail,
+                    data_referencia,
+                    mes_referencia,
+                    ano_referencia,
                     data_importacao,
-                    SnapshotContext(data_referencia, mes_referencia, ano_referencia) if cfg.snapshot else None,
+                    total_linhas,
+                    outcome.novos,
+                    outcome.atualizados,
+                    len(errors),
+                    status_label,
+                ),
+            )
+
+            if errors:
+                conn.executemany(
+                    "INSERT INTO importacoes_erros (importacao_id, linha, motivo) VALUES (%s, %s, %s)",
+                    [(importacao_id, e.linha, e.motivo) for e in errors],
                 )
 
-                status_label = (
-                    "CONCLUIDO"
-                    if not errors
-                    else "CONCLUIDO_COM_AVISOS"
-                    if valid
-                    else "FALHA"
-                )
-
-                conn.execute(
-                    """
-                    INSERT INTO importacoes
-                      (id, tipo, arquivo, usuario_nome, usuario_email, data_referencia, mes_referencia, ano_referencia,
-                       data_importacao, total_linhas, novos, atualizados, rejeitados, status)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                    """,
-                    (
-                        importacao_id,
-                        cfg.id,
-                        body.arquivo,
-                        body.usuarioNome,
-                        body.usuarioEmail,
-                        data_referencia,
-                        mes_referencia,
-                        ano_referencia,
-                        data_importacao,
-                        total_linhas,
-                        outcome.novos,
-                        outcome.atualizados,
-                        len(errors),
-                        status_label,
-                    ),
-                )
-
-                if errors:
-                    conn.executemany(
-                        "INSERT INTO importacoes_erros (importacao_id, linha, motivo) VALUES (%s, %s, %s)",
-                        [(importacao_id, e.linha, e.motivo) for e in errors],
-                    )
+            # commit final import metadata (upsert_rows commits per chunk)
+            conn.commit()
 
         return ImportResultSummary(
             importId=importacao_id,

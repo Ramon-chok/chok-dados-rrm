@@ -138,5 +138,11 @@ def upsert_rows(
                 novos += 1
             else:
                 atualizados += 1
+        # commit after each chunk so partial progress is persisted
+        try:
+            conn.commit()
+        except Exception:
+            # propagate commit errors to caller
+            raise
 
     return UpsertOutcome(novos=novos, atualizados=atualizados)
