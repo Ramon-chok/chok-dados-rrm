@@ -40,6 +40,8 @@ interface ImportTypeOption {
   label: string;
   description: string;
   requiredColumns: string[];
+  /** Caminho público (public/templates/importacao/) do modelo .xlsx pronto para download. */
+  templateFile: string;
 }
 
 const IMPORT_TYPES: ImportTypeOption[] = [
@@ -48,66 +50,77 @@ const IMPORT_TYPES: ImportTypeOption[] = [
     label: 'Vendas & Faturamento',
     description: 'Notas fiscais, pedidos faturados, valores e itens vendidos',
     requiredColumns: ['numero_pedido', 'data_emissao', 'cod_cliente', 'cod_vendedor', 'valor_total'],
+    templateFile: '/templates/importacao/01_vendas.xlsx',
   },
   {
     id: 'metas',
     label: 'Metas Comerciais',
     description: 'Cotas mensais/semanais por vendedor, fabricante e cobertura',
     requiredColumns: ['ano_mes', 'cod_vendedor', 'fabricante', 'meta_faturamento', 'meta_cobertura'],
+    templateFile: '/templates/importacao/02_metas.xlsx',
   },
   {
     id: 'clientes',
     label: 'Base de Clientes',
     description: 'Cadastros de clientes, CNPJ, razão social, endereço e equipe',
     requiredColumns: ['cod_cliente', 'razao_social', 'cnpj', 'cod_vendedor', 'status'],
+    templateFile: '/templates/importacao/03_clientes.xlsx',
   },
   {
     id: 'vendedores',
     label: 'Vendedores',
     description: 'Código de vendedor, nome, email e equipe comercial',
     requiredColumns: ['cod_vendedor', 'nome', 'email', 'equipe'],
+    templateFile: '/templates/importacao/04_vendedores.xlsx',
   },
   {
     id: 'equipes',
     label: 'Equipes Comerciais',
     description: 'Equipes de vendas e supervisor responsável',
     requiredColumns: ['nome_equipe', 'supervisor', 'gerencia'],
+    templateFile: '/templates/importacao/05_equipes.xlsx',
   },
   {
     id: 'supervisores',
     label: 'Supervisores',
     description: 'Supervisores e sua respectiva gerência de vendas',
     requiredColumns: ['nome_supervisor', 'gerencia', 'email'],
+    templateFile: '/templates/importacao/06_supervisores.xlsx',
   },
   {
     id: 'gerencias',
     label: 'Gerências',
     description: 'Unidades de gerência comercial (ex: TRAD, AS)',
     requiredColumns: ['codigo_gerencia', 'nome_gerencia'],
+    templateFile: '/templates/importacao/07_gerencias.xlsx',
   },
   {
     id: 'fabricantes',
     label: 'Fabricantes / Indústrias',
     description: 'Indústrias parceiras representadas',
     requiredColumns: ['nome_fabricante', 'razao_social', 'cnpj'],
+    templateFile: '/templates/importacao/08_fabricantes.xlsx',
   },
   {
     id: 'categorias',
     label: 'Categorias de Produtos',
     description: 'Categorias mercadológicas e agrupamentos',
     requiredColumns: ['cod_categoria', 'nome_categoria', 'fabricante'],
+    templateFile: '/templates/importacao/09_categorias.xlsx',
   },
   {
     id: 'produtos',
     label: 'Produtos / Sortimentos',
     description: 'Itens de catálogo, código de barras, preço e linha',
     requiredColumns: ['cod_produto', 'descricao', 'fabricante', 'categoria', 'preco_tabela'],
+    templateFile: '/templates/importacao/10_produtos.xlsx',
   },
   {
     id: 'visitas',
     label: 'Roteiros de Visitas & Positivação',
     description: 'Agendas de visitas presenciais e positivação de campo',
     requiredColumns: ['cod_cliente', 'cod_vendedor', 'data_visita', 'status_visita'],
+    templateFile: '/templates/importacao/11_visitas.xlsx',
   },
   {
     id: 'indicadores_vendedor',
@@ -125,12 +138,14 @@ const IMPORT_TYPES: ImportTypeOption[] = [
       'realizado_sortimento',
       'pct_margem',
     ],
+    templateFile: '/templates/importacao/12_indicadores_vendedor.xlsx',
   },
   {
     id: 'indicadores_fabricante',
     label: 'Indicadores Diários por Fabricante',
     description: 'Snapshot diário por vendedor x fabricante (aba "Categorias"): meta, realizado, cobertura e margem',
     requiredColumns: ['cod_vendedor', 'fabricante', 'gerencia', 'equipe', 'meta', 'realizado', 'cobertura', 'realizado_cobertura', 'pct_margem'],
+    templateFile: '/templates/importacao/13_indicadores_fabricante.xlsx',
   },
   {
     id: 'indicadores_positivacao',
@@ -148,6 +163,7 @@ const IMPORT_TYPES: ImportTypeOption[] = [
       'pedidos',
       'apontamentos',
     ],
+    templateFile: '/templates/importacao/14_indicadores_positivacao.xlsx',
   },
 ];
 
@@ -479,9 +495,31 @@ export const ImportacaoPage: React.FC = () => {
           <div style={{ fontSize: '16px', fontWeight: 600, color: t.text, marginBottom: '4px' }}>
             Carregar arquivo para: <span style={{ color: t.primary }}>{currentTypeConfig.label}</span>
           </div>
-          <div style={{ fontSize: '13px', color: t.textMuted, marginBottom: '20px' }}>
+          <div style={{ fontSize: '13px', color: t.textMuted, marginBottom: '14px' }}>
             Formatos aceitos: Microsoft Excel (.xlsx, .xls) ou Comma-Separated Values (.csv).
           </div>
+
+          <a
+            href={currentTypeConfig.templateFile}
+            download
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '9px 14px',
+              borderRadius: '8px',
+              border: `1px solid ${t.primary}`,
+              background: `${t.primary}0D`,
+              color: t.primary,
+              fontSize: '12.5px',
+              fontWeight: 600,
+              textDecoration: 'none',
+              marginBottom: '20px',
+            }}
+          >
+            <Download size={15} />
+            <span>Baixar modelo de planilha (.xlsx) para {currentTypeConfig.label}</span>
+          </a>
 
           <div style={{ marginBottom: '20px', maxWidth: '320px' }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 600, color: t.textSecondary, marginBottom: '6px' }}>
