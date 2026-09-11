@@ -138,7 +138,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, c
       label: 'Administração',
       items: [
         { id: 'users', name: 'Usuários & RBAC', icon: <Users size={17} />, adminOnly: true },
-        { id: 'imports', name: 'ImportaÃ§Ã£o', icon: <UploadCloud size={17} />, adminOnly: true },
+        { id: 'imports', name: 'Importação', icon: <UploadCloud size={17} />, adminOnly: true },
       ],
     },
   ];
@@ -246,7 +246,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, c
             <div
               style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
               onClick={toggleNavbarCollapse}
-              title="Expandir barra de navegaÃ§Ã£o"
+              title="Expandir barra de navegação"
             >
               <svg width="26" height="26" viewBox="0 0 26 26">
                 <path d="M13 1 L25 7 L25 19 L13 25 L1 19 L1 7 Z" fill="none" stroke={t.primary} strokeWidth="1.8" />
@@ -273,8 +273,8 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, c
               padding: 0,
               transition: 'all 0.15s ease',
             }}
-            title="Recolher barra de navegaÃ§Ã£o"
-            aria-label="Recolher barra de navegaÃ§Ã£o"
+            title="Recolher barra de navegação"
+            aria-label="Recolher barra de navegação"
           >
             <ChevronLeft size={15} />
           </button>
@@ -316,8 +316,8 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, c
                 padding: 0,
                 transition: 'all 0.15s ease',
               }}
-              title="Expandir barra de navegaÃ§Ã£o"
-              aria-label="Expandir barra de navegaÃ§Ã£o"
+              title="Expandir barra de navegação"
+              aria-label="Expandir barra de navegação"
             >
               <ChevronRight size={15} />
             </button>

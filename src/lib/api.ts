@@ -289,6 +289,30 @@ export function apiListUsers(): Promise<import('../types').User[]> {
   return request<import('../types').User[]>('/users');
 }
 
+export interface UserCreatePayload {
+  name: string;
+  email: string;
+  password: string;
+  role: string;
+  phone?: string | null;
+  address?: string | null;
+  neighborhood?: string | null;
+  city?: string | null;
+  state?: string | null;
+  cep?: string | null;
+  sellerCode?: string | null;
+  team?: string | null;
+  supervisor?: string | null;
+  status?: 'Ativo' | 'Inativo';
+}
+
+export function apiCreateUser(payload: UserCreatePayload): Promise<import('../types').User> {
+  return request<import('../types').User>('/users', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
 export function fetchDashboard(params?: {
   ano?: number;
   mes?: number;
