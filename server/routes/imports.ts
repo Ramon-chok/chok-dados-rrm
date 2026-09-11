@@ -1,4 +1,5 @@
 import { Router, Request, Response, NextFunction } from 'express';
+import type { PoolClient } from 'pg';
 import { pool } from '../db.js';
 import { getImportTypeConfig } from '../importTypes.js';
 import { mapAndValidateRows, upsertRows } from '../upsert.js';
@@ -63,8 +64,13 @@ importsRouter.post('/', requireApiKey, async (req: Request, res: Response) => {
   const dataImportacao = new Date();
   const totalLinhas = body.rows.length;
 
-  const client = await pool.connect();
+  // client fora do try (para o catch/finally poderem checar se chegou a
+  // existir) — se pool.connect() falhar (ex: banco fora do ar, credencial
+  // errada), isso agora vira um 500 tratado em vez de travar a requisição
+  // para sempre sem nunca enviar resposta.
+  let client: PoolClient | undefined;
   try {
+    client = await pool.connect();
     await client.query('BEGIN');
 
     // Reserva o id do log de auditoria antes do upsert, para que cada linha
@@ -139,7 +145,13 @@ importsRouter.post('/', requireApiKey, async (req: Request, res: Response) => {
       erros: errors,
     });
   } catch (err) {
-    await client.query('ROLLBACK');
+    if (client) {
+      try {
+        await client.query('ROLLBACK');
+      } catch {
+        // se o rollback falhar (ex: conexão já caiu), não há mais nada a fazer aqui
+      }
+    }
     const message = err instanceof Error ? err.message : 'Erro desconhecido';
 
     // Mesmo em falha total, registramos a tentativa para auditoria (regra 26),
@@ -172,42 +184,54 @@ importsRouter.post('/', requireApiKey, async (req: Request, res: Response) => {
     console.error('[imports] Falha na importação:', err);
     return res.status(500).json({ error: 'Falha ao processar a importação. Nenhum dado foi gravado.', detail: message });
   } finally {
-    client.release();
+    client?.release();
   }
 });
 
 importsRouter.get('/', async (req: Request, res: Response) => {
-  const tipo = typeof req.query.tipo === 'string' ? req.query.tipo : undefined;
-  const limit = Math.min(Number(req.query.limit) || 100, 500);
+  try {
+    const tipo = typeof req.query.tipo === 'string' ? req.query.tipo : undefined;
+    const limit = Math.min(Number(req.query.limit) || 100, 500);
 
-  const params: unknown[] = [];
-  let where = '';
-  if (tipo) {
-    params.push(tipo);
-    where = 'WHERE tipo = $1';
+    const params: unknown[] = [];
+    let where = '';
+    if (tipo) {
+      params.push(tipo);
+      where = 'WHERE tipo = $1';
+    }
+    params.push(limit);
+
+    const result = await pool.query(
+      `SELECT id, tipo, arquivo, usuario_nome, usuario_email, data_referencia, mes_referencia,
+              ano_referencia, data_importacao, total_linhas, novos, atualizados, rejeitados, status, mensagem_erro
+       FROM importacoes
+       ${where}
+       ORDER BY data_importacao DESC
+       LIMIT $${params.length}`,
+      params
+    );
+
+    res.json(result.rows);
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('[imports] Falha ao consultar histórico:', err);
+    res.status(500).json({ error: 'Falha ao consultar o histórico de importações.' });
   }
-  params.push(limit);
-
-  const result = await pool.query(
-    `SELECT id, tipo, arquivo, usuario_nome, usuario_email, data_referencia, mes_referencia,
-            ano_referencia, data_importacao, total_linhas, novos, atualizados, rejeitados, status, mensagem_erro
-     FROM importacoes
-     ${where}
-     ORDER BY data_importacao DESC
-     LIMIT $${params.length}`,
-    params
-  );
-
-  res.json(result.rows);
 });
 
 importsRouter.get('/:id/erros', async (req: Request, res: Response) => {
-  const id = Number(req.params.id);
-  if (!Number.isFinite(id)) return res.status(400).json({ error: 'id inválido' });
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ error: 'id inválido' });
 
-  const result = await pool.query(
-    'SELECT linha, motivo FROM importacoes_erros WHERE importacao_id = $1 ORDER BY linha',
-    [id]
-  );
-  res.json(result.rows);
+    const result = await pool.query(
+      'SELECT linha, motivo FROM importacoes_erros WHERE importacao_id = $1 ORDER BY linha',
+      [id]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('[imports] Falha ao consultar erros da importação:', err);
+    res.status(500).json({ error: 'Falha ao consultar os erros desta importação.' });
+  }
 });

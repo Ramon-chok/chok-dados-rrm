@@ -23,4 +23,15 @@ app.get('/api/health', (_req, res) => {
 
 app.use('/api/imports', importsRouter);
 
+// Rede de segurança: qualquer erro que escape de uma rota (ex: JSON malformado
+// no corpo da requisição) cai aqui em vez de deixar a requisição sem resposta.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  // eslint-disable-next-line no-console
+  console.error('[app] Erro não tratado:', err);
+  if (!res.headersSent) {
+    res.status(500).json({ error: 'Erro interno inesperado.' });
+  }
+});
+
 export default app;
