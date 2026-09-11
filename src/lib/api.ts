@@ -313,6 +313,13 @@ export function apiCreateUser(payload: UserCreatePayload): Promise<import('../ty
   });
 }
 
+export function apiUpdateUser(id: string, payload: Partial<UserCreatePayload>): Promise<import('../types').User> {
+  return request<import('../types').User>(`/users/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+}
+
 export function fetchDashboard(params?: {
   ano?: number;
   mes?: number;
