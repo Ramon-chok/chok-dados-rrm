@@ -64,3 +64,16 @@ export function parseText(raw: unknown): ParseResult<string> {
   const s = String(raw).trim();
   return { ok: true, value: s === '' ? null : s };
 }
+
+const TRUE_VALUES = new Set(['sim', 's', 'true', 'verdadeiro', '1', 'x', 'yes', 'y']);
+const FALSE_VALUES = new Set(['nao', 'não', 'n', 'false', 'falso', '0', '', 'no']);
+
+export function parseBoolean(raw: unknown): ParseResult<boolean> {
+  if (raw === undefined || raw === null || raw === '') return { ok: true, value: false };
+  if (typeof raw === 'boolean') return { ok: true, value: raw };
+  if (typeof raw === 'number') return { ok: true, value: Boolean(raw) };
+  const s = String(raw).trim().toLowerCase();
+  if (TRUE_VALUES.has(s)) return { ok: true, value: true };
+  if (FALSE_VALUES.has(s)) return { ok: true, value: false };
+  return { ok: false, error: `valor booleano inválido: "${raw}" (use sim/não)` };
+}

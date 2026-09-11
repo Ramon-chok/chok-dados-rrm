@@ -9,7 +9,7 @@
 // chave, então o mesmo período é atualizado (UPDATE) e um novo período sempre
 // cria uma linha nova (INSERT) — nunca se sobrescreve o passado.
 
-export type ColumnKind = 'text' | 'numeric' | 'integer' | 'date';
+export type ColumnKind = 'text' | 'numeric' | 'integer' | 'date' | 'boolean';
 
 export interface ImportColumn {
   name: string;
@@ -76,6 +76,7 @@ export const IMPORT_TYPE_CONFIGS: Record<string, ImportTypeConfig> = {
       { name: 'cnpj', kind: 'text' },
       { name: 'cod_vendedor', kind: 'text' },
       { name: 'status', kind: 'text' },
+      { name: 'e_rede', kind: 'boolean' },
     ],
   },
   vendedores: {

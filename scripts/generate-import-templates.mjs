@@ -30,10 +30,10 @@ const TEMPLATES = [
   },
   {
     file: '03_clientes.xlsx',
-    headers: ['cod_cliente', 'razao_social', 'cnpj', 'cod_vendedor', 'status'],
+    headers: ['cod_cliente', 'razao_social', 'cnpj', 'cod_vendedor', 'status', 'e_rede'],
     rows: [
-      ['5001', 'Mercado Bom Preço LTDA', '12.345.678/0001-90', '1250', 'Ativo'],
-      ['5002', 'Distribuidora São José LTDA', '98.765.432/0001-10', '1250', 'Ativo'],
+      ['5001', 'Mercado Bom Preço LTDA', '12.345.678/0001-90', '1250', 'Ativo', 'Não'],
+      ['5002', 'Rede Distribuidora São José', '98.765.432/0001-10', '1250', 'Ativo', 'Sim'],
     ],
   },
   {

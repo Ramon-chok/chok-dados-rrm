@@ -63,7 +63,7 @@ const IMPORT_TYPES: ImportTypeOption[] = [
     id: 'clientes',
     label: 'Base de Clientes',
     description: 'Cadastros de clientes, CNPJ, razão social, endereço e equipe',
-    requiredColumns: ['cod_cliente', 'razao_social', 'cnpj', 'cod_vendedor', 'status'],
+    requiredColumns: ['cod_cliente', 'razao_social', 'cnpj', 'cod_vendedor', 'status', 'e_rede'],
     templateFile: '/templates/importacao/03_clientes.xlsx',
   },
   {
