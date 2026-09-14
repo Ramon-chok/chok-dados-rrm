@@ -242,6 +242,13 @@ export const UsersPage: React.FC = () => {
     return `${digits.slice(0, 5)}-${digits.slice(5)}`;
   }
 
+  function formatPhone(value: string) {
+    const digits = value.replace(/\D/g, '').slice(0, 11);
+    if (digits.length <= 2) return `(${digits}`;
+    if (digits.length <= 6) return `(${digits.slice(0,2)}) ${digits.slice(2)}`;
+    return `(${digits.slice(0,2)}) ${digits.slice(2,7)}-${digits.slice(7)}`;
+  }
+
   return (
     <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '12px 0' }}>
       
@@ -577,19 +584,55 @@ export const UsersPage: React.FC = () => {
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: '12px' }}>
                     <div style={{ gridColumn: 'span 4' }}>
                       <label style={labelStyle}>Código</label>
-                      <input required disabled={createLoading} value={createCode} onChange={(e) => setCreateCode(e.target.value)} style={inputStyle} placeholder="Ex: 1212" />
+                      <input
+                        required
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        maxLength={4}
+                        disabled={createLoading}
+                        value={createCode}
+                        onChange={(e) => setCreateCode(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                        style={inputStyle}
+                        placeholder="Ex: 1212"
+                      />
                     </div>
                     <div style={{ gridColumn: 'span 8' }}>
                       <label style={labelStyle}>Nome completo</label>
-                      <input required disabled={createLoading} value={createName} onChange={(e) => setCreateName(e.target.value)} style={inputStyle} placeholder="Nome do usuário" />
+                      <input 
+                        required 
+                        type="text"
+                        maxLength={100}
+                        disabled={createLoading} 
+                        value={createName} 
+                        onChange={(e) => setCreateName(e.target.value.replace(/[^a-zA-Z\s]/g, '').slice(0, 10))} 
+                        style={inputStyle} 
+                        placeholder="Nome do usuário" />
                     </div>
                     <div style={{ gridColumn: 'span 6' }}>
                       <label style={labelStyle}>E-mail corporativo</label>
-                      <input required type="email" disabled={createLoading} value={createEmail} onChange={(e) => setCreateEmail(e.target.value)} style={inputStyle} placeholder="nome@empresa.com" />
+                      <input 
+                        required 
+                        type="email" 
+                        maxLength={100} 
+                        disabled={createLoading} 
+                        value={createEmail} 
+                        onChange={(e) => setCreateEmail(e.target.value.replace(/[^a-zA-Z0-9@.]/g, '').slice(0, 10))} 
+                        style={inputStyle} 
+                        placeholder="nome@empresa.com" />
                     </div>
                     <div style={{ gridColumn: 'span 6' }}>
                       <label style={labelStyle}>Telefone corporativo</label>
-                      <input required disabled={createLoading} value={createPhone} onChange={(e) => setCreatePhone(e.target.value)} style={inputStyle} placeholder="(00) 00000-0000" />
+                      <input
+                        required
+                        type="tel"
+                        maxLength={15}
+                        disabled={createLoading}
+                        value={createPhone}
+                        onChange={(e) => setCreatePhone(formatPhone(e.target.value))}
+                        style={inputStyle}
+                        placeholder="(00) 00000-0000"
+                      />
                     </div>
                     <div style={{ gridColumn: 'span 6' }}>
                       <label style={labelStyle}>Senha temporária</label>
@@ -640,11 +683,27 @@ export const UsersPage: React.FC = () => {
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                       <div>
                         <label style={labelStyle}>Equipe</label>
-                        <input required disabled={createLoading} value={createTeam} onChange={(e) => setCreateTeam(e.target.value)} placeholder="Nome da Equipe" style={inputStyle} />
+                        <input
+                          required
+                          disabled={createLoading}
+                          value={createTeam}
+                          onChange={(e) => setCreateTeam(e.target.value.replace(/[^\p{L}\s]/gu, '').slice(0, 50))}
+                          placeholder="Nome da Equipe"
+                          style={inputStyle}
+                          maxLength={50}
+                        />
                       </div>
                       <div>
                         <label style={labelStyle}>Supervisor Direto</label>
-                        <input required disabled={createLoading} value={createSupervisor} onChange={(e) => setCreateSupervisor(e.target.value)} placeholder="Nome do Supervisor" style={inputStyle} />
+                        <input
+                          required
+                          disabled={createLoading}
+                          value={createSupervisor}
+                          onChange={(e) => setCreateSupervisor(e.target.value.replace(/[^\p{L}\s]/gu, '').slice(0, 100))}
+                          placeholder="Nome do Supervisor"
+                          style={inputStyle}
+                          maxLength={100}
+                        />
                       </div>
                     </div>
                   </div>
@@ -671,23 +730,51 @@ export const UsersPage: React.FC = () => {
                     </div>
                     <div style={{ gridColumn: 'span 4' }}>
                       <label style={labelStyle}>Estado</label>
-                      <input required disabled={createLoading} value={createState} onChange={(e) => setCreateState(e.target.value.toUpperCase())} style={inputStyle} placeholder="Ex: SP" />
+                      <input
+                        required
+                        maxLength={2}
+                        minLength={2}
+                        type="text"
+                        disabled={createLoading}
+                        value={createState}
+                        onChange={(e) => setCreateState(e.target.value.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 2))}
+                        style={inputStyle}
+                        placeholder="Ex: SP"
+                      />
                     </div>
                     <div style={{ gridColumn: 'span 4' }}>
                       <label style={labelStyle}>Número</label>
-                      <input required disabled={createLoading} value={createNumber} onChange={(e) => setCreateNumber(e.target.value)} style={inputStyle} placeholder="Nº" />
+                      <input 
+                        required
+                        disabled={createLoading}
+                        value={createNumber}
+                        onChange={(e) => setCreateNumber(e.target.value.replace(/\D/g, '').slice(0, 4))} 
+                        style={inputStyle}
+                        placeholder="Nº"
+                        type="text"
+                        autoComplete="address-level1"
+                        maxLength={4} 
+                        />
                     </div>
                     <div style={{ gridColumn: 'span 12' }}>
                       <label style={labelStyle}>Endereço</label>
-                      <input required disabled={createLoading} value={createAddress} onChange={(e) => setCreateAddress(e.target.value)} style={inputStyle} placeholder="Rua / Avenida" />
+                      <input 
+                        required 
+                        disabled={createLoading} 
+                        value={createAddress} 
+                        onChange={(e) => setCreateAddress(e.target.value.slice(0, 100))} 
+                        style={inputStyle} 
+                        placeholder="Rua / Avenida" 
+                        maxLength={100}
+                        />
                     </div>
                     <div style={{ gridColumn: 'span 6' }}>
                       <label style={labelStyle}>Bairro</label>
-                      <input required disabled={createLoading} value={createNeighborhood} onChange={(e) => setCreateNeighborhood(e.target.value)} style={inputStyle} placeholder="Bairro" />
+                      <input required disabled={createLoading} value={createNeighborhood} onChange={(e) => setCreateNeighborhood(e.target.value.slice(0, 50))} style={inputStyle} placeholder="Bairro" maxLength={50} />
                     </div>
                     <div style={{ gridColumn: 'span 6' }}>
                       <label style={labelStyle}>Município</label>
-                      <input required disabled={createLoading} value={createMunicipality} onChange={(e) => setCreateMunicipality(e.target.value)} style={inputStyle} placeholder="Cidade" />
+                      <input required disabled={createLoading} value={createMunicipality} onChange={(e) => setCreateMunicipality(e.target.value.slice(0, 50))} style={inputStyle} placeholder="Cidade" maxLength={50} />
                     </div>
                   </div>
                 </div>
@@ -819,11 +906,33 @@ export const UsersPage: React.FC = () => {
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: '12px' }}>
                     <div style={{ gridColumn: 'span 4' }}>
                       <label style={labelStyle}>Código</label>
-                      <input required disabled={editLoading} value={editCode} onChange={(e) => setEditCode(e.target.value)} style={inputStyle} placeholder="Ex: 1212" />
+                      <input
+                        required
+                        type="text"
+                        inputMode="numeric"
+                        autoComplete="on"
+                        pattern="[0-9]*"
+                        maxLength={4}
+                        disabled={editLoading}
+                        value={editCode}
+                        onChange={(e) => setEditCode(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                        style={inputStyle}
+                        placeholder="Ex: 1212"
+                      />
                     </div>
                     <div style={{ gridColumn: 'span 8' }}>
                       <label style={labelStyle}>Nome completo</label>
-                      <input required disabled={editLoading} value={editName} onChange={(e) => setEditName(e.target.value)} style={inputStyle} placeholder="Nome do usuário" />
+                      <input 
+                        required
+                        type="text"
+                        autoComplete="on"
+                        pattern="[A-Za-z\s]+"
+                        maxLength={10}
+                        disabled={editLoading} 
+                        value={editName} 
+                        onChange={(e) => setEditName(e.target.value)} 
+                        style={inputStyle} 
+                        placeholder="Nome do usuário" />
                     </div>
                     <div style={{ gridColumn: 'span 6' }}>
                       <label style={labelStyle}>E-mail corporativo</label>
@@ -831,7 +940,16 @@ export const UsersPage: React.FC = () => {
                     </div>
                     <div style={{ gridColumn: 'span 6' }}>
                       <label style={labelStyle}>Telefone corporativo</label>
-                      <input required disabled={editLoading} value={editPhone} onChange={(e) => setEditPhone(e.target.value)} style={inputStyle} placeholder="(00) 00000-0000" />
+                      <input
+                        required
+                        type="tel"
+                        maxLength={15}
+                        disabled={editLoading}
+                        value={editPhone}
+                        onChange={(e) => setEditPhone(formatPhone(e.target.value))}
+                        style={inputStyle}
+                        placeholder="(00) 00000-0000"
+                      />
                     </div>
                     
                     <div style={{ gridColumn: 'span 6' }}>
@@ -891,11 +1009,12 @@ export const UsersPage: React.FC = () => {
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                       <div>
                         <label style={labelStyle}>Equipe</label>
-                        <input required disabled={editLoading} value={editTeam} onChange={(e) => setEditTeam(e.target.value)} placeholder="Nome da Equipe" style={inputStyle} />
+                        <input 
+                        required disabled={editLoading} value={editTeam} onChange={(e) => setEditTeam(e.target.value.slice(0, 10).toUpperCase().replace(/[^\p{L}\s]/gu, ""))} placeholder="Nome da Equipe" style={inputStyle} maxLength={10} />
                       </div>
                       <div>
                         <label style={labelStyle}>Supervisor Direto</label>
-                        <input required disabled={editLoading} value={editSupervisor} onChange={(e) => setEditSupervisor(e.target.value)} placeholder="Nome do Supervisor" style={inputStyle} />
+                        <input required disabled={editLoading} value={editSupervisor} onChange={(e) => setEditSupervisor(e.target.value.slice(0, 100))} placeholder="Nome do Supervisor" style={inputStyle} maxLength={100} />
                       </div>
                     </div>
                   </div>
@@ -922,7 +1041,18 @@ export const UsersPage: React.FC = () => {
                     </div>
                     <div style={{ gridColumn: 'span 4' }}>
                       <label style={labelStyle}>Estado</label>
-                      <input required disabled={editLoading} value={editState} onChange={(e) => setEditState(e.target.value.toUpperCase())} style={inputStyle} placeholder="Ex: SP" />
+                      <input 
+                        required
+                        maxLength={2}
+                        minLength={2}
+                        type="text" 
+                        disabled={editLoading} 
+                        value={editState} 
+                        onChange={(e) => setEditState(e.target.value.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 2))} 
+                        style={inputStyle} 
+                        placeholder="Ex: SP" 
+                        autoComplete="address-level1"
+                        />
                     </div>
                     <div style={{ gridColumn: 'span 4' }}>
                       <label style={labelStyle}>Número</label>
@@ -930,7 +1060,14 @@ export const UsersPage: React.FC = () => {
                     </div>
                     <div style={{ gridColumn: 'span 12' }}>
                       <label style={labelStyle}>Endereço</label>
-                      <input required disabled={editLoading} value={editAddress} onChange={(e) => setEditAddress(e.target.value)} style={inputStyle} placeholder="Rua / Avenida" />
+                      <input 
+                        required 
+                        disabled={editLoading} 
+                        value={editAddress} 
+                        onChange={(e) => setEditAddress(e.target.value)} 
+                        style={inputStyle} 
+                        placeholder="Rua / Avenida" 
+                        />
                     </div>
                     <div style={{ gridColumn: 'span 6' }}>
                       <label style={labelStyle}>Bairro</label>
