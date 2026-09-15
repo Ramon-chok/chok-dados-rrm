@@ -123,6 +123,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       case 'dashboard':
         return hasPermission('dashboard.view');
       case 'not-positivated':
+      case 'top-20-customers':
       case 'top-customers':
       case 'sortiments':
       case 'catalog':

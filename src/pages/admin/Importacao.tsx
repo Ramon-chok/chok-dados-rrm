@@ -3,167 +3,201 @@ import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 import {
   Upload,
-  FileSpreadsheet,
   CheckCircle2,
   AlertTriangle,
   ArrowRight,
   RotateCcw,
   Download,
   Clock,
-  Database,
   FileCheck,
   ChevronRight,
   Calendar,
   XCircle,
+  Layers,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { submitImport, fetchImportHistory, ImportLogEntry, ApiError } from '../../lib/api';
 
-export type ImportType =
-  | 'vendas'
-  | 'metas'
-  | 'clientes'
-  | 'vendedores'
-  | 'equipes'
-  | 'supervisores'
-  | 'gerencias'
-  | 'fabricantes'
-  | 'categorias'
-  | 'produtos'
-  | 'visitas'
-  | 'indicadores_vendedor'
-  | 'indicadores_fabricante'
-  | 'indicadores_positivacao';
+export type ImportType = 'sortimento' | 'top_clientes' | 'dados_app' | 'nao_positivados';
+
+interface ImportSheetOption {
+  /** Identificador interno da aba dentro do tipo de importação. */
+  key: string;
+  /**
+   * Nome exato da aba dentro da planilha (comparação sem diferenciar
+   * maiúsculas/minúsculas e espaços nas pontas). Vazio = usa a primeira
+   * aba do arquivo, sem exigir um nome específico.
+   */
+  sheetName: string;
+  label: string;
+  /** Colunas esperadas na aba (usadas no mapeamento e na leitura do arquivo). */
+  columns: string[];
+  /**
+   * Quando definido, restringe quais colunas aparecem no mapeamento e na
+   * pré-visualização — as demais continuam sendo lidas e enviadas, apenas
+   * ficam ocultas na tela.
+   */
+  visibleColumns?: string[];
+}
 
 interface ImportTypeOption {
   id: ImportType;
   label: string;
   description: string;
-  requiredColumns: string[];
   /** Caminho público (public/templates/importacao/) do modelo .xlsx pronto para download. */
   templateFile: string;
+  sheets: ImportSheetOption[];
 }
 
 const IMPORT_TYPES: ImportTypeOption[] = [
   {
-    id: 'vendas',
-    label: 'Vendas & Faturamento',
-    description: 'Notas fiscais, pedidos faturados, valores e itens vendidos',
-    requiredColumns: ['numero_pedido', 'data_emissao', 'cod_cliente', 'cod_vendedor', 'valor_total'],
-    templateFile: '/templates/importacao/01_vendas.xlsx',
-  },
-  {
-    id: 'metas',
-    label: 'Metas Comerciais',
-    description: 'Cotas mensais/semanais por vendedor, fabricante e cobertura',
-    requiredColumns: ['ano_mes', 'cod_vendedor', 'fabricante', 'meta_faturamento', 'meta_cobertura'],
-    templateFile: '/templates/importacao/02_metas.xlsx',
-  },
-  {
-    id: 'clientes',
-    label: 'Base de Clientes',
-    description: 'Cadastros de clientes, CNPJ, razão social, endereço e equipe',
-    requiredColumns: ['cod_cliente', 'razao_social', 'cnpj', 'cod_vendedor', 'status', 'e_rede'],
-    templateFile: '/templates/importacao/03_clientes.xlsx',
-  },
-  {
-    id: 'vendedores',
-    label: 'Vendedores',
-    description: 'Código de vendedor, nome, email e equipe comercial',
-    requiredColumns: ['cod_vendedor', 'nome', 'email', 'equipe'],
-    templateFile: '/templates/importacao/04_vendedores.xlsx',
-  },
-  {
-    id: 'equipes',
-    label: 'Equipes Comerciais',
-    description: 'Equipes de vendas e supervisor responsável',
-    requiredColumns: ['nome_equipe', 'supervisor', 'gerencia'],
-    templateFile: '/templates/importacao/05_equipes.xlsx',
-  },
-  {
-    id: 'supervisores',
-    label: 'Supervisores',
-    description: 'Supervisores e sua respectiva gerência de vendas',
-    requiredColumns: ['nome_supervisor', 'gerencia', 'email'],
-    templateFile: '/templates/importacao/06_supervisores.xlsx',
-  },
-  {
-    id: 'gerencias',
-    label: 'Gerências',
-    description: 'Unidades de gerência comercial (ex: TRAD, AS)',
-    requiredColumns: ['codigo_gerencia', 'nome_gerencia'],
-    templateFile: '/templates/importacao/07_gerencias.xlsx',
-  },
-  {
-    id: 'fabricantes',
-    label: 'Fabricantes / Indústrias',
-    description: 'Indústrias parceiras representadas',
-    requiredColumns: ['nome_fabricante', 'razao_social', 'cnpj'],
-    templateFile: '/templates/importacao/08_fabricantes.xlsx',
-  },
-  {
-    id: 'categorias',
-    label: 'Categorias de Produtos',
-    description: 'Categorias mercadológicas e agrupamentos',
-    requiredColumns: ['cod_categoria', 'nome_categoria', 'fabricante'],
-    templateFile: '/templates/importacao/09_categorias.xlsx',
-  },
-  {
-    id: 'produtos',
-    label: 'Produtos / Sortimentos',
-    description: 'Itens de catálogo, código de barras, preço e linha',
-    requiredColumns: ['cod_produto', 'descricao', 'fabricante', 'categoria', 'preco_tabela'],
-    templateFile: '/templates/importacao/10_produtos.xlsx',
-  },
-  {
-    id: 'visitas',
-    label: 'Roteiros de Visitas & Positivação',
-    description: 'Agendas de visitas presenciais e positivação de campo',
-    requiredColumns: ['cod_cliente', 'cod_vendedor', 'data_visita', 'status_visita'],
-    templateFile: '/templates/importacao/11_visitas.xlsx',
-  },
-  {
-    id: 'indicadores_vendedor',
-    label: 'Indicadores Diários do Vendedor',
-    description: 'Snapshot diário consolidado (aba "Mês"): meta e realizado de faturamento, cobertura e sortimento por vendedor',
-    requiredColumns: [
-      'cod_vendedor',
-      'gerencia',
-      'nome_vendedor',
-      'meta_faturamento',
-      'realizado_faturamento',
-      'meta_cobertura',
-      'realizado_cobertura',
-      'meta_sortimento',
-      'realizado_sortimento',
-      'pct_margem',
+    id: 'sortimento',
+    label: 'Lista de Sortimento',
+    description: 'Catálogo de produtos do sortimento: código, descrição, fornecedor e categoria',
+    templateFile: '/templates/importacao/sortimento.xlsx',
+    sheets: [
+      {
+        key: 'sortimento',
+        sheetName: '',
+        label: 'Sortimento',
+        columns: ['cod_produto', 'descricao_produto', 'fornecedor', 'categoria'],
+      },
     ],
-    templateFile: '/templates/importacao/12_indicadores_vendedor.xlsx',
   },
   {
-    id: 'indicadores_fabricante',
-    label: 'Indicadores Diários por Fabricante',
-    description: 'Snapshot diário por vendedor x fabricante (aba "Categorias"): meta, realizado, cobertura e margem',
-    requiredColumns: ['cod_vendedor', 'fabricante', 'gerencia', 'equipe', 'meta', 'realizado', 'cobertura', 'realizado_cobertura', 'pct_margem'],
-    templateFile: '/templates/importacao/13_indicadores_fabricante.xlsx',
-  },
-  {
-    id: 'indicadores_positivacao',
-    label: 'Indicadores Diários de Positivação',
-    description: 'Snapshot diário de visitas, vendas e roteiro (aba "Positivação") consolidado por vendedor',
-    requiredColumns: [
-      'cod_vendedor',
-      'equipe',
-      'visitas_previstas',
-      'visitas_realizadas',
-      'vendas_previstas',
-      'vendas_realizadas',
-      'fora_de_rota',
-      'gps_ok',
-      'pedidos',
-      'apontamentos',
+    id: 'top_clientes',
+    label: 'Top Clientes',
+    description:
+      'Ranking de clientes por vendedor, equipe e gerência (aba "top_20_clientes") e venda total no mês por cliente (aba "top_clientes")',
+    templateFile: '/templates/importacao/top_clientes.xlsx',
+    sheets: [
+      {
+        key: 'top_20_clientes',
+        sheetName: 'top_20_clientes',
+        label: 'Top 20 Clientes (Vendedor / Equipe / Gerência)',
+        columns: [
+          'nivel',
+          'gerencia',
+          'equipe',
+          'cod_vendedor',
+          'nome_vendedor',
+          'pasta',
+          'cod_cliente',
+          'cliente_redes',
+          'trimestre_25',
+          'trimestre_26',
+          'pct_cresc_trimestre',
+          'mes_25',
+          'mes_26',
+          'pct_cresc_mes',
+        ],
+        // Regra do negócio: nesta aba só ficam visíveis a coluna de
+        // identificação do cliente (código ou Cliente/Redes) e as colunas
+        // de trimestre, mês e percentual — o restante (nível, gerência,
+        // equipe, vendedor, pasta) continua sendo lido, só não é exibido.
+        visibleColumns: [
+          'cod_cliente',
+          'cliente_redes',
+          'trimestre_25',
+          'trimestre_26',
+          'pct_cresc_trimestre',
+          'mes_25',
+          'mes_26',
+          'pct_cresc_mes',
+        ],
+      },
+      {
+        key: 'top_clientes',
+        sheetName: 'top_clientes',
+        label: 'Top Clientes (Venda Total no Mês)',
+        columns: ['cod_cliente', 'cliente', 'venda_total_mes'],
+      },
     ],
-    templateFile: '/templates/importacao/14_indicadores_positivacao.xlsx',
+  },
+  {
+    id: 'dados_app',
+    label: 'Dados App',
+    description:
+      'Indicadores consolidados do aplicativo: Mês (com fórmulas), Positivação e Categorias (com fórmulas)',
+    templateFile: '/templates/importacao/dados_app.xlsx',
+    sheets: [
+      {
+        key: 'mes',
+        sheetName: 'Mês',
+        label: 'Mês (com fórmulas)',
+        columns: [
+          'cod_vendedor',
+          'gerencia',
+          'nome_vendedor',
+          'meta_faturamento',
+          'realizado_faturamento',
+          'meta_cobertura',
+          'realizado_cobertura',
+          'meta_sortimento',
+          'realizado_sortimento',
+          'pct_margem',
+        ],
+      },
+      {
+        key: 'positivacao',
+        sheetName: 'Positivação',
+        label: 'Positivação',
+        columns: [
+          'cod_vendedor',
+          'equipe',
+          'visitas_previstas',
+          'visitas_realizadas',
+          'vendas_previstas',
+          'vendas_realizadas',
+          'fora_de_rota',
+          'gps_ok',
+          'pedidos',
+          'apontamentos',
+        ],
+      },
+      {
+        key: 'categorias',
+        sheetName: 'Categorias',
+        label: 'Categorias (com fórmulas)',
+        columns: [
+          'cod_vendedor',
+          'fabricante',
+          'gerencia',
+          'equipe',
+          'meta',
+          'realizado',
+          'cobertura',
+          'realizado_cobertura',
+          'pct_margem',
+        ],
+      },
+    ],
+  },
+  {
+    id: 'nao_positivados',
+    label: 'Não Positivados',
+    description: 'Clientes sem compra no período, segmentados por Vendedor, Equipe e Chok Total',
+    templateFile: '/templates/importacao/nao_positivados.xlsx',
+    sheets: [
+      {
+        key: 'por_vendedor',
+        sheetName: 'Por vendedor',
+        label: 'Por Vendedor',
+        columns: ['cod_vendedor', 'vendedor', 'cod_cliente', 'cliente', 'ultima_compra', 'dias_sem_comprar'],
+      },
+      {
+        key: 'equipe',
+        sheetName: 'Equipe',
+        label: 'Equipe',
+        columns: ['equipe', 'cod_cliente', 'cliente', 'ultima_compra', 'dias_sem_comprar'],
+      },
+      {
+        key: 'chok_total',
+        sheetName: 'Chok total',
+        label: 'Chok Total',
+        columns: ['cod_cliente', 'cliente', 'ultima_compra', 'dias_sem_comprar'],
+      },
+    ],
   },
 ];
 
@@ -181,6 +215,18 @@ interface HistoryItem {
   status: 'Concluído' | 'Concluído com Avisos' | 'Falha';
 }
 
+// Tipos compostos (Top Clientes, Dados App, Não Positivados) enviam um POST
+// por aba com tipo = "<id-do-tipo>__<chave-da-aba>" — aqui resolvemos de volta
+// para "Rótulo do Tipo — Rótulo da Aba" ao exibir o histórico.
+function labelForTipo(tipo: string): string {
+  const [baseId, sheetKey] = tipo.split('__');
+  const typeCfg = IMPORT_TYPES.find((t) => t.id === baseId);
+  if (!typeCfg) return tipo;
+  if (!sheetKey) return typeCfg.label;
+  const sheetCfg = typeCfg.sheets.find((s) => s.key === sheetKey);
+  return sheetCfg ? `${typeCfg.label} — ${sheetCfg.label}` : typeCfg.label;
+}
+
 // Converte um registro de auditoria vindo da API (server/routes/imports.ts)
 // para o formato que esta tela já exibia — mantém a UI existente intacta.
 function toHistoryItem(entry: ImportLogEntry): HistoryItem {
@@ -191,7 +237,7 @@ function toHistoryItem(entry: ImportLogEntry): HistoryItem {
   };
   return {
     id: `imp-${entry.id}`,
-    tipo: IMPORT_TYPES.find((t) => t.id === entry.tipo)?.label || entry.tipo,
+    tipo: labelForTipo(entry.tipo),
     arquivo: entry.arquivo || '—',
     usuario: entry.usuario_nome || '—',
     dataHora: new Date(entry.data_importacao).toLocaleString('pt-BR'),
@@ -204,16 +250,18 @@ function toHistoryItem(entry: ImportLogEntry): HistoryItem {
   };
 }
 
+type SheetParsedData = { headers: string[]; rows: Record<string, any>[] };
+
 export const ImportacaoPage: React.FC = () => {
   const { t } = useTheme();
   const { currentUser } = useAuth();
 
   const [step, setStep] = useState<number>(1);
-  const [selectedType, setSelectedType] = useState<ImportType>('vendas');
+  const [selectedType, setSelectedType] = useState<ImportType>('sortimento');
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
-  const [previewRows, setPreviewRows] = useState<any[]>([]);
-  const [allRows, setAllRows] = useState<any[]>([]);
-  const [columnMapping, setColumnMapping] = useState<Record<string, string>>({});
+  const [sheetsData, setSheetsData] = useState<Record<string, SheetParsedData>>({});
+  const [columnMappings, setColumnMappings] = useState<Record<string, Record<string, string>>>({});
+  const [fileError, setFileError] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [resultSummary, setResultSummary] = useState<any | null>(null);
   const [history, setHistory] = useState<HistoryItem[]>([]);
@@ -224,6 +272,7 @@ export const ImportacaoPage: React.FC = () => {
   const [dataReferencia, setDataReferencia] = useState<string>(() => new Date().toISOString().slice(0, 10));
 
   const currentTypeConfig = IMPORT_TYPES.find((item) => item.id === selectedType)!;
+  const isMultiSheet = currentTypeConfig.sheets.length > 1;
 
   const loadHistory = async () => {
     setIsLoadingHistory(true);
@@ -242,56 +291,88 @@ export const ImportacaoPage: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Handle file selection (CSV/XLSX)
+  // Handle file selection (CSV/XLSX) — lê todas as abas exigidas pelo tipo
+  // selecionado (uma única aba "livre" para tipos simples, ou N abas com
+  // nome fixo para tipos compostos como Top Clientes / Dados App / Não Positivados).
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      setUploadedFile(file);
+    if (!e.target.files || !e.target.files[0]) return;
+    const file = e.target.files[0];
+    setUploadedFile(file);
+    setFileError(null);
 
-      const reader = new FileReader();
-      reader.onload = (evt) => {
-        try {
-          const bstr = evt.target?.result;
-          const wb = XLSX.read(bstr, { type: 'binary' });
-          const wsname = wb.SheetNames[0];
-          const ws = wb.Sheets[wsname];
-          const data = XLSX.utils.sheet_to_json(ws, { header: 1 }) as any[][];
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const bstr = evt.target?.result;
+        const wb = XLSX.read(bstr, { type: 'binary' });
 
-          if (data && data.length > 0) {
-            const headers = (data[0] || []).map((h: any) => String(h || '').trim());
-            const rowToObj = (row: any[]) => {
-              const obj: Record<string, any> = {};
-              headers.forEach((h: string, idx: number) => {
-                obj[h || `Coluna_${idx}`] = row[idx] ?? '';
-              });
-              return obj;
-            };
+        const newSheetsData: Record<string, SheetParsedData> = {};
+        const newMappings: Record<string, Record<string, string>> = {};
+        const missingSheets: string[] = [];
 
-            // Todas as linhas de dados (usadas no envio real ao backend) —
-            // ignora linhas totalmente em branco que o Excel às vezes deixa no final.
-            const dataRows = data.slice(1).filter((row) => (row || []).some((cell) => cell !== undefined && cell !== ''));
-            const parsedRows = dataRows.map(rowToObj);
-            setAllRows(parsedRows);
-            setPreviewRows(parsedRows.slice(0, 5));
-
-            // Auto match required columns
-            const autoMap: Record<string, string> = {};
-            currentTypeConfig.requiredColumns.forEach((req) => {
-              const matched = headers.find(
-                (h) => h.toLowerCase() === req.toLowerCase() || h.toLowerCase().includes(req.toLowerCase())
-              );
-              if (matched) autoMap[req] = matched;
-              else autoMap[req] = headers[0] || '';
-            });
-            setColumnMapping(autoMap);
-            setStep(3);
+        currentTypeConfig.sheets.forEach((sheetCfg) => {
+          let wsName: string | undefined;
+          if (!sheetCfg.sheetName) {
+            wsName = wb.SheetNames[0];
+          } else {
+            wsName = wb.SheetNames.find(
+              (n) => n.trim().toLowerCase() === sheetCfg.sheetName.trim().toLowerCase()
+            );
           }
-        } catch (err) {
-          console.error('Erro ao ler arquivo:', err);
+
+          if (!wsName) {
+            missingSheets.push(sheetCfg.sheetName || sheetCfg.label);
+            return;
+          }
+
+          const ws = wb.Sheets[wsName];
+          const data = XLSX.utils.sheet_to_json(ws, { header: 1 }) as any[][];
+          if (!data || data.length === 0) return;
+
+          const headers = (data[0] || []).map((h: any) => String(h || '').trim());
+          const rowToObj = (row: any[]) => {
+            const obj: Record<string, any> = {};
+            headers.forEach((h: string, idx: number) => {
+              obj[h || `Coluna_${idx}`] = row[idx] ?? '';
+            });
+            return obj;
+          };
+
+          // Todas as linhas de dados (usadas no envio real ao backend) —
+          // ignora linhas totalmente em branco que o Excel às vezes deixa no final.
+          const dataRows = data.slice(1).filter((row) => (row || []).some((cell) => cell !== undefined && cell !== ''));
+          const parsedRows = dataRows.map(rowToObj);
+          newSheetsData[sheetCfg.key] = { headers, rows: parsedRows };
+
+          // Auto match columns (inclui as ocultas — elas continuam sendo enviadas)
+          const autoMap: Record<string, string> = {};
+          sheetCfg.columns.forEach((req) => {
+            const matched = headers.find(
+              (h) => h.toLowerCase() === req.toLowerCase() || h.toLowerCase().includes(req.toLowerCase())
+            );
+            autoMap[req] = matched || headers[0] || '';
+          });
+          newMappings[sheetCfg.key] = autoMap;
+        });
+
+        if (missingSheets.length > 0) {
+          setFileError(
+            `Não foi possível localizar no arquivo a(s) aba(s) obrigatória(s): ${missingSheets
+              .map((s) => `"${s}"`)
+              .join(', ')}. Verifique o nome das abas na planilha e tente novamente.`
+          );
+          return;
         }
-      };
-      reader.readAsBinaryString(file);
-    }
+
+        setSheetsData(newSheetsData);
+        setColumnMappings(newMappings);
+        setStep(3);
+      } catch (err) {
+        console.error('Erro ao ler arquivo:', err);
+        setFileError('Não foi possível ler o arquivo selecionado. Verifique se é um Excel (.xlsx/.xls) ou CSV válido.');
+      }
+    };
+    reader.readAsBinaryString(file);
   };
 
   const handleProcessImport = async () => {
@@ -299,7 +380,8 @@ export const ImportacaoPage: React.FC = () => {
       setSubmitError('Informe a Data de Referência antes de processar a importação.');
       return;
     }
-    if (allRows.length === 0) {
+    const hasAnyRows = currentTypeConfig.sheets.some((s) => (sheetsData[s.key]?.rows.length || 0) > 0);
+    if (!hasAnyRows) {
       setSubmitError('Nenhuma linha de dados encontrada no arquivo carregado.');
       return;
     }
@@ -308,25 +390,49 @@ export const ImportacaoPage: React.FC = () => {
     setSubmitError(null);
 
     try {
-      const result = await submitImport({
-        tipo: selectedType,
-        dataReferencia,
-        arquivo: uploadedFile?.name,
-        usuarioNome: currentUser?.name,
-        usuarioEmail: currentUser?.email,
-        mapping: columnMapping,
-        rows: allRows,
-      });
+      const combined = {
+        totalAnalisados: 0,
+        novos: 0,
+        atualizados: 0,
+        rejeitados: 0,
+        erros: [] as { linha: number; motivo: string }[],
+      };
+
+      for (const sheetCfg of currentTypeConfig.sheets) {
+        const sheetData = sheetsData[sheetCfg.key];
+        if (!sheetData || sheetData.rows.length === 0) continue;
+
+        const result = await submitImport({
+          tipo: isMultiSheet ? `${selectedType}__${sheetCfg.key}` : selectedType,
+          dataReferencia,
+          arquivo: uploadedFile?.name,
+          usuarioNome: currentUser?.name,
+          usuarioEmail: currentUser?.email,
+          mapping: columnMappings[sheetCfg.key] || {},
+          rows: sheetData.rows,
+        });
+
+        combined.totalAnalisados += result.totalAnalisados;
+        combined.novos += result.novos;
+        combined.atualizados += result.atualizados;
+        combined.rejeitados += result.rejeitados;
+        combined.erros.push(
+          ...result.erros.map((er) => ({
+            linha: er.linha,
+            motivo: isMultiSheet ? `[${sheetCfg.label}] ${er.motivo}` : er.motivo,
+          }))
+        );
+      }
 
       setResultSummary({
-        totalAnalysados: result.totalAnalisados,
-        validos: result.totalAnalisados - result.rejeitados,
-        atualizados: result.atualizados,
-        novos: result.novos,
-        rejeitados: result.rejeitados,
-        tipoLabel: result.tipoLabel,
-        arquivo: result.arquivo || uploadedFile?.name || 'arquivo_importado.xlsx',
-        erros: result.erros,
+        totalAnalysados: combined.totalAnalisados,
+        validos: combined.totalAnalisados - combined.rejeitados,
+        atualizados: combined.atualizados,
+        novos: combined.novos,
+        rejeitados: combined.rejeitados,
+        tipoLabel: currentTypeConfig.label,
+        arquivo: uploadedFile?.name || 'arquivo_importado.xlsx',
+        erros: combined.erros,
       });
       setStep(4);
       loadHistory();
@@ -344,9 +450,9 @@ export const ImportacaoPage: React.FC = () => {
   const resetWizard = () => {
     setStep(1);
     setUploadedFile(null);
-    setPreviewRows([]);
-    setAllRows([]);
-    setColumnMapping({});
+    setSheetsData({});
+    setColumnMappings({});
+    setFileError(null);
     setResultSummary(null);
     setSubmitError(null);
     setDataReferencia(new Date().toISOString().slice(0, 10));
@@ -359,7 +465,8 @@ export const ImportacaoPage: React.FC = () => {
           Módulo de Importação & Carga de Dados
         </h1>
         <p style={{ margin: 0, fontSize: '13px', color: t.textSecondary }}>
-          Central administrativa para processamento, validação e atualização de vendas, metas, cadastros e sortimentos.
+          Central administrativa para processamento, validação e atualização de sortimento, top clientes, dados do
+          app e não positivados.
         </p>
       </div>
 
@@ -425,7 +532,7 @@ export const ImportacaoPage: React.FC = () => {
             Selecione a categoria de informação que deseja importar:
           </div>
           <div style={{ fontSize: '13px', color: t.textMuted, marginBottom: '20px' }}>
-            Cada categoria possui um layout pré-definido com validação sintática das colunas e chaves primárias.
+            Cada categoria possui um layout pré-definido com validação sintática das colunas e das abas exigidas.
           </div>
 
           <div
@@ -460,6 +567,22 @@ export const ImportacaoPage: React.FC = () => {
                   <div style={{ fontSize: '12.5px', color: t.textSecondary, lineHeight: 1.4 }}>
                     {type.description}
                   </div>
+                  {type.sheets.length > 1 && (
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '5px',
+                        marginTop: '10px',
+                        fontSize: '11px',
+                        fontWeight: 600,
+                        color: t.textMuted,
+                      }}
+                    >
+                      <Layers size={12} />
+                      <span>{type.sheets.length} abas obrigatórias</span>
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -498,6 +621,36 @@ export const ImportacaoPage: React.FC = () => {
           <div style={{ fontSize: '13px', color: t.textMuted, marginBottom: '14px' }}>
             Formatos aceitos: Microsoft Excel (.xlsx, .xls) ou Comma-Separated Values (.csv).
           </div>
+
+          {currentTypeConfig.sheets.some((s) => s.sheetName) && (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '8px',
+                background: `${t.primary}0D`,
+                border: `1px solid ${t.border}`,
+                borderRadius: '8px',
+                padding: '10px 14px',
+                marginBottom: '16px',
+                fontSize: '12.5px',
+                color: t.textSecondary,
+              }}
+            >
+              <Layers size={15} color={t.primary} style={{ flexShrink: 0, marginTop: '1px' }} />
+              <span>
+                Este arquivo deve conter a(s) aba(s):{' '}
+                {currentTypeConfig.sheets
+                  .filter((s) => s.sheetName)
+                  .map((s) => (
+                    <strong key={s.key} style={{ color: t.text }}>
+                      "{s.sheetName}"{' '}
+                    </strong>
+                  ))}
+                — o nome da aba precisa ser exatamente esse (maiúsculas/minúsculas não importam).
+              </span>
+            </div>
+          )}
 
           <a
             href={currentTypeConfig.templateFile}
@@ -545,6 +698,26 @@ export const ImportacaoPage: React.FC = () => {
               fechamento do dia 11.
             </div>
           </div>
+
+          {fileError && (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '8px',
+                background: 'rgba(227, 6, 19, 0.08)',
+                border: '1px solid rgba(227, 6, 19, 0.25)',
+                borderRadius: '8px',
+                padding: '12px 14px',
+                marginBottom: '20px',
+                fontSize: '12.5px',
+                color: t.text,
+              }}
+            >
+              <XCircle size={16} color={t.primary} style={{ flexShrink: 0, marginTop: '1px' }} />
+              <span>{fileError}</span>
+            </div>
+          )}
 
           <label
             style={{
@@ -669,77 +842,104 @@ export const ImportacaoPage: React.FC = () => {
             </div>
           )}
 
-          {/* MAPPING CONTROLS */}
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
-              gap: '14px',
-              padding: '16px',
-              background: t.surfaceElevated,
-              borderRadius: '10px',
-              border: `1px solid ${t.border}`,
-              marginBottom: '24px',
-            }}
-          >
-            {currentTypeConfig.requiredColumns.map((req) => (
-              <div key={req}>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: t.textSecondary, marginBottom: '6px' }}>
-                  Coluna do Sistema: <span style={{ color: t.primary }}>{req}</span>
-                </label>
-                <select
-                  value={columnMapping[req] || ''}
-                  onChange={(e) => setColumnMapping({ ...columnMapping, [req]: e.target.value })}
+          {currentTypeConfig.sheets.map((sheetCfg) => {
+            const sheetData = sheetsData[sheetCfg.key];
+            if (!sheetData) return null;
+
+            const mapping = columnMappings[sheetCfg.key] || {};
+            const displayCols = sheetCfg.visibleColumns ?? sheetCfg.columns;
+            const previewRows = sheetData.rows.slice(0, 5);
+            const visibleHeaders = Array.from(new Set(displayCols.map((c) => mapping[c]).filter(Boolean)));
+
+            return (
+              <div key={sheetCfg.key} style={{ marginBottom: '28px' }}>
+                {isMultiSheet && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '7px', marginBottom: '10px' }}>
+                    <Layers size={15} color={t.primary} />
+                    <span style={{ fontSize: '14px', fontWeight: 700, color: t.text }}>{sheetCfg.label}</span>
+                    <span style={{ fontSize: '11.5px', color: t.textMuted }}>
+                      (aba "{sheetCfg.sheetName || sheetData.headers[0]}")
+                    </span>
+                  </div>
+                )}
+
+                {/* MAPPING CONTROLS */}
+                <div
                   style={{
-                    width: '100%',
-                    padding: '8px 10px',
-                    borderRadius: '6px',
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
+                    gap: '14px',
+                    padding: '16px',
+                    background: t.surfaceElevated,
+                    borderRadius: '10px',
                     border: `1px solid ${t.border}`,
-                    background: t.surface,
-                    color: t.text,
-                    fontSize: '13px',
+                    marginBottom: '16px',
                   }}
                 >
-                  {previewRows.length > 0 &&
-                    Object.keys(previewRows[0]).map((col) => (
-                      <option key={col} value={col}>
-                        {col}
-                      </option>
-                    ))}
-                </select>
-              </div>
-            ))}
-          </div>
+                  {displayCols.map((req) => (
+                    <div key={req}>
+                      <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: t.textSecondary, marginBottom: '6px' }}>
+                        Coluna do Sistema: <span style={{ color: t.primary }}>{req}</span>
+                      </label>
+                      <select
+                        value={mapping[req] || ''}
+                        onChange={(e) =>
+                          setColumnMappings({
+                            ...columnMappings,
+                            [sheetCfg.key]: { ...mapping, [req]: e.target.value },
+                          })
+                        }
+                        style={{
+                          width: '100%',
+                          padding: '8px 10px',
+                          borderRadius: '6px',
+                          border: `1px solid ${t.border}`,
+                          background: t.surface,
+                          color: t.text,
+                          fontSize: '13px',
+                        }}
+                      >
+                        {sheetData.headers.map((col) => (
+                          <option key={col} value={col}>
+                            {col}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  ))}
+                </div>
 
-          {/* SAMPLE PREVIEW TABLE */}
-          <div style={{ fontSize: '13.5px', fontWeight: 600, color: t.text, marginBottom: '10px' }}>
-            Amostra dos Dados (Primeiras Linhas):
-          </div>
-          <div style={{ overflowX: 'auto', border: `1px solid ${t.border}`, borderRadius: '8px' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
-              <thead>
-                <tr style={{ background: t.surfaceElevated, color: t.textMuted }}>
-                  {previewRows.length > 0 &&
-                    Object.keys(previewRows[0]).map((col) => (
-                      <th key={col} style={{ textAlign: 'left', padding: '10px 12px', borderBottom: `1px solid ${t.border}` }}>
-                        {col}
-                      </th>
-                    ))}
-                </tr>
-              </thead>
-              <tbody>
-                {previewRows.map((row, idx) => (
-                  <tr key={idx} style={{ borderBottom: `1px solid ${t.border}` }}>
-                    {Object.values(row).map((val: any, j) => (
-                      <td key={j} style={{ padding: '8px 12px', color: t.textSecondary }}>
-                        {String(val)}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                {/* SAMPLE PREVIEW TABLE */}
+                <div style={{ fontSize: '13.5px', fontWeight: 600, color: t.text, marginBottom: '10px' }}>
+                  Amostra dos Dados (Primeiras Linhas):
+                </div>
+                <div style={{ overflowX: 'auto', border: `1px solid ${t.border}`, borderRadius: '8px' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
+                    <thead>
+                      <tr style={{ background: t.surfaceElevated, color: t.textMuted }}>
+                        {visibleHeaders.map((col) => (
+                          <th key={col} style={{ textAlign: 'left', padding: '10px 12px', borderBottom: `1px solid ${t.border}` }}>
+                            {col}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {previewRows.map((row, idx) => (
+                        <tr key={idx} style={{ borderBottom: `1px solid ${t.border}` }}>
+                          {visibleHeaders.map((col) => (
+                            <td key={col} style={{ padding: '8px 12px', color: t.textSecondary }}>
+                              {String(row[col] ?? '')}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 

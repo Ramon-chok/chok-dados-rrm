@@ -244,6 +244,168 @@ export const IMPORT_TYPE_CONFIGS: Record<string, ImportTypeConfig> = {
       { name: 'apontamentos', kind: 'integer' },
     ],
   },
+
+  // ---- Tela de Importação (novos tipos) ----
+  // Cada entrada abaixo corresponde a uma "aba" configurada em
+  // src/pages/admin/Importacao.tsx. Tipos com mais de uma aba obrigatória
+  // enviam um POST por aba, com tipo = "<id-do-tipo>__<chave-da-aba>".
+
+  sortimento: {
+    id: 'sortimento',
+    label: 'Lista de Sortimento',
+    table: 'sortimento',
+    keyColumns: ['cod_produto'],
+    snapshot: false,
+    tracksImport: false,
+    columns: [
+      { name: 'cod_produto', kind: 'text' },
+      { name: 'descricao_produto', kind: 'text' },
+      { name: 'fornecedor', kind: 'text' },
+      { name: 'categoria', kind: 'text' },
+    ],
+  },
+
+  // Top Clientes — aba "top_20_clientes": ranking por vendedor/equipe/gerência
+  top_clientes__top_20_clientes: {
+    id: 'top_clientes__top_20_clientes',
+    label: 'Top Clientes — Top 20 por Vendedor (aba "top_20_clientes")',
+    table: 'top_20_clientes',
+    keyColumns: ['data_referencia', 'cod_vendedor', 'cod_cliente'],
+    snapshot: true,
+    columns: [
+      { name: 'nivel', kind: 'text' },
+      { name: 'gerencia', kind: 'text' },
+      { name: 'equipe', kind: 'text' },
+      { name: 'cod_vendedor', kind: 'text' },
+      { name: 'nome_vendedor', kind: 'text' },
+      { name: 'pasta', kind: 'text' },
+      { name: 'cod_cliente', kind: 'text' },
+      { name: 'cliente_redes', kind: 'text' },
+      { name: 'trimestre_25', kind: 'numeric' },
+      { name: 'trimestre_26', kind: 'numeric' },
+      { name: 'pct_cresc_trimestre', kind: 'numeric' },
+      { name: 'mes_25', kind: 'numeric' },
+      { name: 'mes_26', kind: 'numeric' },
+      { name: 'pct_cresc_mes', kind: 'numeric' },
+    ],
+  },
+
+  // Top Clientes — aba "top_clientes": venda total no mês por cliente
+  top_clientes__top_clientes: {
+    id: 'top_clientes__top_clientes',
+    label: 'Top Clientes — Venda Total no Mês (aba "top_clientes")',
+    table: 'top_clientes',
+    keyColumns: ['data_referencia', 'cod_cliente'],
+    snapshot: true,
+    columns: [
+      { name: 'cod_cliente', kind: 'text' },
+      { name: 'cliente', kind: 'text' },
+      { name: 'venda_total_mes', kind: 'numeric' },
+    ],
+  },
+
+  // Dados App — reaproveita as mesmas tabelas/colunas dos indicadores diários
+  // acima: é o mesmo dado, só que enviado num único arquivo com 3 abas.
+  dados_app__mes: {
+    id: 'dados_app__mes',
+    label: 'Dados App — Mês com Fórmulas',
+    table: 'indicadores_vendedor',
+    keyColumns: ['data_referencia', 'cod_vendedor'],
+    snapshot: true,
+    columns: [
+      { name: 'cod_vendedor', kind: 'text' },
+      { name: 'gerencia', kind: 'text' },
+      { name: 'nome_vendedor', kind: 'text' },
+      { name: 'meta_faturamento', kind: 'numeric' },
+      { name: 'realizado_faturamento', kind: 'numeric' },
+      { name: 'meta_cobertura', kind: 'numeric' },
+      { name: 'realizado_cobertura', kind: 'numeric' },
+      { name: 'meta_sortimento', kind: 'numeric' },
+      { name: 'realizado_sortimento', kind: 'numeric' },
+      { name: 'pct_margem', kind: 'numeric' },
+    ],
+  },
+  dados_app__positivacao: {
+    id: 'dados_app__positivacao',
+    label: 'Dados App — Positivação',
+    table: 'indicadores_positivacao',
+    keyColumns: ['data_referencia', 'cod_vendedor'],
+    snapshot: true,
+    columns: [
+      { name: 'cod_vendedor', kind: 'text' },
+      { name: 'equipe', kind: 'text' },
+      { name: 'visitas_previstas', kind: 'integer' },
+      { name: 'visitas_realizadas', kind: 'integer' },
+      { name: 'vendas_previstas', kind: 'integer' },
+      { name: 'vendas_realizadas', kind: 'integer' },
+      { name: 'fora_de_rota', kind: 'integer' },
+      { name: 'gps_ok', kind: 'integer' },
+      { name: 'pedidos', kind: 'integer' },
+      { name: 'apontamentos', kind: 'integer' },
+    ],
+  },
+  dados_app__categorias: {
+    id: 'dados_app__categorias',
+    label: 'Dados App — Categorias com Fórmulas',
+    table: 'indicadores_fabricante',
+    keyColumns: ['data_referencia', 'cod_vendedor', 'fabricante'],
+    snapshot: true,
+    columns: [
+      { name: 'cod_vendedor', kind: 'text' },
+      { name: 'fabricante', kind: 'text' },
+      { name: 'gerencia', kind: 'text' },
+      { name: 'equipe', kind: 'text' },
+      { name: 'meta', kind: 'numeric' },
+      { name: 'realizado', kind: 'numeric' },
+      { name: 'cobertura', kind: 'numeric' },
+      { name: 'realizado_cobertura', kind: 'numeric' },
+      { name: 'pct_margem', kind: 'numeric' },
+    ],
+  },
+
+  // Não Positivados — 3 bases (vendedor / equipe / Chok total)
+  nao_positivados__por_vendedor: {
+    id: 'nao_positivados__por_vendedor',
+    label: 'Não Positivados — Por Vendedor',
+    table: 'nao_positivados_vendedor',
+    keyColumns: ['data_referencia', 'cod_vendedor', 'cod_cliente'],
+    snapshot: true,
+    columns: [
+      { name: 'cod_vendedor', kind: 'text' },
+      { name: 'vendedor', kind: 'text' },
+      { name: 'cod_cliente', kind: 'text' },
+      { name: 'cliente', kind: 'text' },
+      { name: 'ultima_compra', kind: 'date' },
+      { name: 'dias_sem_comprar', kind: 'integer' },
+    ],
+  },
+  nao_positivados__equipe: {
+    id: 'nao_positivados__equipe',
+    label: 'Não Positivados — Equipe',
+    table: 'nao_positivados_equipe',
+    keyColumns: ['data_referencia', 'equipe', 'cod_cliente'],
+    snapshot: true,
+    columns: [
+      { name: 'equipe', kind: 'text' },
+      { name: 'cod_cliente', kind: 'text' },
+      { name: 'cliente', kind: 'text' },
+      { name: 'ultima_compra', kind: 'date' },
+      { name: 'dias_sem_comprar', kind: 'integer' },
+    ],
+  },
+  nao_positivados__chok_total: {
+    id: 'nao_positivados__chok_total',
+    label: 'Não Positivados — Chok Total',
+    table: 'nao_positivados_chok_total',
+    keyColumns: ['data_referencia', 'cod_cliente'],
+    snapshot: true,
+    columns: [
+      { name: 'cod_cliente', kind: 'text' },
+      { name: 'cliente', kind: 'text' },
+      { name: 'ultima_compra', kind: 'date' },
+      { name: 'dias_sem_comprar', kind: 'integer' },
+    ],
+  },
 };
 
 export function getImportTypeConfig(id: string): ImportTypeConfig | undefined {

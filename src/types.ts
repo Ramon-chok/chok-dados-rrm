@@ -87,6 +87,7 @@ export type PageId =
   | 'dashboard'
   | 'macro-view'
   | 'not-positivated'
+  | 'top-20-customers'
   | 'top-customers'
   | 'sortiments'
   | 'catalog'

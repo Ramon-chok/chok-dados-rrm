@@ -99,6 +99,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, c
       label: 'Comercial',
       items: [
         { id: 'not-positivated', name: 'Não Positivados', icon: <AlertTriangle size={17} /> },
+        { id: 'top-20-customers', name: 'TOP 20 Clientes', icon: <Award size={17} /> },
         { id: 'top-customers', name: 'TOP Clientes', icon: <Trophy size={17} /> },
         { id: 'sortiments', name: 'Sortimentos', icon: <Layers size={17} /> },
         { id: 'objectives', name: 'Objetivos', icon: <Target size={17} /> },
@@ -156,6 +157,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, c
     'macro-view': 'Visão Macro',
     dashboard: 'Dashboard',
     'not-positivated': 'Não Positivados',
+    'top-20-customers': 'TOP 20 Clientes',
     'top-customers': 'TOP Clientes',
     sortiments: 'Sortimentos',
     catalog: 'Catálogo de Produtos',
