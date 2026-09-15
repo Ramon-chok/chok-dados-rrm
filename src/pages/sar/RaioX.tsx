@@ -72,10 +72,11 @@ export const RaioXPage: React.FC = () => {
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(140px,1fr))', gap: 10, marginBottom: 14 }}>
         {[
-          ['Visitas real.', totals.visitasRealizadas],
           ['Visitas prev.', totals.visitasPrevistas],
+          ['Visitas real.', totals.visitasRealizadas],
+          ['Vendas prev.', totals.vendasPrevistas],
           ['Vendas real.', totals.vendasRealizadas],
-          ['Pedidos', totals.pedidos],
+          ['Fora de rota', totals.foraDeRota],
         ].map(([l, v]) => (
           <div key={String(l)} style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 10, padding: 12 }}>
             <div style={{ fontSize: 11, color: t.textMuted, display: 'flex', alignItems: 'center', gap: 6 }}><Activity size={13} />{l}</div>
