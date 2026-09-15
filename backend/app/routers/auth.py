@@ -3,10 +3,13 @@
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status, Response
+from typing import Any
 
 from app.db import get_connection
 from app.schemas import LoginRequest, LoginResponse, UserOut
-from app.security import create_access_token, get_current_user, verify_password
+from app.security import create_access_token, get_current_user, verify_password, require_roles
+from fastapi import Body
+from app.mail import test_smtp_connection, send_test_email
 from app.services import user_to_out
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -101,6 +104,23 @@ def login(payload: LoginRequest, response: Response) -> LoginResponse:
 @router.get("/me", response_model=UserOut)
 def me(user: dict = Depends(get_current_user)) -> UserOut:
     return user_to_out(user)
+
+
+@router.post("/email-test")
+def email_test(payload: dict = Body(...), _admin: dict[str, Any] = Depends(require_roles("ADMIN"))):
+    """Endpoint para testar conexão SMTP e envio de e-mail.
+
+    Body: { "email": "destino@exemplo.com" }
+    """
+    to = payload.get("email") if isinstance(payload, dict) else None
+    if not to:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Campo 'email' é obrigatório no corpo da requisição.")
+    try:
+        test_smtp_connection()
+        send_test_email(to, subject="Teste de SMTP — CHOK Dados", body="Este é um e-mail de teste enviado pelo endpoint /api/email-test.")
+        return {"ok": True}
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc))
 
 
 @router.post("/logout")

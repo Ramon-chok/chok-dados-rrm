@@ -18,12 +18,12 @@ import {
   Cookie,
   FileText,
   Shield,
-  ExternalLink,
   Settings,
   Info,
-  ChevronRight,
   Zap,
   Lock as LockIcon,
+  TrendingUp,
+  Target,
 } from 'lucide-react';
 
 // ============================================
@@ -83,7 +83,7 @@ export const LoginView: React.FC = () => {
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [acceptedPrivacy, setAcceptedPrivacy] = useState(false);
   const [cookiePrefs, setCookiePrefs] = useState<CookiePreferences>({
-    necessary: true, // sempre true
+    necessary: true,
     analytics: false,
     functional: false,
     marketing: false,
@@ -109,7 +109,6 @@ export const LoginView: React.FC = () => {
           return;
         }
       }
-      // Se não há consentimento, exibe banner após pequeno delay
       setTimeout(() => setShowCookieBanner(true), 800);
     } catch {
       setTimeout(() => setShowCookieBanner(true), 800);
@@ -124,6 +123,22 @@ export const LoginView: React.FC = () => {
       emailInputRef.current.focus();
     }
   }, [consentGiven]);
+
+  // ============================================
+  // FORÇA DA SENHA
+  // ============================================
+  useEffect(() => {
+    if (!password) {
+      setPasswordStrength(0);
+      return;
+    }
+    let strength = 0;
+    if (password.length >= 8) strength++;
+    if (/[A-Z]/.test(password)) strength++;
+    if (/[0-9]/.test(password)) strength++;
+    if (/[^A-Za-z0-9]/.test(password)) strength++;
+    setPasswordStrength(strength);
+  }, [password]);
 
   // ============================================
   // PARTICLE BACKGROUND
@@ -337,8 +352,8 @@ export const LoginView: React.FC = () => {
     if (passwordStrength === 0) return '';
     if (passwordStrength === 1) return 'Fraca';
     if (passwordStrength === 2) return 'Média';
-    if (passwordStrength === 3) return 'Boa';
-    return 'Forte';
+    if (passwordStrength === 3) return 'Segura';
+    return 'Excelente';
   };
 
   return (
@@ -479,33 +494,7 @@ export const LoginView: React.FC = () => {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              fontSize: '11.5px',
-              color: t.textSecondary,
-              padding: '6px 12px',
-              borderRadius: '20px',
-              background: mode === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)',
-              border: `1px solid ${t.border}`,
-              letterSpacing: '0.5px',
-            }}
-          >
-            <span
-              style={{
-                width: '6px',
-                height: '6px',
-                borderRadius: '50%',
-                background: '#3DD68C',
-                animation: 'rr-pulse 2s ease-in-out infinite',
-              }}
-            />
-            <ShieldCheck size={13} color="#3DD68C" />
-            <span style={{ textTransform: 'uppercase', fontWeight: 500 }}>Sistema Operacional</span>
-          </div>
-
+          
           <button
             onClick={toggleTheme}
             style={{
@@ -562,7 +551,7 @@ export const LoginView: React.FC = () => {
           className="rr-login-container"
         >
           {/* ============================================
-              LOGIN CARD
+              LOGIN CARD — DESIGN ATUALIZADO & DINÂMICO
           ============================================ */}
           <div
             style={{
@@ -570,175 +559,179 @@ export const LoginView: React.FC = () => {
               backdropFilter: 'blur(30px)',
               WebkitBackdropFilter: 'blur(30px)',
               border: `1px solid ${t.border}`,
-              borderRadius: '20px',
-              padding: '40px 36px',
+              borderRadius: '24px',
+              padding: '44px 40px',
               boxShadow:
                 mode === 'dark'
-                  ? '0 20px 60px rgba(0,0,0,0.5), 0 0 0 1px rgba(215,25,32,0.05)'
-                  : '0 14px 40px rgba(0,0,0,0.08), 0 0 0 1px rgba(215,25,32,0.03)',
+                  ? '0 25px 70px rgba(0,0,0,0.5), inset 0 1px 0px rgba(255,255,255,0.05)'
+                  : '0 20px 50px rgba(0,0,0,0.06), inset 0 1px 0px rgba(255,255,255,0.4)',
               position: 'relative',
               overflow: 'hidden',
-              animation: 'rr-fadeInUp 0.7s cubic-bezier(0.4,0,0.2,1)',
+              animation: 'rr-fadeInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1)',
             }}
           >
-            {/* Top accent line */}
+            {/* Linha decorativa animada com gradiente */}
             <div
               style={{
                 position: 'absolute',
                 top: 0,
                 left: 0,
                 right: 0,
-                height: '3px',
-                background: `linear-gradient(90deg, transparent, ${RR_RED}, transparent)`,
+                height: '4px',
+                background: `linear-gradient(90deg, transparent 0%, ${RR_RED} 50%, transparent 100%)`,
+                backgroundSize: '200% 100%',
+                animation: 'rr-shimmerLine 4s infinite linear',
               }}
             />
 
-            {/* Decorative corner glow */}
+            {/* Brilho interativo no canto superior */}
             <div
               style={{
                 position: 'absolute',
-                top: 0,
-                right: 0,
-                width: '120px',
-                height: '120px',
-                background: `radial-gradient(circle at top right, rgba(215,25,32,0.12), transparent 70%)`,
+                top: '-50px',
+                right: '-50px',
+                width: '150px',
+                height: '150px',
+                background: `radial-gradient(circle, ${RR_RED}20 0%, transparent 75%)`,
                 pointerEvents: 'none',
+                filter: 'blur(10px)',
               }}
             />
 
-            {/* Section label */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '18px' }}>
+            {/* Badge de Secao */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '24px' }}>
               <span
                 style={{
                   fontFamily: "'Space Grotesk', sans-serif",
                   fontSize: '11px',
                   color: RR_RED,
                   letterSpacing: '2px',
-                  fontWeight: 600,
+                  fontWeight: 700,
+                  background: `${RR_RED}12`,
+                  padding: '3px 8px',
+                  borderRadius: '6px',
+                  border: `1.5px solid ${RR_RED}25`,
                 }}
               >
-                01
+                CHOK DADOS
               </span>
-              <div style={{ width: '32px', height: '1px', background: RR_RED, opacity: 0.5 }} />
-              <span
-                style={{
-                  fontSize: '10.5px',
-                  color: t.textMuted,
-                  textTransform: 'uppercase',
-                  letterSpacing: '2px',
-                  fontWeight: 500,
-                }}
-              >
-                Acesso Seguro
-              </span>
+              <div style={{ flex: 1, height: '1px', background: `linear-gradient(90deg, ${t.border}, transparent)` }} />
             </div>
 
             <h1
               style={{
                 margin: '0 0 8px',
-                fontSize: '28px',
-                fontWeight: 700,
+                fontSize: '32px',
+                fontWeight: 800,
                 color: t.text,
-                letterSpacing: '-0.03em',
-                lineHeight: 1.15,
+                letterSpacing: '-0.04em',
+                lineHeight: 1.1,
                 fontFamily: "'Space Grotesk', 'Inter', sans-serif",
               }}
             >
-              Entrar na plataforma
+              Login
             </h1>
             <p
               style={{
-                margin: '0 0 32px',
-                fontSize: '13.5px',
+                margin: '0 0 36px',
+                fontSize: '14.5px',
                 color: t.textSecondary,
-                lineHeight: 1.55,
-                maxWidth: '360px',
+                lineHeight: 1.5,
               }}
             >
-              Central de inteligência de dados, negócios e gestão comercial.
+              Insira suas credenciais corporativas abaixo para acessar a sua plataforma.
             </p>
 
-            {/* Consent notice */}
+            {/* Aviso de Termos de Uso Pendentes */}
             {!consentGiven && (
               <div
                 style={{
-                  background: 'rgba(245, 158, 11, 0.08)',
-                  border: '1px solid rgba(245, 158, 11, 0.25)',
-                  borderRadius: '10px',
-                  padding: '12px 14px',
-                  marginBottom: '22px',
+                  background: mode === 'dark' ? 'rgba(245, 158, 11, 0.08)' : 'rgba(245, 158, 11, 0.05)',
+                  border: '1.5px solid rgba(245, 158, 11, 0.25)',
+                  borderRadius: '12px',
+                  padding: '14px 16px',
+                  marginBottom: '26px',
                   display: 'flex',
                   alignItems: 'flex-start',
-                  gap: '10px',
-                  fontSize: '12.5px',
-                  color: '#F59E0B',
+                  gap: '12px',
+                  fontSize: '13px',
+                  color: '#D97706',
+                  animation: 'rr-shakeIn 0.5s ease-out',
                 }}
               >
-                <Info size={16} style={{ flexShrink: 0, marginTop: '2px' }} />
+                <Info size={18} style={{ flexShrink: 0, marginTop: '1px' }} />
                 <span style={{ lineHeight: 1.5 }}>
-                  Aceite os <strong>Termos de Uso</strong> e a <strong>Política de Privacidade</strong> antes de acessar.
+                  É necessário aceitar os <strong>Termos de Uso</strong> e as diretrizes de privacidade nas configurações de Cookies antes de prosseguir.
                 </span>
               </div>
             )}
 
-            {/* Error Alert */}
+            {/* Banner de Erro Reativo */}
             {errorMessage && (
               <div
                 style={{
                   background: 'rgba(215,25,32,0.08)',
-                  border: `1px solid rgba(215,25,32,0.25)`,
-                  borderRadius: '10px',
-                  padding: '12px 14px',
-                  marginBottom: '22px',
+                  border: `1.5px solid rgba(215,25,32,0.25)`,
+                  borderRadius: '12px',
+                  padding: '14px 16px',
+                  marginBottom: '26px',
                   display: 'flex',
                   alignItems: 'flex-start',
-                  gap: '10px',
-                  fontSize: '13px',
+                  gap: '12px',
+                  fontSize: '13.5px',
                   color: RR_RED,
                   animation: 'rr-shakeIn 0.4s ease',
+                  boxShadow: '0 8px 24px rgba(215,25,32,0.1)',
                 }}
               >
-                <AlertCircle size={16} style={{ flexShrink: 0, marginTop: '2px' }} />
-                <span style={{ lineHeight: 1.45 }}>{errorMessage}</span>
+                <AlertCircle size={18} style={{ flexShrink: 0, marginTop: '2px' }} />
+                <span style={{ lineHeight: 1.5, fontWeight: 500 }}>{errorMessage}</span>
               </div>
             )}
 
             <form onSubmit={handleSubmit}>
-              {/* Email */}
-              <div style={{ marginBottom: '20px' }}>
+              {/* Campo E-mail */}
+              <div style={{ marginBottom: '22px' }}>
                 <label
                   htmlFor="email"
                   style={{
                     display: 'block',
-                    fontSize: '10.5px',
-                    fontWeight: 500,
+                    fontSize: '11px',
+                    fontWeight: 600,
                     color: emailFocused ? RR_RED : t.textMuted,
                     marginBottom: '8px',
                     textTransform: 'uppercase',
                     letterSpacing: '1.5px',
-                    transition: 'color 0.2s ease',
+                    transition: 'color 0.25s',
                   }}
                 >
                   E-mail Corporativo
                 </label>
                 <div
+                  className="rr-input-wrapper"
                   style={{
                     display: 'flex',
                     alignItems: 'center',
                     gap: '12px',
-                    border: `1px solid ${emailFocused ? RR_RED : t.border}`,
-                    borderRadius: '10px',
-                    padding: '13px 16px',
+                    border: `1.5px solid ${emailFocused ? RR_RED : t.border}`,
+                    borderRadius: '12px',
+                    padding: '14px 18px',
                     background: emailFocused
-                      ? 'rgba(215,25,32,0.03)'
-                      : mode === 'dark'
-                      ? 'rgba(255,255,255,0.03)'
-                      : 'rgba(0,0,0,0.02)',
-                    transition: 'all 0.2s ease',
-                    boxShadow: emailFocused ? '0 0 0 3px rgba(215,25,32,0.08)' : 'none',
+                      ? (mode === 'dark' ? 'rgba(215,25,32,0.03)' : 'rgba(215,25,32,0.02)')
+                      : (mode === 'dark' ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.015)'),
+                    transition: 'all 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
+                    boxShadow: emailFocused ? `0 0 0 4px ${RR_RED}15` : 'none',
+                    transform: emailFocused ? 'translateY(-1px)' : 'none',
                   }}
                 >
-                  <Mail size={16} color={emailFocused ? RR_RED : t.textMuted} style={{ transition: 'color 0.2s' }} />
+                  <Mail
+                    size={18}
+                    color={emailFocused ? RR_RED : t.textMuted}
+                    style={{
+                      transition: 'all 0.3s',
+                      transform: emailFocused ? 'scale(1.1)' : 'scale(1)',
+                    }}
+                  />
                   <input
                     ref={emailInputRef}
                     id="email"
@@ -761,13 +754,13 @@ export const LoginView: React.FC = () => {
                     }}
                   />
                   {email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && (
-                    <CheckCircle2 size={15} color="#10B981" style={{ animation: 'rr-checkIn 0.3s ease' }} />
+                    <CheckCircle2 size={16} color="#10B981" style={{ animation: 'rr-checkIn 0.3s ease' }} />
                   )}
                 </div>
               </div>
 
-              {/* Password */}
-              <div style={{ marginBottom: '20px' }}>
+              {/* Campo Senha */}
+              <div style={{ marginBottom: '24px' }}>
                 <div
                   style={{
                     display: 'flex',
@@ -779,12 +772,12 @@ export const LoginView: React.FC = () => {
                   <label
                     htmlFor="password"
                     style={{
-                      fontSize: '10.5px',
-                      fontWeight: 500,
+                      fontSize: '11px',
+                      fontWeight: 600,
                       color: passwordFocused ? RR_RED : t.textMuted,
                       textTransform: 'uppercase',
                       letterSpacing: '1.5px',
-                      transition: 'color 0.2s ease',
+                      transition: 'color 0.25s',
                     }}
                   >
                     Senha de Acesso
@@ -797,35 +790,42 @@ export const LoginView: React.FC = () => {
                       border: 'none',
                       color: RR_RED,
                       fontSize: '12px',
-                      fontWeight: 500,
+                      fontWeight: 600,
                       cursor: 'pointer',
                       padding: 0,
-                      transition: 'opacity 0.2s',
+                      transition: 'color 0.2s',
                     }}
-                    onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.75')}
-                    onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
+                    onMouseEnter={(e) => (e.currentTarget.style.color = RR_RED_DARK)}
+                    onMouseLeave={(e) => (e.currentTarget.style.color = RR_RED)}
                   >
                     Esqueceu a senha?
                   </button>
                 </div>
                 <div
+                  className="rr-input-wrapper"
                   style={{
                     display: 'flex',
                     alignItems: 'center',
                     gap: '12px',
-                    border: `1px solid ${passwordFocused ? RR_RED : t.border}`,
-                    borderRadius: '10px',
-                    padding: '13px 16px',
+                    border: `1.5px solid ${passwordFocused ? RR_RED : t.border}`,
+                    borderRadius: '12px',
+                    padding: '14px 18px',
                     background: passwordFocused
-                      ? 'rgba(215,25,32,0.03)'
-                      : mode === 'dark'
-                      ? 'rgba(255,255,255,0.03)'
-                      : 'rgba(0,0,0,0.02)',
-                    transition: 'all 0.2s ease',
-                    boxShadow: passwordFocused ? '0 0 0 3px rgba(215,25,32,0.08)' : 'none',
+                      ? (mode === 'dark' ? 'rgba(215,25,32,0.03)' : 'rgba(215,25,32,0.02)')
+                      : (mode === 'dark' ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.015)'),
+                    transition: 'all 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
+                    boxShadow: passwordFocused ? `0 0 0 4px ${RR_RED}15` : 'none',
+                    transform: passwordFocused ? 'translateY(-1px)' : 'none',
                   }}
                 >
-                  <Lock size={16} color={passwordFocused ? RR_RED : t.textMuted} style={{ transition: 'color 0.2s' }} />
+                  <Lock
+                    size={18}
+                    color={passwordFocused ? RR_RED : t.textMuted}
+                    style={{
+                      transition: 'all 0.3s',
+                      transform: passwordFocused ? 'rotate(-10deg) scale(1.1)' : 'rotate(0deg) scale(1)',
+                    }}
+                  />
                   <input
                     id="password"
                     type={showPassword ? 'text' : 'password'}
@@ -865,26 +865,34 @@ export const LoginView: React.FC = () => {
                     onMouseLeave={(e) => (e.currentTarget.style.color = t.textMuted)}
                     title={showPassword ? 'Ocultar senha' : 'Ver senha'}
                   >
-                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                   </button>
                 </div>
 
-                {/* Password strength meter */}
+                {/* Medidor Inteligente de Força de Senha */}
                 {password && (
-                  <div style={{ marginTop: '8px' }}>
-                    <div style={{ display: 'flex', gap: '3px', marginBottom: '4px' }}>
-                      {[0, 1, 2, 3].map((i) => (
+                  <div style={{ marginTop: '10px', animation: 'rr-fadeIn 0.3s ease' }}>
+                    <div style={{ display: 'flex', gap: '4px', marginBottom: '6px' }}>
+                      {[1, 2, 3, 4].map((level) => (
                         <div
-                          key={i}
+                          key={level}
                           style={{
                             flex: 1,
-                            height: '3px',
-                            borderRadius: '2px',
-                            background: i < passwordStrength ? getStrengthColor() : mode === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)',
-                            transition: 'background 0.3s',
+                            height: '4px',
+                            borderRadius: '10px',
+                            background: level <= passwordStrength
+                              ? getStrengthColor()
+                              : (mode === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)'),
+                            transition: 'all 0.4s ease',
                           }}
                         />
                       ))}
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: '11px', color: t.textMuted }}>Complexidade da senha</span>
+                      <span style={{ fontSize: '11px', color: getStrengthColor(), fontWeight: 700 }}>
+                        {getStrengthLabel()}
+                      </span>
                     </div>
                   </div>
                 )}
@@ -893,31 +901,32 @@ export const LoginView: React.FC = () => {
                 {capsLockOn && passwordFocused && (
                   <div
                     style={{
-                      marginTop: '8px',
-                      padding: '6px 10px',
-                      borderRadius: '6px',
-                      background: 'rgba(245, 158, 11, 0.1)',
-                      border: '1px solid rgba(245, 158, 11, 0.3)',
-                      fontSize: '11px',
-                      color: '#F59E0B',
+                      marginTop: '10px',
+                      padding: '8px 12px',
+                      borderRadius: '8px',
+                      background: 'rgba(245, 158, 11, 0.08)',
+                      border: '1px solid rgba(245, 158, 11, 0.25)',
+                      fontSize: '11.5px',
+                      color: '#D97706',
                       display: 'flex',
                       alignItems: 'center',
-                      gap: '6px',
+                      gap: '8px',
+                      animation: 'rr-shakeIn 0.4s ease',
                     }}
                   >
-                    <AlertCircle size={12} />
-                    Caps Lock está ativado
+                    <AlertCircle size={14} />
+                    Atenção: Caps Lock Ativo
                   </div>
                 )}
               </div>
 
-              {/* Remember me */}
+              {/* Checkbox Lembrar-me */}
               <label
                 style={{
                   display: 'flex',
                   alignItems: 'center',
                   gap: '10px',
-                  marginBottom: '28px',
+                  marginBottom: '32px',
                   cursor: 'pointer',
                   userSelect: 'none',
                 }}
@@ -931,108 +940,100 @@ export const LoginView: React.FC = () => {
                 />
                 <div
                   style={{
-                    width: '18px',
-                    height: '18px',
-                    borderRadius: '5px',
+                    width: '20px',
+                    height: '20px',
+                    borderRadius: '6px',
                     border: `1.5px solid ${rememberMe ? RR_RED : t.border}`,
                     background: rememberMe ? RR_RED : 'transparent',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    transition: 'all 0.2s ease',
+                    transition: 'all 0.25s cubic-bezier(0.16, 1, 0.3, 1)',
                     flexShrink: 0,
+                    boxShadow: rememberMe ? `0 4px 10px ${RR_RED}20` : 'none',
                   }}
                 >
                   {rememberMe && (
-                    <Check size={11} color="#fff" strokeWidth={3} style={{ animation: 'rr-checkIn 0.2s ease' }} />
+                    <Check size={12} color="#fff" strokeWidth={3} style={{ animation: 'rr-checkIn 0.2s ease' }} />
                   )}
                 </div>
-                <span style={{ fontSize: '13px', color: t.textSecondary }}>
-                  Lembrar meu acesso neste navegador
+                <span style={{ fontSize: '13.5px', color: t.textSecondary }}>
+                  Manter sessão conectada neste dispositivo
                 </span>
               </label>
 
-              {/* Submit */}
+              {/* Botão de Envio de Login */}
               <button
                 type="submit"
                 disabled={isLoading || submitting || !consentGiven}
+                className={`rr-submit-btn ${!consentGiven ? 'disabled' : ''}`}
                 style={{
                   width: '100%',
-                  padding: '14px 24px',
-                  borderRadius: '10px',
+                  padding: '16px 24px',
+                  borderRadius: '12px',
                   border: 'none',
-                  background: !consentGiven ? t.textMuted : RR_RED,
+                  background: !consentGiven ? t.border : `linear-gradient(135deg, ${RR_RED}, ${RR_RED_DARK})`,
                   color: '#FFFFFF',
-                  fontSize: '14px',
-                  fontWeight: 600,
+                  fontSize: '14.5px',
+                  fontWeight: 700,
                   cursor: isLoading || submitting || !consentGiven ? 'not-allowed' : 'pointer',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  gap: '10px',
-                  transition: 'all 0.2s ease',
-                  boxShadow: consentGiven ? '0 8px 24px rgba(215,25,32,0.28)' : 'none',
-                  opacity: isLoading || submitting ? 0.75 : 1,
+                  gap: '12px',
+                  transition: 'all 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
+                  boxShadow: consentGiven ? `0 8px 30px ${RR_RED}30` : 'none',
                   position: 'relative',
                   overflow: 'hidden',
                   fontFamily: "'Space Grotesk', 'Inter', sans-serif",
-                  letterSpacing: '0.3px',
-                }}
-                onMouseEnter={(e) => {
-                  if (!isLoading && consentGiven) {
-                    e.currentTarget.style.background = RR_RED_DARK;
-                    e.currentTarget.style.transform = 'translateY(-1px)';
-                    e.currentTarget.style.boxShadow = '0 12px 32px rgba(215,25,32,0.4)';
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (consentGiven) {
-                    e.currentTarget.style.background = RR_RED;
-                    e.currentTarget.style.transform = 'translateY(0)';
-                    e.currentTarget.style.boxShadow = '0 8px 24px rgba(215,25,32,0.28)';
-                  }
+                  letterSpacing: '0.5px',
                 }}
               >
+                {/* Efeito de Shimmer Sweep (Brilho dinâmico metálico) */}
+                {consentGiven && !isLoading && !submitting && <div className="rr-shimmer-sweep" />}
+
                 {isLoading || submitting ? (
                   <>
                     <span
                       style={{
-                        width: '18px',
-                        height: '18px',
-                        border: '2px solid rgba(255,255,255,0.3)',
+                        width: '20px',
+                        height: '20px',
+                        border: '2.5px solid rgba(255,255,255,0.3)',
                         borderTopColor: '#fff',
                         borderRadius: '50%',
                         animation: 'rr-spin 0.8s linear infinite',
                       }}
                     />
+                    <span>Validando Acesso...</span>
                   </>
                 ) : !consentGiven ? (
                   <>
-                    <LockIcon size={15} />
-                    <span>Aceite os termos para continuar</span>
+                    <LockIcon size={16} />
+                    <span>Aceite os Termos para Entrar</span>
                   </>
                 ) : (
                   <>
-                    <span>Acessar plataforma</span>
-                    <ArrowRight size={16} />
+                    <span>Entrar no Sistema</span>
+                    <ArrowRight size={18} className="rr-arrow-icon" style={{ transition: 'transform 0.3s' }} />
                   </>
                 )}
               </button>
             </form>
 
-            {/* Legal Links */}
+            {/* Links de Políticas Legais */}
             <div
               style={{
-                marginTop: '20px',
+                marginTop: '28px',
                 display: 'flex',
                 justifyContent: 'center',
                 gap: '16px',
                 flexWrap: 'wrap',
-                fontSize: '11px',
+                fontSize: '11.5px',
               }}
             >
               <button
                 onClick={() => setIsTermsModalOpen(true)}
+                className="rr-legal-link"
                 style={{
                   background: 'none',
                   border: 'none',
@@ -1043,16 +1044,16 @@ export const LoginView: React.FC = () => {
                   gap: '4px',
                   padding: 0,
                   transition: 'color 0.2s',
+                  fontWeight: 500,
                 }}
-                onMouseEnter={(e) => (e.currentTarget.style.color = RR_RED)}
-                onMouseLeave={(e) => (e.currentTarget.style.color = t.textMuted)}
               >
-                <FileText size={11} />
+                <FileText size={12} />
                 Termos de Uso
               </button>
               <span style={{ color: t.textMuted, opacity: 0.4 }}>•</span>
               <button
                 onClick={() => setIsPrivacyModalOpen(true)}
+                className="rr-legal-link"
                 style={{
                   background: 'none',
                   border: 'none',
@@ -1063,16 +1064,16 @@ export const LoginView: React.FC = () => {
                   gap: '4px',
                   padding: 0,
                   transition: 'color 0.2s',
+                  fontWeight: 500,
                 }}
-                onMouseEnter={(e) => (e.currentTarget.style.color = RR_RED)}
-                onMouseLeave={(e) => (e.currentTarget.style.color = t.textMuted)}
               >
-                <Shield size={11} />
+                <Shield size={12} />
                 Privacidade
               </button>
               <span style={{ color: t.textMuted, opacity: 0.4 }}>•</span>
               <button
                 onClick={() => setShowCookieBanner(true)}
+                className="rr-legal-link"
                 style={{
                   background: 'none',
                   border: 'none',
@@ -1083,33 +1084,364 @@ export const LoginView: React.FC = () => {
                   gap: '4px',
                   padding: 0,
                   transition: 'color 0.2s',
+                  fontWeight: 500,
                 }}
-                onMouseEnter={(e) => (e.currentTarget.style.color = RR_RED)}
-                onMouseLeave={(e) => (e.currentTarget.style.color = t.textMuted)}
               >
-                <Cookie size={11} />
+                <Cookie size={12} />
                 Cookies
               </button>
             </div>
+          </div>
 
-            {/* Footer */}
+          {/* ============================================
+              BARRA LATERAL / NOVA VERSÃO REVOLUCIONÁRIA
+          ============================================ */}
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '20px',
+              animation: 'rr-fadeInUp 0.7s cubic-bezier(0.4,0,0.2,1) 0.1s both',
+            }}
+          >
+            {/* CARD INSTITUCIONAL HERO */}
             <div
               style={{
-                marginTop: '16px',
-                paddingTop: '16px',
-                borderTop: `1px solid ${t.border}`,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '8px',
-                fontSize: '11px',
-                color: t.textMuted,
-                textAlign: 'center',
-                letterSpacing: '0.3px',
+                background: mode === 'dark'
+                  ? 'linear-gradient(135deg, rgba(215,25,32,0.15), rgba(15,15,15,0.85))'
+                  : 'linear-gradient(135deg, rgba(215,25,32,0.08), rgba(255,255,255,0.9))',
+                backdropFilter: 'blur(30px)',
+                WebkitBackdropFilter: 'blur(30px)',
+                border: `1px solid ${t.border}`,
+                borderRadius: '20px',
+                padding: '36px 32px',
+                position: 'relative',
+                overflow: 'hidden',
+                minHeight: '340px',
               }}
             >
-              <ShieldCheck size={12} />
-              <span>Criptografia ponta a ponta · Conformidade LGPD</span>
+              {/* Efeitos de Órbita e Luz de Fundo */}
+              <div
+                style={{
+                  position: 'absolute',
+                  top: '-80px',
+                  right: '-80px',
+                  width: '260px',
+                  height: '260px',
+                  borderRadius: '50%',
+                  background: `radial-gradient(circle, rgba(215,25,32,0.25), transparent 70%)`,
+                  pointerEvents: 'none',
+                  animation: 'rr-float 8s ease-in-out infinite',
+                }}
+              />
+              <div
+                style={{
+                  position: 'absolute',
+                  bottom: '-60px',
+                  left: '-60px',
+                  width: '200px',
+                  height: '200px',
+                  borderRadius: '50%',
+                  background: `radial-gradient(circle, rgba(99,102,241,0.15), transparent 70%)`,
+                  pointerEvents: 'none',
+                  animation: 'rr-float 10s ease-in-out infinite reverse',
+                }}
+              />
+
+              {/* Anéis orbitais SVGs decorativos */}
+              <div
+                style={{
+                  position: 'absolute',
+                  top: '20px',
+                  right: '20px',
+                  width: '80px',
+                  height: '80px',
+                  pointerEvents: 'none',
+                  opacity: 0.4,
+                }}
+              >
+                <svg width="80" height="80" viewBox="0 0 80 80">
+                  <circle cx="40" cy="40" r="35" fill="none" stroke={RR_RED} strokeWidth="0.5" strokeDasharray="2 4" opacity="0.6">
+                    <animateTransform attributeName="transform" type="rotate" from="0 40 40" to="360 40 40" dur="20s" repeatCount="indefinite" />
+                  </circle>
+                  <circle cx="40" cy="40" r="25" fill="none" stroke={RR_RED} strokeWidth="0.5" opacity="0.4">
+                    <animateTransform attributeName="transform" type="rotate" from="360 40 40" to="0 40 40" dur="15s" repeatCount="indefinite" />
+                  </circle>
+                  <circle cx="40" cy="5" r="2" fill={RR_RED}>
+                    <animateTransform attributeName="transform" type="rotate" from="0 40 40" to="360 40 40" dur="20s" repeatCount="indefinite" />
+                  </circle>
+                </svg>
+              </div>
+
+              {/* Indicador de Seção */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px', position: 'relative', zIndex: 2 }}>
+                <span style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: '11px', color: RR_RED, letterSpacing: '2px', fontWeight: 600 }}>02</span>
+                <div style={{ width: '32px', height: '1px', background: RR_RED, opacity: 0.5 }} />
+                <span style={{ fontSize: '10.5px', color: t.textMuted, textTransform: 'uppercase', letterSpacing: '2px', fontWeight: 500 }}>
+                  Bem-vindo
+                </span>
+              </div>
+
+              {/* Título com preenchimento em gradiente */}
+              <h2
+                style={{
+                  margin: '0 0 14px',
+                  fontSize: '26px',
+                  fontWeight: 800,
+                  color: t.text,
+                  letterSpacing: '-0.03em',
+                  lineHeight: 1.15,
+                  fontFamily: "'Space Grotesk', 'Inter', sans-serif",
+                  position: 'relative',
+                  zIndex: 2,
+                }}
+              >
+                Seu acompanhamento {' '}
+                <span
+                  style={{
+                    background: `linear-gradient(135deg, ${RR_RED}, #ff6b6b)`,
+                    WebkitBackgroundClip: 'text',
+                    WebkitTextFillColor: 'transparent',
+                    backgroundClip: 'text',
+                  }}
+                >
+                  diário
+                </span>
+              </h2>
+
+              <p
+                style={{
+                  margin: '0 0 24px',
+                  fontSize: '13.5px',
+                  color: t.textSecondary,
+                  lineHeight: 1.6,
+                  maxWidth: '380px',
+                  position: 'relative',
+                  zIndex: 2,
+                }}
+              >
+                Acompanhe suas metas, positivação e performance em tempo real.
+              </p>
+
+              {/* Grid de Métricas de Sistema */}
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(3, 1fr)',
+                  gap: '12px',
+                  position: 'relative',
+                  zIndex: 2,
+                }}
+              >
+                {[
+                  { value: '99.9%', label: 'Uptime' },
+                  { value: '<200ms', label: 'Resposta' },
+                  { value: '24/7', label: 'Disponível' },
+                ].map((metric, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      padding: '12px 10px',
+                      borderRadius: '10px',
+                      background: mode === 'dark' ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)',
+                      border: `1px solid ${t.border}`,
+                      textAlign: 'center',
+                      transition: 'all 0.25s',
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: '18px',
+                        fontWeight: 800,
+                        color: RR_RED,
+                        fontFamily: "'Space Grotesk', sans-serif",
+                        letterSpacing: '-0.02em',
+                      }}
+                    >
+                      {metric.value}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: '9.5px',
+                        color: t.textMuted,
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.08em',
+                        marginTop: '2px',
+                        fontWeight: 600,
+                      }}
+                    >
+                      {metric.label}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* GRID DE CARACTERÍSTICAS VISUAIS */}
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(2, 1fr)',
+                gap: '12px',
+              }}
+            >
+              {[
+                {
+                  icon: TrendingUp,
+                  label: 'Análises em Tempo Real',
+                  desc: 'Dashboards atualizados de forma contínua',
+                  color: '#10B981',
+                },
+                {
+                  icon: Shield,
+                  label: 'Segurança dos dados',
+                  desc: 'Proteção e tratamento da informação',
+                  color: '#3B82F6',
+                },
+                {
+                  icon: Target,
+                  label: 'Positivações',
+                  desc: 'Positivações atualizadas regula',
+                  color: '#F59E0B',
+                },
+                {
+                  icon: Sparkles,
+                  label: 'Metas',
+                  desc: 'Ambiente ergonômico focado em performance',
+                  color: RR_RED,
+                },
+              ].map((f, i) => {
+                const Icon = f.icon;
+                return (
+                  <div
+                    key={i}
+                    style={{
+                      background: mode === 'dark' ? 'rgba(15,15,15,0.7)' : 'rgba(255,255,255,0.8)',
+                      backdropFilter: 'blur(30px)',
+                      border: `1px solid ${t.border}`,
+                      borderRadius: '14px',
+                      padding: '18px',
+                      transition: 'all 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
+                      cursor: 'default',
+                      position: 'relative',
+                      overflow: 'hidden',
+                    }}
+                    className="rr-feature-card"
+                  >
+                    <div
+                      style={{
+                        width: 36,
+                        height: 36,
+                        borderRadius: '10px',
+                        background: `${f.color}15`,
+                        border: `1px solid ${f.color}30`,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        marginBottom: '12px',
+                      }}
+                    >
+                      <Icon size={17} color={f.color} />
+                    </div>
+                    <div
+                      style={{
+                        fontSize: '13px',
+                        fontWeight: 700,
+                        color: t.text,
+                        marginBottom: '4px',
+                        letterSpacing: '-0.01em',
+                      }}
+                    >
+                      {f.label}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: '11px',
+                        color: t.textMuted,
+                        lineHeight: 1.5,
+                      }}
+                    >
+                      {f.desc}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* QUOTE / TESTIMONIAL CARD */}
+            <div
+              style={{
+                background: mode === 'dark' ? 'rgba(15,15,15,0.7)' : 'rgba(255,255,255,0.8)',
+                backdropFilter: 'blur(30px)',
+                border: `1px solid ${t.border}`,
+                borderRadius: '14px',
+                padding: '20px 24px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '16px',
+                position: 'relative',
+                overflow: 'hidden',
+              }}
+            >
+              <div
+                style={{
+                  position: 'absolute',
+                  top: -10,
+                  left: 16,
+                  fontSize: '80px',
+                  fontFamily: 'Georgia, serif',
+                  color: RR_RED,
+                  opacity: 0.12,
+                  lineHeight: 1,
+                  pointerEvents: 'none',
+                }}
+              >
+                "
+              </div>
+              <div
+                style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: '50%',
+                  background: `linear-gradient(135deg, ${RR_RED}, ${RR_RED_DARK})`,
+                  color: '#fff',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '15px',
+                  fontWeight: 700,
+                  flexShrink: 0,
+                  boxShadow: `0 4px 14px ${RR_RED}40`,
+                  position: 'relative',
+                  zIndex: 1,
+                }}
+              >
+                RR
+              </div>
+              <div style={{ position: 'relative', zIndex: 1 }}>
+                <p
+                  style={{
+                    margin: '0 0 6px',
+                    fontSize: '12.5px',
+                    color: t.textSecondary,
+                    lineHeight: 1.5,
+                    fontStyle: 'italic',
+                  }}
+                >
+                  A mente por trás da evolução da sua gestão comercial.
+                </p>
+                <div
+                  style={{
+                    fontSize: '10.5px',
+                    color: t.textMuted,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.08em',
+                    fontWeight: 600,
+                  }}
+                >
+                  RR Mind · Plataforma Chok
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -1127,7 +1459,7 @@ export const LoginView: React.FC = () => {
             right: 0,
             zIndex: 9998,
             padding: '20px',
-            animation: 'rr-slideUp 0.4s cubic-bezier(0.4,0,0.2,1)',
+            animation: 'rr-slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1)',
           }}
         >
           <div
@@ -1662,7 +1994,7 @@ export const LoginView: React.FC = () => {
           </LegalSection>
           <LegalSection title="8. Rescisão" theme={t}>
             Podemos suspender ou encerrar seu acesso à plataforma a qualquer momento por violação
-            destes termos. Você pode encerrar sua conta a qualquer momento entrando em contato conosco.
+            destes termos. Você pode acessar sua conta de usuário ou solicitar encerramento a qualquer momento.
           </LegalSection>
           <LegalSection title="9. Lei Aplicável" theme={t}>
             Estes termos são regidos pelas leis da República Federativa do Brasil. Qualquer disputa
@@ -2007,11 +2339,11 @@ export const LoginView: React.FC = () => {
       )}
 
       {/* ============================================
-          STYLES
+          STYLES E KEYFRAMES ADICIONAIS
       ============================================ */}
       <style>{`
         @keyframes rr-fadeInUp {
-          from { opacity: 0; transform: translateY(20px); }
+          from { opacity: 0; transform: translateY(25px); }
           to { opacity: 1; transform: translateY(0); }
         }
         @keyframes rr-fadeIn {
@@ -2046,8 +2378,67 @@ export const LoginView: React.FC = () => {
         }
         @keyframes rr-float {
           0%, 100% { transform: translate(0, 0); }
-          50% { transform: translate(30px, -30px); }
+          50% { transform: translate(15px, -15px); }
         }
+        @keyframes rr-shimmerLine {
+          0% { background-position: -200% 0; }
+          100% { background-position: 200% 0; }
+        }
+        @keyframes rr-shimmerSweep {
+          0% { left: -150%; }
+          50% { left: 150%; }
+          100% { left: 150%; }
+        }
+        
+        /* Efeitos e micro-interacoes dos inputs */
+        .rr-input-wrapper:focus-within {
+          border-color: ${RR_RED} !important;
+          background: ${mode === 'dark' ? 'rgba(215,25,32,0.04)' : 'rgba(215,25,32,0.02)'} !important;
+        }
+
+        /* Efeito Shimmer Sweep no Botao */
+        .rr-shimmer-sweep {
+          position: absolute;
+          top: 0;
+          width: 50%;
+          height: 100%;
+          background: linear-gradient(
+            to right,
+            rgba(255, 255, 255, 0) 0%,
+            rgba(255, 255, 255, 0.25) 50%,
+            rgba(255, 255, 255, 0) 100%
+          );
+          transform: skewX(-25deg);
+          animation: rr-shimmerSweep 6s infinite ease-in-out;
+          pointer-events: none;
+        }
+
+        .rr-submit-btn:not(.disabled):hover {
+          transform: translateY(-2px);
+          box-shadow: 0 12px 35px ${RR_RED}50 !important;
+          filter: brightness(1.1);
+        }
+
+        .rr-submit-btn:not(.disabled):hover .rr-arrow-icon {
+          transform: translateX(4px);
+        }
+
+        .rr-submit-btn:not(.disabled):active {
+          transform: translateY(0);
+          filter: brightness(0.95);
+        }
+
+        /* Hover dinâmico nas features laterais */
+        .rr-feature-card:hover {
+          transform: translateY(-4px);
+          box-shadow: ${mode === 'dark' ? '0 12px 30px rgba(0,0,0,0.4)' : '0 12px 25px rgba(0,0,0,0.06)'};
+        }
+
+        .rr-legal-link:hover {
+          color: ${RR_RED} !important;
+          text-decoration: underline;
+        }
+
         @media (max-width: 960px) {
           .rr-login-container {
             grid-template-columns: 1fr !important;
