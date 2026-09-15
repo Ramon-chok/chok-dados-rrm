@@ -217,6 +217,108 @@ CREATE INDEX IF NOT EXISTS idx_ind_pos_periodo ON indicadores_positivacao(ano_re
 CREATE INDEX IF NOT EXISTS idx_ind_pos_vendedor ON indicadores_positivacao(cod_vendedor, data_referencia);
 
 -- ---------------------------------------------------------------------------
+-- TELA DE IMPORTAÇÃO — novos tipos (Lista de Sortimento, Top Clientes,
+-- Não Positivados). "Dados App" reaproveita as tabelas indicadores_* acima.
+-- ---------------------------------------------------------------------------
+
+-- Lista de Sortimento — cadastro de produtos do sortimento (upsert por código)
+CREATE TABLE IF NOT EXISTS sortimento (
+  cod_produto       TEXT PRIMARY KEY,
+  descricao_produto TEXT,
+  fornecedor        TEXT,
+  categoria         TEXT,
+  atualizado_em     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Top Clientes — aba "top_20_clientes": ranking de clientes por vendedor
+CREATE TABLE IF NOT EXISTS top_20_clientes (
+  data_referencia       DATE NOT NULL,
+  cod_vendedor          TEXT NOT NULL,
+  cod_cliente           TEXT NOT NULL,
+  nivel                 TEXT,
+  gerencia              TEXT,
+  equipe                TEXT,
+  nome_vendedor         TEXT,
+  pasta                 TEXT,
+  cliente_redes         TEXT,
+  trimestre_25          NUMERIC(14,2),
+  trimestre_26          NUMERIC(14,2),
+  pct_cresc_trimestre   NUMERIC(6,2),
+  mes_25                NUMERIC(14,2),
+  mes_26                NUMERIC(14,2),
+  pct_cresc_mes         NUMERIC(6,2),
+  mes_referencia        INT NOT NULL,
+  ano_referencia        INT NOT NULL,
+  data_importacao       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  importacao_id         BIGINT,
+  PRIMARY KEY (data_referencia, cod_vendedor, cod_cliente)
+);
+CREATE INDEX IF NOT EXISTS idx_top20_periodo ON top_20_clientes(ano_referencia, mes_referencia);
+CREATE INDEX IF NOT EXISTS idx_top20_vendedor ON top_20_clientes(cod_vendedor, data_referencia);
+
+-- Top Clientes — aba "top_clientes": venda total no mês por cliente
+CREATE TABLE IF NOT EXISTS top_clientes (
+  data_referencia   DATE NOT NULL,
+  cod_cliente       TEXT NOT NULL,
+  cliente           TEXT,
+  venda_total_mes   NUMERIC(14,2),
+  mes_referencia    INT NOT NULL,
+  ano_referencia    INT NOT NULL,
+  data_importacao   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  importacao_id     BIGINT,
+  PRIMARY KEY (data_referencia, cod_cliente)
+);
+CREATE INDEX IF NOT EXISTS idx_topcli_periodo ON top_clientes(ano_referencia, mes_referencia);
+
+-- Não Positivados — aba "Por vendedor"
+CREATE TABLE IF NOT EXISTS nao_positivados_vendedor (
+  data_referencia     DATE NOT NULL,
+  cod_vendedor        TEXT NOT NULL,
+  cod_cliente         TEXT NOT NULL,
+  vendedor            TEXT,
+  cliente             TEXT,
+  ultima_compra       DATE,
+  dias_sem_comprar    INT,
+  mes_referencia      INT NOT NULL,
+  ano_referencia      INT NOT NULL,
+  data_importacao     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  importacao_id       BIGINT,
+  PRIMARY KEY (data_referencia, cod_vendedor, cod_cliente)
+);
+CREATE INDEX IF NOT EXISTS idx_naopos_vend_periodo ON nao_positivados_vendedor(ano_referencia, mes_referencia);
+
+-- Não Positivados — aba "Equipe"
+CREATE TABLE IF NOT EXISTS nao_positivados_equipe (
+  data_referencia     DATE NOT NULL,
+  equipe              TEXT NOT NULL,
+  cod_cliente         TEXT NOT NULL,
+  cliente             TEXT,
+  ultima_compra       DATE,
+  dias_sem_comprar    INT,
+  mes_referencia      INT NOT NULL,
+  ano_referencia      INT NOT NULL,
+  data_importacao     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  importacao_id       BIGINT,
+  PRIMARY KEY (data_referencia, equipe, cod_cliente)
+);
+CREATE INDEX IF NOT EXISTS idx_naopos_equipe_periodo ON nao_positivados_equipe(ano_referencia, mes_referencia);
+
+-- Não Positivados — aba "Chok total"
+CREATE TABLE IF NOT EXISTS nao_positivados_chok_total (
+  data_referencia     DATE NOT NULL,
+  cod_cliente         TEXT NOT NULL,
+  cliente             TEXT,
+  ultima_compra       DATE,
+  dias_sem_comprar    INT,
+  mes_referencia      INT NOT NULL,
+  ano_referencia      INT NOT NULL,
+  data_importacao     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  importacao_id       BIGINT,
+  PRIMARY KEY (data_referencia, cod_cliente)
+);
+CREATE INDEX IF NOT EXISTS idx_naopos_chok_periodo ON nao_positivados_chok_total(ano_referencia, mes_referencia);
+
+-- ---------------------------------------------------------------------------
 -- AUDITORIA DE IMPORTAÇÃO (regras 26-28)
 -- ---------------------------------------------------------------------------
 

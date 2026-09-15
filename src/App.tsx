@@ -8,6 +8,7 @@ import { AppLayout } from './components/layout/AppLayout';
 import { VisaoMacroPage } from './pages/macro/VisaoMacro';
 import { DashboardPage } from './pages/Dashboard';
 import { NaoPositivadosPage } from './pages/commercial/NaoPositivados';
+import { Top20ClientesPage } from './pages/commercial/Top20Clientes';
 import { TopClientesPage } from './pages/commercial/TopClientes';
 import { SortimentosPage } from './pages/commercial/Sortimentos';
 import { CatalogoPage } from './pages/commercial/Catalogo';
@@ -133,6 +134,8 @@ function MainApp() {
         return <DashboardPage />;
       case 'not-positivated':
         return <NaoPositivadosPage />;
+      case 'top-20-customers':
+        return <Top20ClientesPage />;
       case 'top-customers':
         return <TopClientesPage />;
       case 'sortiments':
