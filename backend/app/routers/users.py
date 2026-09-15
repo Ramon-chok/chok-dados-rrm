@@ -3,7 +3,11 @@
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+from app.security import get_current_user
+from pathlib import Path
+import shutil
+import mimetypes
 
 from app.db import get_connection
 from app.schemas import UserCreate, UserOut, UserUpdate
@@ -11,6 +15,10 @@ from app.security import USER_SELECT, hash_password, require_roles
 from app.services import user_to_out
 
 router = APIRouter(prefix="/users", tags=["users"])
+
+# Diretório relativo para armazenar avatares
+AVATARS_DIR = Path(__file__).resolve().parent.parent.parent / "avatars"
+AVATARS_DIR.mkdir(parents=True, exist_ok=True)
 
 
 @router.get("", response_model=list[UserOut])
@@ -121,3 +129,37 @@ def delete_user(user_id: str, _admin: dict[str, Any] = Depends(require_roles("AD
             raise HTTPException(status_code=404, detail="Usuário não encontrado.")
         conn.commit()
     return {"ok": True}
+
+
+@router.post("/{user_id}/avatar")
+def upload_avatar(
+    user_id: str,
+    file: UploadFile = File(...),
+    current_user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, str]:
+    # permite somente o próprio usuário ou admin
+    if current_user.get("id") != user_id and current_user.get("role") != "ADMIN":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem permissão para enviar avatar para este usuário.")
+
+    content_type = (file.content_type or "").lower()
+    if not content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="Arquivo deve ser uma imagem.")
+
+    # tenta preservar extensão, fallback para jpg
+    ext = mimetypes.guess_extension(content_type) or Path(file.filename).suffix or ".jpg"
+    # limpar extensão para garantir formato .jpg .png etc
+    if not ext.startswith('.'):
+        ext = f'.{ext}'
+    filename = f"{user_id}{ext}"
+    dest = AVATARS_DIR / filename
+
+    try:
+        with dest.open("wb") as out_file:
+            shutil.copyfileobj(file.file, out_file)
+    finally:
+        try:
+            file.file.close()
+        except Exception:
+            pass
+
+    return {"url": f"/avatars/{filename}"}

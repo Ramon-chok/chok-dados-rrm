@@ -4,6 +4,8 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.staticfiles import StaticFiles
+from pathlib import Path
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -29,6 +31,11 @@ app = FastAPI(
     description="Backend Python do RR Mind / CHOK Dados: importação histórica, auth RBAC e leitura analítica.",
     lifespan=lifespan,
 )
+
+# Diretório público para avatares de usuários
+avatars_dir = Path(__file__).resolve().parent.parent / "avatars"
+avatars_dir.mkdir(parents=True, exist_ok=True)
+app.mount("/avatars", StaticFiles(directory=str(avatars_dir)), name="avatars")
 
 app.add_middleware(
     CORSMiddleware,

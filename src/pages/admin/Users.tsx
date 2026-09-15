@@ -936,7 +936,7 @@ export const UsersPage: React.FC = () => {
                     </div>
                     <div style={{ gridColumn: 'span 6' }}>
                       <label style={labelStyle}>E-mail corporativo</label>
-                      <input required type="email" disabled={editLoading} value={editEmail} onChange={(e) => setEditEmail(e.target.value)} style={inputStyle} placeholder="nome@empresa.com" />
+                      <input type="email" disabled={editLoading} value={editEmail} onChange={(e) => setEditEmail(e.target.value)} style={inputStyle} placeholder="nome@empresa.com" />
                     </div>
                     <div style={{ gridColumn: 'span 6' }}>
                       <label style={labelStyle}>Telefone corporativo</label>
@@ -1033,7 +1033,7 @@ export const UsersPage: React.FC = () => {
                         <label style={labelStyle}>CEP</label>
                         {editCepLoading && <span style={{ fontSize: '11px', color: t.textSecondary }}>Buscando...</span>}
                       </div>
-                      <input required disabled={editLoading} value={editZipCode} onChange={(e) => {
+                      <input disabled={editLoading} value={editZipCode} onChange={(e) => {
                         const formatted = formatCep(e.target.value);
                         setEditZipCode(formatted);
                         if (formatted.replace(/\D/g, '').length === 8) lookupCep(formatted, true);
@@ -1056,7 +1056,7 @@ export const UsersPage: React.FC = () => {
                     </div>
                     <div style={{ gridColumn: 'span 4' }}>
                       <label style={labelStyle}>Número</label>
-                      <input required disabled={editLoading} value={editNumber} onChange={(e) => setEditNumber(e.target.value)} style={inputStyle} placeholder="Nº" />
+                      <input disabled={editLoading} value={editNumber} onChange={(e) => setEditNumber(e.target.value)} style={inputStyle} placeholder="Nº" />
                     </div>
                     <div style={{ gridColumn: 'span 12' }}>
                       <label style={labelStyle}>Endereço</label>
@@ -1071,7 +1071,7 @@ export const UsersPage: React.FC = () => {
                     </div>
                     <div style={{ gridColumn: 'span 6' }}>
                       <label style={labelStyle}>Bairro</label>
-                      <input required disabled={editLoading} value={editNeighborhood} onChange={(e) => setEditNeighborhood(e.target.value)} style={inputStyle} placeholder="Bairro" />
+                      <input disabled={editLoading} value={editNeighborhood} onChange={(e) => setEditNeighborhood(e.target.value)} style={inputStyle} placeholder="Bairro" />
                     </div>
                     <div style={{ gridColumn: 'span 6' }}>
                       <label style={labelStyle}>Município</label>
