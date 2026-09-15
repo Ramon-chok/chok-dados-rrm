@@ -869,34 +869,6 @@ export const LoginView: React.FC = () => {
                   </button>
                 </div>
 
-                {/* Medidor Inteligente de Força de Senha */}
-                {password && (
-                  <div style={{ marginTop: '10px', animation: 'rr-fadeIn 0.3s ease' }}>
-                    <div style={{ display: 'flex', gap: '4px', marginBottom: '6px' }}>
-                      {[1, 2, 3, 4].map((level) => (
-                        <div
-                          key={level}
-                          style={{
-                            flex: 1,
-                            height: '4px',
-                            borderRadius: '10px',
-                            background: level <= passwordStrength
-                              ? getStrengthColor()
-                              : (mode === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)'),
-                            transition: 'all 0.4s ease',
-                          }}
-                        />
-                      ))}
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontSize: '11px', color: t.textMuted }}>Complexidade da senha</span>
-                      <span style={{ fontSize: '11px', color: getStrengthColor(), fontWeight: 700 }}>
-                        {getStrengthLabel()}
-                      </span>
-                    </div>
-                  </div>
-                )}
-
                 {/* Caps lock warning */}
                 {capsLockOn && passwordFocused && (
                   <div

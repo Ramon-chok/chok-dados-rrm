@@ -13,7 +13,7 @@ from fastapi.responses import JSONResponse
 from app import __version__
 from app.config import get_settings
 from app.db import close_pool
-from app.routers import analytics, auth, catalog, imports, users
+from app.routers import analytics, auth, catalog, imports, users, twofa
 
 settings = get_settings()
 origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
@@ -85,3 +85,4 @@ app.include_router(users.router, prefix="/api")
 app.include_router(imports.router, prefix="/api")
 app.include_router(analytics.router, prefix="/api")
 app.include_router(catalog.router, prefix="/api")
+app.include_router(twofa.router, prefix="/api")
