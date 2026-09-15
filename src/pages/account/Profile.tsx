@@ -515,7 +515,7 @@ export const ProfilePage: React.FC = () => {
                 <input
                   type="text"
                   value={state}
-                  onChange={(e) => setState(e.target.value)}
+                  onChange={(e) => setState(e.target.value.toUpperCase())}
                   maxLength={2}
                   style={{
                     width: '100%',

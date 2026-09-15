@@ -35,7 +35,10 @@ function MainApp() {
   if (isLoading) {
     return (
       <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: t.bg, color: t.textSecondary, fontSize: 14 }}>
-        Validando token de sessão...
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+          <div style={{ width: 40, height: 40, border: '3px solid rgba(255,255,255,0.15)', borderTopColor: t.primary, borderRadius: '50%', animation: 'rr-spin 0.8s linear infinite' }} />
+          <div style={{ fontSize: 13, color: t.textSecondary }}>Carregando sessão...</div>
+        </div>
       </div>
     );
   }

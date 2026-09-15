@@ -15,12 +15,45 @@ import {
   Sparkles,
   X,
   Check,
+  Cookie,
+  FileText,
+  Shield,
+  ExternalLink,
+  Settings,
+  Info,
+  ChevronRight,
+  Zap,
+  Lock as LockIcon,
 } from 'lucide-react';
+
+// ============================================
+// TIPOS
+// ============================================
+interface CookiePreferences {
+  necessary: boolean;
+  analytics: boolean;
+  functional: boolean;
+  marketing: boolean;
+}
+
+interface ConsentData {
+  cookies: CookiePreferences;
+  termsAccepted: boolean;
+  privacyAccepted: boolean;
+  timestamp: string;
+  version: string;
+}
+
+const CONSENT_STORAGE_KEY = 'rr_mind_consent_v1';
+const CONSENT_VERSION = '1.0.0';
 
 export const LoginView: React.FC = () => {
   const { login, isLoading } = useAuth();
   const { mode, toggleTheme, t } = useTheme();
 
+  // ============================================
+  // ESTADO — LOGIN
+  // ============================================
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(true);
@@ -29,17 +62,71 @@ export const LoginView: React.FC = () => {
   const [emailFocused, setEmailFocused] = useState(false);
   const [passwordFocused, setPasswordFocused] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [capsLockOn, setCapsLockOn] = useState(false);
+  const [passwordStrength, setPasswordStrength] = useState(0);
 
-  // Forgot password modal
+  // ============================================
+  // ESTADO — FORGOT
+  // ============================================
   const [isForgotModalOpen, setIsForgotModalOpen] = useState(false);
   const [forgotEmail, setForgotEmail] = useState('');
   const [forgotSubmitted, setForgotSubmitted] = useState(false);
 
-  // Particle canvas
+  // ============================================
+  // ESTADO — CONSENTIMENTO LGPD
+  // ============================================
+  const [consentGiven, setConsentGiven] = useState(false);
+  const [showCookieBanner, setShowCookieBanner] = useState(false);
+  const [showCookieDetails, setShowCookieDetails] = useState(false);
+  const [isTermsModalOpen, setIsTermsModalOpen] = useState(false);
+  const [isPrivacyModalOpen, setIsPrivacyModalOpen] = useState(false);
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [acceptedPrivacy, setAcceptedPrivacy] = useState(false);
+  const [cookiePrefs, setCookiePrefs] = useState<CookiePreferences>({
+    necessary: true, // sempre true
+    analytics: false,
+    functional: false,
+    marketing: false,
+  });
+
+  // Refs
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const emailInputRef = useRef<HTMLInputElement>(null);
 
   // ============================================
-  // PARTICLE BACKGROUND — RR MIND CORE
+  // CARREGA CONSENTIMENTO SALVO
+  // ============================================
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(CONSENT_STORAGE_KEY);
+      if (saved) {
+        const data: ConsentData = JSON.parse(saved);
+        if (data.version === CONSENT_VERSION) {
+          setConsentGiven(true);
+          setCookiePrefs(data.cookies);
+          setAcceptedTerms(data.termsAccepted);
+          setAcceptedPrivacy(data.privacyAccepted);
+          return;
+        }
+      }
+      // Se não há consentimento, exibe banner após pequeno delay
+      setTimeout(() => setShowCookieBanner(true), 800);
+    } catch {
+      setTimeout(() => setShowCookieBanner(true), 800);
+    }
+  }, []);
+
+  // ============================================
+  // AUTO FOCUS
+  // ============================================
+  useEffect(() => {
+    if (consentGiven && emailInputRef.current) {
+      emailInputRef.current.focus();
+    }
+  }, [consentGiven]);
+
+  // ============================================
+  // PARTICLE BACKGROUND
   // ============================================
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -49,13 +136,9 @@ export const LoginView: React.FC = () => {
 
     let animationFrame: number;
     let particles: Array<{
-      x: number;
-      y: number;
-      size: number;
-      speedX: number;
-      speedY: number;
-      opacity: number;
-      isRed: boolean;
+      x: number; y: number; size: number;
+      speedX: number; speedY: number;
+      opacity: number; isRed: boolean;
     }> = [];
     let mouseX = 0;
     let mouseY = 0;
@@ -83,11 +166,9 @@ export const LoginView: React.FC = () => {
 
     const animate = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-
       particles.forEach((p) => {
         p.x += p.speedX;
         p.y += p.speedY;
-
         const dx = mouseX - p.x;
         const dy = mouseY - p.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
@@ -96,12 +177,10 @@ export const LoginView: React.FC = () => {
           p.x -= dx * force * 0.008;
           p.y -= dy * force * 0.008;
         }
-
         if (p.x < -10) p.x = canvas.width + 10;
         if (p.x > canvas.width + 10) p.x = -10;
         if (p.y < -10) p.y = canvas.height + 10;
         if (p.y > canvas.height + 10) p.y = -10;
-
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
         ctx.fillStyle = p.isRed
@@ -111,8 +190,6 @@ export const LoginView: React.FC = () => {
           : `rgba(10, 10, 10, ${p.opacity * 0.7})`;
         ctx.fill();
       });
-
-      // connections
       for (let i = 0; i < particles.length; i++) {
         for (let j = i + 1; j < particles.length; j++) {
           const dx = particles[i].x - particles[j].x;
@@ -134,7 +211,6 @@ export const LoginView: React.FC = () => {
           }
         }
       }
-
       animationFrame = requestAnimationFrame(animate);
     };
 
@@ -146,10 +222,7 @@ export const LoginView: React.FC = () => {
     resize();
     initParticles();
     animate();
-    window.addEventListener('resize', () => {
-      resize();
-      initParticles();
-    });
+    window.addEventListener('resize', () => { resize(); initParticles(); });
     document.addEventListener('mousemove', handleMouse);
 
     return () => {
@@ -162,10 +235,19 @@ export const LoginView: React.FC = () => {
   // ============================================
   // HANDLERS
   // ============================================
+  const handleKeyEvent = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    setCapsLockOn(e.getModifierState && e.getModifierState('CapsLock'));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
 
+    if (!consentGiven) {
+      setShowCookieBanner(true);
+      setErrorMessage('Por favor, aceite os termos para continuar.');
+      return;
+    }
     if (!email.trim()) {
       setErrorMessage('Por favor, informe seu e-mail corporativo.');
       return;
@@ -181,8 +263,6 @@ export const LoginView: React.FC = () => {
     }
   };
 
-  
-
   const handleForgotSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!forgotEmail.trim()) return;
@@ -190,10 +270,76 @@ export const LoginView: React.FC = () => {
   };
 
   // ============================================
-  // TOKENS â€” RR MIND
+  // CONSENTIMENTO — HANDLERS
+  // ============================================
+  const persistConsent = (prefs: CookiePreferences, terms: boolean, privacy: boolean) => {
+    const data: ConsentData = {
+      cookies: prefs,
+      termsAccepted: terms,
+      privacyAccepted: privacy,
+      timestamp: new Date().toISOString(),
+      version: CONSENT_VERSION,
+    };
+    localStorage.setItem(CONSENT_STORAGE_KEY, JSON.stringify(data));
+    setConsentGiven(true);
+    setShowCookieBanner(false);
+    setShowCookieDetails(false);
+  };
+
+  const handleAcceptAll = () => {
+    const allAccepted: CookiePreferences = {
+      necessary: true,
+      analytics: true,
+      functional: true,
+      marketing: true,
+    };
+    setCookiePrefs(allAccepted);
+    setAcceptedTerms(true);
+    setAcceptedPrivacy(true);
+    persistConsent(allAccepted, true, true);
+  };
+
+  const handleAcceptNecessary = () => {
+    const necessary: CookiePreferences = {
+      necessary: true,
+      analytics: false,
+      functional: false,
+      marketing: false,
+    };
+    setCookiePrefs(necessary);
+    setAcceptedTerms(true);
+    setAcceptedPrivacy(true);
+    persistConsent(necessary, true, true);
+  };
+
+  const handleSaveCustom = () => {
+    if (!acceptedTerms || !acceptedPrivacy) {
+      alert('É necessário aceitar os Termos de Uso e a Política de Privacidade para continuar.');
+      return;
+    }
+    persistConsent(cookiePrefs, acceptedTerms, acceptedPrivacy);
+  };
+
+  // ============================================
+  // TOKENS
   // ============================================
   const RR_RED = '#D71920';
   const RR_RED_DARK = '#8B0000';
+
+  const getStrengthColor = () => {
+    if (passwordStrength <= 1) return '#EF4444';
+    if (passwordStrength === 2) return '#F59E0B';
+    if (passwordStrength === 3) return '#3B82F6';
+    return '#10B981';
+  };
+
+  const getStrengthLabel = () => {
+    if (passwordStrength === 0) return '';
+    if (passwordStrength === 1) return 'Fraca';
+    if (passwordStrength === 2) return 'Média';
+    if (passwordStrength === 3) return 'Boa';
+    return 'Forte';
+  };
 
   return (
     <div
@@ -222,6 +368,36 @@ export const LoginView: React.FC = () => {
         }}
       />
 
+      {/* Gradient orbs */}
+      <div
+        style={{
+          position: 'fixed',
+          top: '-200px',
+          right: '-200px',
+          width: '500px',
+          height: '500px',
+          borderRadius: '50%',
+          background: `radial-gradient(circle, rgba(215,25,32,0.12) 0%, transparent 70%)`,
+          pointerEvents: 'none',
+          zIndex: 0,
+          animation: 'rr-float 20s ease-in-out infinite',
+        }}
+      />
+      <div
+        style={{
+          position: 'fixed',
+          bottom: '-200px',
+          left: '-200px',
+          width: '500px',
+          height: '500px',
+          borderRadius: '50%',
+          background: `radial-gradient(circle, rgba(99,102,241,0.10) 0%, transparent 70%)`,
+          pointerEvents: 'none',
+          zIndex: 0,
+          animation: 'rr-float 25s ease-in-out infinite reverse',
+        }}
+      />
+
       {/* Grid overlay */}
       <div
         style={{
@@ -237,7 +413,7 @@ export const LoginView: React.FC = () => {
 
       {/* ============================================
           HEADER
-          ============================================ */}
+      ============================================ */}
       <header
         style={{
           height: '68px',
@@ -327,7 +503,7 @@ export const LoginView: React.FC = () => {
               }}
             />
             <ShieldCheck size={13} color="#3DD68C" />
-            <span style={{ textTransform: 'uppercase', fontWeight: 500 }}>RBAC 25 Permissões</span>
+            <span style={{ textTransform: 'uppercase', fontWeight: 500 }}>Sistema Operacional</span>
           </div>
 
           <button
@@ -362,7 +538,7 @@ export const LoginView: React.FC = () => {
 
       {/* ============================================
           MAIN
-          ============================================ */}
+      ============================================ */}
       <main
         style={{
           flex: 1,
@@ -387,46 +563,51 @@ export const LoginView: React.FC = () => {
         >
           {/* ============================================
               LOGIN CARD
-              ============================================ */}
+          ============================================ */}
           <div
             style={{
               background: mode === 'dark' ? 'rgba(15,15,15,0.75)' : 'rgba(255,255,255,0.85)',
               backdropFilter: 'blur(30px)',
               WebkitBackdropFilter: 'blur(30px)',
               border: `1px solid ${t.border}`,
-              borderRadius: '18px',
+              borderRadius: '20px',
               padding: '40px 36px',
               boxShadow:
                 mode === 'dark'
                   ? '0 20px 60px rgba(0,0,0,0.5), 0 0 0 1px rgba(215,25,32,0.05)'
-                  : '0 14px 40px rgba(0,0,0,0.06), 0 0 0 1px rgba(215,25,32,0.03)',
+                  : '0 14px 40px rgba(0,0,0,0.08), 0 0 0 1px rgba(215,25,32,0.03)',
               position: 'relative',
               overflow: 'hidden',
               animation: 'rr-fadeInUp 0.7s cubic-bezier(0.4,0,0.2,1)',
             }}
           >
-            {/* Decorative corner */}
+            {/* Top accent line */}
+            <div
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                height: '3px',
+                background: `linear-gradient(90deg, transparent, ${RR_RED}, transparent)`,
+              }}
+            />
+
+            {/* Decorative corner glow */}
             <div
               style={{
                 position: 'absolute',
                 top: 0,
                 right: 0,
-                width: '80px',
-                height: '80px',
-                background: `radial-gradient(circle at top right, rgba(215,25,32,0.08), transparent 70%)`,
+                width: '120px',
+                height: '120px',
+                background: `radial-gradient(circle at top right, rgba(215,25,32,0.12), transparent 70%)`,
                 pointerEvents: 'none',
               }}
             />
 
             {/* Section label */}
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '10px',
-                marginBottom: '18px',
-              }}
-            >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '18px' }}>
               <span
                 style={{
                   fontFamily: "'Space Grotesk', sans-serif",
@@ -476,6 +657,29 @@ export const LoginView: React.FC = () => {
             >
               Central de inteligência de dados, negócios e gestão comercial.
             </p>
+
+            {/* Consent notice */}
+            {!consentGiven && (
+              <div
+                style={{
+                  background: 'rgba(245, 158, 11, 0.08)',
+                  border: '1px solid rgba(245, 158, 11, 0.25)',
+                  borderRadius: '10px',
+                  padding: '12px 14px',
+                  marginBottom: '22px',
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: '10px',
+                  fontSize: '12.5px',
+                  color: '#F59E0B',
+                }}
+              >
+                <Info size={16} style={{ flexShrink: 0, marginTop: '2px' }} />
+                <span style={{ lineHeight: 1.5 }}>
+                  Aceite os <strong>Termos de Uso</strong> e a <strong>Política de Privacidade</strong> antes de acessar.
+                </span>
+              </div>
+            )}
 
             {/* Error Alert */}
             {errorMessage && (
@@ -536,6 +740,7 @@ export const LoginView: React.FC = () => {
                 >
                   <Mail size={16} color={emailFocused ? RR_RED : t.textMuted} style={{ transition: 'color 0.2s' }} />
                   <input
+                    ref={emailInputRef}
                     id="email"
                     type="email"
                     value={email}
@@ -544,6 +749,7 @@ export const LoginView: React.FC = () => {
                     onBlur={() => setEmailFocused(false)}
                     placeholder="seu.email@empresa.com.br"
                     required
+                    autoComplete="email"
                     style={{
                       border: 'none',
                       outline: 'none',
@@ -554,6 +760,9 @@ export const LoginView: React.FC = () => {
                       fontFamily: "'Inter', sans-serif",
                     }}
                   />
+                  {email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && (
+                    <CheckCircle2 size={15} color="#10B981" style={{ animation: 'rr-checkIn 0.3s ease' }} />
+                  )}
                 </div>
               </div>
 
@@ -624,8 +833,11 @@ export const LoginView: React.FC = () => {
                     onChange={(e) => setPassword(e.target.value)}
                     onFocus={() => setPasswordFocused(true)}
                     onBlur={() => setPasswordFocused(false)}
+                    onKeyUp={handleKeyEvent}
+                    onKeyDown={handleKeyEvent}
                     placeholder="••••••••••••"
                     required
+                    autoComplete="current-password"
                     style={{
                       border: 'none',
                       outline: 'none',
@@ -656,9 +868,50 @@ export const LoginView: React.FC = () => {
                     {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                   </button>
                 </div>
+
+                {/* Password strength meter */}
+                {password && (
+                  <div style={{ marginTop: '8px' }}>
+                    <div style={{ display: 'flex', gap: '3px', marginBottom: '4px' }}>
+                      {[0, 1, 2, 3].map((i) => (
+                        <div
+                          key={i}
+                          style={{
+                            flex: 1,
+                            height: '3px',
+                            borderRadius: '2px',
+                            background: i < passwordStrength ? getStrengthColor() : mode === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)',
+                            transition: 'background 0.3s',
+                          }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Caps lock warning */}
+                {capsLockOn && passwordFocused && (
+                  <div
+                    style={{
+                      marginTop: '8px',
+                      padding: '6px 10px',
+                      borderRadius: '6px',
+                      background: 'rgba(245, 158, 11, 0.1)',
+                      border: '1px solid rgba(245, 158, 11, 0.3)',
+                      fontSize: '11px',
+                      color: '#F59E0B',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                    }}
+                  >
+                    <AlertCircle size={12} />
+                    Caps Lock está ativado
+                  </div>
+                )}
               </div>
 
-              {/* Remember me — Custom checkbox RR Mind */}
+              {/* Remember me */}
               <label
                 style={{
                   display: 'flex',
@@ -691,12 +944,7 @@ export const LoginView: React.FC = () => {
                   }}
                 >
                   {rememberMe && (
-                    <Check
-                      size={11}
-                      color="#fff"
-                      strokeWidth={3}
-                      style={{ animation: 'rr-checkIn 0.2s ease' }}
-                    />
+                    <Check size={11} color="#fff" strokeWidth={3} style={{ animation: 'rr-checkIn 0.2s ease' }} />
                   )}
                 </div>
                 <span style={{ fontSize: '13px', color: t.textSecondary }}>
@@ -707,23 +955,23 @@ export const LoginView: React.FC = () => {
               {/* Submit */}
               <button
                 type="submit"
-                disabled={isLoading || submitting}
+                disabled={isLoading || submitting || !consentGiven}
                 style={{
                   width: '100%',
                   padding: '14px 24px',
                   borderRadius: '10px',
                   border: 'none',
-                  background: RR_RED,
+                  background: !consentGiven ? t.textMuted : RR_RED,
                   color: '#FFFFFF',
                   fontSize: '14px',
                   fontWeight: 600,
-                  cursor: isLoading || submitting ? 'not-allowed' : 'pointer',
+                  cursor: isLoading || submitting || !consentGiven ? 'not-allowed' : 'pointer',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   gap: '10px',
                   transition: 'all 0.2s ease',
-                  boxShadow: '0 8px 24px rgba(215,25,32,0.28)',
+                  boxShadow: consentGiven ? '0 8px 24px rgba(215,25,32,0.28)' : 'none',
                   opacity: isLoading || submitting ? 0.75 : 1,
                   position: 'relative',
                   overflow: 'hidden',
@@ -731,31 +979,37 @@ export const LoginView: React.FC = () => {
                   letterSpacing: '0.3px',
                 }}
                 onMouseEnter={(e) => {
-                  if (!isLoading) {
+                  if (!isLoading && consentGiven) {
                     e.currentTarget.style.background = RR_RED_DARK;
                     e.currentTarget.style.transform = 'translateY(-1px)';
                     e.currentTarget.style.boxShadow = '0 12px 32px rgba(215,25,32,0.4)';
                   }
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.background = RR_RED;
-                  e.currentTarget.style.transform = 'translateY(0)';
-                  e.currentTarget.style.boxShadow = '0 8px 24px rgba(215,25,32,0.28)';
+                  if (consentGiven) {
+                    e.currentTarget.style.background = RR_RED;
+                    e.currentTarget.style.transform = 'translateY(0)';
+                    e.currentTarget.style.boxShadow = '0 8px 24px rgba(215,25,32,0.28)';
+                  }
                 }}
               >
                 {isLoading || submitting ? (
                   <>
                     <span
                       style={{
-                        width: '16px',
-                        height: '16px',
+                        width: '18px',
+                        height: '18px',
                         border: '2px solid rgba(255,255,255,0.3)',
                         borderTopColor: '#fff',
                         borderRadius: '50%',
                         animation: 'rr-spin 0.8s linear infinite',
                       }}
                     />
-                    <span>Validando credenciais...</span>
+                  </>
+                ) : !consentGiven ? (
+                  <>
+                    <LockIcon size={15} />
+                    <span>Aceite os termos para continuar</span>
                   </>
                 ) : (
                   <>
@@ -766,11 +1020,83 @@ export const LoginView: React.FC = () => {
               </button>
             </form>
 
+            {/* Legal Links */}
+            <div
+              style={{
+                marginTop: '20px',
+                display: 'flex',
+                justifyContent: 'center',
+                gap: '16px',
+                flexWrap: 'wrap',
+                fontSize: '11px',
+              }}
+            >
+              <button
+                onClick={() => setIsTermsModalOpen(true)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: t.textMuted,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  padding: 0,
+                  transition: 'color 0.2s',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.color = RR_RED)}
+                onMouseLeave={(e) => (e.currentTarget.style.color = t.textMuted)}
+              >
+                <FileText size={11} />
+                Termos de Uso
+              </button>
+              <span style={{ color: t.textMuted, opacity: 0.4 }}>•</span>
+              <button
+                onClick={() => setIsPrivacyModalOpen(true)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: t.textMuted,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  padding: 0,
+                  transition: 'color 0.2s',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.color = RR_RED)}
+                onMouseLeave={(e) => (e.currentTarget.style.color = t.textMuted)}
+              >
+                <Shield size={11} />
+                Privacidade
+              </button>
+              <span style={{ color: t.textMuted, opacity: 0.4 }}>•</span>
+              <button
+                onClick={() => setShowCookieBanner(true)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: t.textMuted,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  padding: 0,
+                  transition: 'color 0.2s',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.color = RR_RED)}
+                onMouseLeave={(e) => (e.currentTarget.style.color = t.textMuted)}
+              >
+                <Cookie size={11} />
+                Cookies
+              </button>
+            </div>
+
             {/* Footer */}
             <div
               style={{
-                marginTop: '28px',
-                paddingTop: '20px',
+                marginTop: '16px',
+                paddingTop: '16px',
                 borderTop: `1px solid ${t.border}`,
                 display: 'flex',
                 alignItems: 'center',
@@ -783,79 +1109,651 @@ export const LoginView: React.FC = () => {
               }}
             >
               <ShieldCheck size={12} />
-              <span>Autenticação com criptografia de ponta a ponta · RBAC estrito</span>
-            </div>
-          </div>
-
-          {/* ============================================
-              SIDE PANEL â€” QUICK LOGIN + HIERARQUIA
-              ============================================ */}
-          <div
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '20px',
-              animation: 'rr-fadeInUp 0.7s cubic-bezier(0.4,0,0.2,1) 0.1s both',
-            }}
-          >
-            {/* Token JWT info */}
-            <div
-              style={{
-                background: mode === 'dark' ? 'rgba(15,15,15,0.7)' : 'rgba(255,255,255,0.8)',
-                backdropFilter: 'blur(30px)',
-                WebkitBackdropFilter: 'blur(30px)',
-                border: `1px solid ${t.border}`,
-                borderRadius: '18px',
-                padding: '28px',
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
-                <span style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: '11px', color: RR_RED, letterSpacing: '2px', fontWeight: 600 }}>02</span>
-                <div style={{ width: '32px', height: '1px', background: RR_RED, opacity: 0.5 }} />
-                <span style={{ fontSize: '10.5px', color: t.textMuted, textTransform: 'uppercase', letterSpacing: '2px', fontWeight: 500 }}>Token JWT</span>
-              </div>
-              <h2 style={{ margin: '0 0 10px', fontSize: '17px', fontWeight: 700, color: t.text, display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Sparkles size={16} color={RR_RED} />
-                Acesso seguro
-              </h2>
-              <p style={{ margin: '0 0 14px', fontSize: '12.5px', color: t.textSecondary, lineHeight: 1.55 }}>
-                O login cria um token JWT no backend. Todas as páginas enviam <strong>Authorization: Bearer</strong> nas chamadas <code>/api/*</code>.
-              </p>
-              <ul style={{ margin: 0, paddingLeft: 18, color: t.textSecondary, fontSize: 12.5, lineHeight: 1.7 }}>
-                <li>Assinatura HS256 com expiração configurável</li>
-                <li>Persistência em localStorage (lembrar) ou sessionStorage</li>
-                <li>401 limpa a sessão e volta para o login</li>
-                <li>Escopo RBAC aplicado no servidor por rota</li>
-              </ul>
-            </div>
-
-            <div
-              style={{
-                background: mode === 'dark' ? 'rgba(15,15,15,0.7)' : 'rgba(255,255,255,0.8)',
-                backdropFilter: 'blur(30px)',
-                WebkitBackdropFilter: 'blur(30px)',
-                border: `1px solid ${t.border}`,
-                borderRadius: '18px',
-                padding: '22px 28px',
-              }}
-            >
-              <h3 style={{ margin: '0 0 10px', fontSize: '13px', fontWeight: 600, color: t.text }}>Hierarquia de dados</h3>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', color: t.textMuted, flexWrap: 'wrap' }}>
-                {['EMPRESA', 'GERÊNCIA', 'SUPERVISÃO', 'VENDEDOR', 'CLIENTE'].map((level, idx, arr) => (
-                  <React.Fragment key={level}>
-                    <span style={{ color: idx === 0 ? RR_RED : t.textSecondary, fontWeight: idx === 0 ? 700 : 500, padding: '4px 8px', borderRadius: 5, background: idx === 0 ? 'rgba(215,25,32,0.08)' : 'transparent', border: idx === 0 ? '1px solid rgba(215,25,32,0.2)' : '1px solid transparent' }}>{level}</span>
-                    {idx < arr.length - 1 && <span style={{ color: RR_RED, opacity: 0.5 }}>→</span>}
-                  </React.Fragment>
-                ))}
-              </div>
+              <span>Criptografia ponta a ponta · Conformidade LGPD</span>
             </div>
           </div>
         </div>
       </main>
 
       {/* ============================================
+          COOKIE BANNER
+      ============================================ */}
+      {showCookieBanner && (
+        <div
+          style={{
+            position: 'fixed',
+            bottom: 0,
+            left: 0,
+            right: 0,
+            zIndex: 9998,
+            padding: '20px',
+            animation: 'rr-slideUp 0.4s cubic-bezier(0.4,0,0.2,1)',
+          }}
+        >
+          <div
+            style={{
+              maxWidth: '1120px',
+              margin: '0 auto',
+              background: mode === 'dark' ? 'rgba(15,15,15,0.98)' : 'rgba(255,255,255,0.98)',
+              backdropFilter: 'blur(30px)',
+              WebkitBackdropFilter: 'blur(30px)',
+              border: `1px solid ${t.border}`,
+              borderLeft: `4px solid ${RR_RED}`,
+              borderRadius: '14px',
+              padding: showCookieDetails ? '24px' : '20px 24px',
+              boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+            }}
+          >
+            {!showCookieDetails ? (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '20px',
+                  flexWrap: 'wrap',
+                }}
+              >
+                <div
+                  style={{
+                    width: 44,
+                    height: 44,
+                    borderRadius: '12px',
+                    background: `linear-gradient(135deg, ${RR_RED}, ${RR_RED_DARK})`,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                    boxShadow: '0 4px 14px rgba(215,25,32,0.3)',
+                  }}
+                >
+                  <Cookie size={22} color="#fff" />
+                </div>
+                <div style={{ flex: 1, minWidth: 250 }}>
+                  <h3
+                    style={{
+                      margin: '0 0 4px',
+                      fontSize: '14px',
+                      fontWeight: 700,
+                      color: t.text,
+                    }}
+                  >
+                    Sua privacidade importa
+                  </h3>
+                  <p
+                    style={{
+                      margin: 0,
+                      fontSize: '12.5px',
+                      color: t.textSecondary,
+                      lineHeight: 1.5,
+                    }}
+                  >
+                    Utilizamos cookies para melhorar sua experiência, análises e conformidade com a LGPD. Você pode escolher quais aceitar.{' '}
+                    <button
+                      onClick={() => setIsPrivacyModalOpen(true)}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: RR_RED,
+                        cursor: 'pointer',
+                        padding: 0,
+                        fontSize: '12.5px',
+                        fontWeight: 500,
+                        textDecoration: 'underline',
+                      }}
+                    >
+                      Saiba mais
+                    </button>
+                  </p>
+                </div>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  <button
+                    onClick={() => setShowCookieDetails(true)}
+                    style={{
+                      padding: '10px 16px',
+                      borderRadius: '8px',
+                      border: `1px solid ${t.border}`,
+                      background: 'transparent',
+                      color: t.textSecondary,
+                      fontSize: '12.5px',
+                      fontWeight: 500,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      transition: 'all 0.2s',
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.color = t.text)}
+                    onMouseLeave={(e) => (e.currentTarget.style.color = t.textSecondary)}
+                  >
+                    <Settings size={13} />
+                    Personalizar
+                  </button>
+                  <button
+                    onClick={handleAcceptNecessary}
+                    style={{
+                      padding: '10px 16px',
+                      borderRadius: '8px',
+                      border: `1px solid ${t.border}`,
+                      background: mode === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
+                      color: t.text,
+                      fontSize: '12.5px',
+                      fontWeight: 500,
+                      cursor: 'pointer',
+                      transition: 'all 0.2s',
+                    }}
+                  >
+                    Apenas necessários
+                  </button>
+                  <button
+                    onClick={handleAcceptAll}
+                    style={{
+                      padding: '10px 20px',
+                      borderRadius: '8px',
+                      border: 'none',
+                      background: RR_RED,
+                      color: '#fff',
+                      fontSize: '12.5px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      boxShadow: '0 4px 14px rgba(215,25,32,0.3)',
+                      transition: 'all 0.2s',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = RR_RED_DARK;
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = RR_RED;
+                    }}
+                  >
+                    Aceitar todos
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div>
+                {/* Header */}
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    marginBottom: '20px',
+                    paddingBottom: '16px',
+                    borderBottom: `1px solid ${t.border}`,
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div
+                      style={{
+                        width: 40,
+                        height: 40,
+                        borderRadius: '10px',
+                        background: `linear-gradient(135deg, ${RR_RED}, ${RR_RED_DARK})`,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <Settings size={18} color="#fff" />
+                    </div>
+                    <div>
+                      <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700, color: t.text }}>
+                        Preferências de Privacidade
+                      </h3>
+                      <p style={{ margin: '2px 0 0', fontSize: '12px', color: t.textMuted }}>
+                        Escolha quais dados podem ser coletados
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setShowCookieDetails(false)}
+                    style={{
+                      padding: '6px',
+                      background: 'none',
+                      border: 'none',
+                      color: t.textMuted,
+                      cursor: 'pointer',
+                      borderRadius: '6px',
+                    }}
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+
+                {/* Categorias de cookies */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '20px' }}>
+                  {[
+                    {
+                      key: 'necessary' as const,
+                      title: 'Cookies Necessários',
+                      desc: 'Essenciais para o funcionamento do sistema. Não podem ser desativados.',
+                      required: true,
+                    },
+                    {
+                      key: 'functional' as const,
+                      title: 'Cookies Funcionais',
+                      desc: 'Lembram suas preferências como tema, idioma e configurações personalizadas.',
+                      required: false,
+                    },
+                    {
+                      key: 'analytics' as const,
+                      title: 'Cookies de Análise',
+                      desc: 'Nos ajudam a entender como você usa a plataforma para melhorá-la continuamente.',
+                      required: false,
+                    },
+                    {
+                      key: 'marketing' as const,
+                      title: 'Cookies de Marketing',
+                      desc: 'Usados para exibir comunicações e ofertas relevantes ao seu perfil.',
+                      required: false,
+                    },
+                  ].map((cookie) => (
+                    <div
+                      key={cookie.key}
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'flex-start',
+                        gap: '16px',
+                        padding: '14px 16px',
+                        borderRadius: '10px',
+                        background: mode === 'dark' ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.02)',
+                        border: `1px solid ${t.border}`,
+                      }}
+                    >
+                      <div style={{ flex: 1 }}>
+                        <div
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            marginBottom: '4px',
+                          }}
+                        >
+                          <span
+                            style={{
+                              fontSize: '13px',
+                              fontWeight: 600,
+                              color: t.text,
+                            }}
+                          >
+                            {cookie.title}
+                          </span>
+                          {cookie.required && (
+                            <span
+                              style={{
+                                fontSize: '9.5px',
+                                fontWeight: 700,
+                                textTransform: 'uppercase',
+                                letterSpacing: '0.05em',
+                                padding: '2px 6px',
+                                borderRadius: '4px',
+                                background: 'rgba(16, 185, 129, 0.1)',
+                                color: '#10B981',
+                                border: '1px solid rgba(16, 185, 129, 0.3)',
+                              }}
+                            >
+                              Obrigatório
+                            </span>
+                          )}
+                        </div>
+                        <p
+                          style={{
+                            margin: 0,
+                            fontSize: '11.5px',
+                            color: t.textSecondary,
+                            lineHeight: 1.5,
+                          }}
+                        >
+                          {cookie.desc}
+                        </p>
+                      </div>
+                      {/* Toggle switch */}
+                      <label
+                        style={{
+                          position: 'relative',
+                          display: 'inline-block',
+                          width: '40px',
+                          height: '22px',
+                          flexShrink: 0,
+                          cursor: cookie.required ? 'not-allowed' : 'pointer',
+                          opacity: cookie.required ? 0.7 : 1,
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={cookiePrefs[cookie.key]}
+                          disabled={cookie.required}
+                          onChange={(e) =>
+                            setCookiePrefs((prev) => ({ ...prev, [cookie.key]: e.target.checked }))
+                          }
+                          style={{ opacity: 0, width: 0, height: 0 }}
+                        />
+                        <span
+                          style={{
+                            position: 'absolute',
+                            cursor: cookie.required ? 'not-allowed' : 'pointer',
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
+                            background: cookiePrefs[cookie.key] ? RR_RED : mode === 'dark' ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)',
+                            borderRadius: '22px',
+                            transition: 'background 0.2s',
+                          }}
+                        />
+                        <span
+                          style={{
+                            position: 'absolute',
+                            content: '""',
+                            height: '16px',
+                            width: '16px',
+                            left: cookiePrefs[cookie.key] ? '21px' : '3px',
+                            top: '3px',
+                            background: '#fff',
+                            borderRadius: '50%',
+                            transition: 'left 0.2s',
+                            boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+                          }}
+                        />
+                      </label>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Aceite Termos e Privacidade */}
+                <div
+                  style={{
+                    padding: '14px 16px',
+                    borderRadius: '10px',
+                    background: 'rgba(215,25,32,0.04)',
+                    border: `1px solid rgba(215,25,32,0.15)`,
+                    marginBottom: '16px',
+                  }}
+                >
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    <label style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={acceptedTerms}
+                        onChange={(e) => setAcceptedTerms(e.target.checked)}
+                        style={{ display: 'none' }}
+                      />
+                      <div
+                        style={{
+                          width: '18px',
+                          height: '18px',
+                          borderRadius: '4px',
+                          border: `1.5px solid ${acceptedTerms ? RR_RED : t.border}`,
+                          background: acceptedTerms ? RR_RED : 'transparent',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          flexShrink: 0,
+                          marginTop: '1px',
+                        }}
+                      >
+                        {acceptedTerms && <Check size={11} color="#fff" strokeWidth={3} />}
+                      </div>
+                      <span style={{ fontSize: '12.5px', color: t.textSecondary, lineHeight: 1.5 }}>
+                        Li e aceito os{' '}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            setIsTermsModalOpen(true);
+                          }}
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            color: RR_RED,
+                            cursor: 'pointer',
+                            padding: 0,
+                            fontSize: '12.5px',
+                            fontWeight: 600,
+                            textDecoration: 'underline',
+                          }}
+                        >
+                          Termos de Uso
+                        </button>
+                      </span>
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={acceptedPrivacy}
+                        onChange={(e) => setAcceptedPrivacy(e.target.checked)}
+                        style={{ display: 'none' }}
+                      />
+                      <div
+                        style={{
+                          width: '18px',
+                          height: '18px',
+                          borderRadius: '4px',
+                          border: `1.5px solid ${acceptedPrivacy ? RR_RED : t.border}`,
+                          background: acceptedPrivacy ? RR_RED : 'transparent',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          flexShrink: 0,
+                          marginTop: '1px',
+                        }}
+                      >
+                        {acceptedPrivacy && <Check size={11} color="#fff" strokeWidth={3} />}
+                      </div>
+                      <span style={{ fontSize: '12.5px', color: t.textSecondary, lineHeight: 1.5 }}>
+                        Li e aceito a{' '}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            setIsPrivacyModalOpen(true);
+                          }}
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            color: RR_RED,
+                            cursor: 'pointer',
+                            padding: 0,
+                            fontSize: '12.5px',
+                            fontWeight: 600,
+                            textDecoration: 'underline',
+                          }}
+                        >
+                          Política de Privacidade
+                        </button>
+                        {' '}(LGPD)
+                      </span>
+                    </label>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                  <button
+                    onClick={handleAcceptNecessary}
+                    style={{
+                      padding: '10px 16px',
+                      borderRadius: '8px',
+                      border: `1px solid ${t.border}`,
+                      background: 'transparent',
+                      color: t.textSecondary,
+                      fontSize: '12.5px',
+                      fontWeight: 500,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Rejeitar opcionais
+                  </button>
+                  <button
+                    onClick={handleSaveCustom}
+                    disabled={!acceptedTerms || !acceptedPrivacy}
+                    style={{
+                      padding: '10px 20px',
+                      borderRadius: '8px',
+                      border: 'none',
+                      background: !acceptedTerms || !acceptedPrivacy ? t.textMuted : RR_RED,
+                      color: '#fff',
+                      fontSize: '12.5px',
+                      fontWeight: 600,
+                      cursor: !acceptedTerms || !acceptedPrivacy ? 'not-allowed' : 'pointer',
+                      boxShadow: acceptedTerms && acceptedPrivacy ? '0 4px 14px rgba(215,25,32,0.3)' : 'none',
+                    }}
+                  >
+                    Salvar preferências
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ============================================
+          TERMS OF USE MODAL
+      ============================================ */}
+      {isTermsModalOpen && (
+        <LegalModal
+          title="Termos de Uso"
+          subtitle="Última atualização: 15 de Janeiro de 2026 · Versão 1.0.0"
+          icon={FileText}
+          onClose={() => setIsTermsModalOpen(false)}
+          theme={t}
+          mode={mode}
+          rrRed={RR_RED}
+        >
+          <LegalSection title="1. Aceitação dos Termos" theme={t}>
+            Ao acessar e utilizar a plataforma RR Mind, você concorda em cumprir estes Termos de Uso.
+            Se você não concorda com qualquer parte destes termos, não deve utilizar a plataforma.
+            O uso continuado da plataforma após alterações constitui aceitação dos novos termos.
+          </LegalSection>
+          <LegalSection title="2. Descrição do Serviço" theme={t}>
+            A RR Mind é uma plataforma de inteligência comercial que oferece ferramentas de análise de dados,
+            gestão de vendas e insights estratégicos para empresas distribuidoras. Os serviços incluem
+            dashboards interativos, relatórios em tempo real, e sistema de controle hierárquico RBAC.
+          </LegalSection>
+          <LegalSection title="3. Cadastro e Conta de Usuário" theme={t}>
+            <p>• Você é responsável por manter a confidencialidade de suas credenciais de acesso.</p>
+            <p>• Todas as atividades realizadas em sua conta são de sua responsabilidade.</p>
+            <p>• Notifique imediatamente sobre qualquer uso não autorizado.</p>
+            <p>• Não é permitido compartilhar credenciais ou permitir acesso de terceiros.</p>
+          </LegalSection>
+          <LegalSection title="4. Uso Aceitável" theme={t}>
+            <p>Você concorda em NÃO:</p>
+            <p>• Utilizar a plataforma para fins ilegais ou não autorizados</p>
+            <p>• Tentar acessar dados de outros usuários sem permissão</p>
+            <p>• Realizar engenharia reversa ou tentar burlar mecanismos de segurança</p>
+            <p>• Interferir no funcionamento normal da plataforma</p>
+            <p>• Copiar, distribuir ou modificar conteúdo sem autorização expressa</p>
+          </LegalSection>
+          <LegalSection title="5. Propriedade Intelectual" theme={t}>
+            Todos os direitos, títulos e interesses relacionados à plataforma RR Mind, incluindo software,
+            design, textos, gráficos e marcas registradas, são propriedade exclusiva da empresa e estão
+            protegidos por leis de propriedade intelectual.
+          </LegalSection>
+          <LegalSection title="6. Limitação de Responsabilidade" theme={t}>
+            A plataforma é fornecida "como está". Não garantimos que o serviço será ininterrupto,
+            oportuno, seguro ou livre de erros. Nossa responsabilidade máxima é limitada ao valor
+            pago pelo serviço nos últimos 12 meses.
+          </LegalSection>
+          <LegalSection title="7. Modificações" theme={t}>
+            Reservamo-nos o direito de modificar estes termos a qualquer momento. Notificações sobre
+            mudanças significativas serão enviadas por e-mail e exibidas na plataforma com no mínimo
+            30 dias de antecedência.
+          </LegalSection>
+          <LegalSection title="8. Rescisão" theme={t}>
+            Podemos suspender ou encerrar seu acesso à plataforma a qualquer momento por violação
+            destes termos. Você pode encerrar sua conta a qualquer momento entrando em contato conosco.
+          </LegalSection>
+          <LegalSection title="9. Lei Aplicável" theme={t}>
+            Estes termos são regidos pelas leis da República Federativa do Brasil. Qualquer disputa
+            será resolvida no foro da comarca da sede da empresa.
+          </LegalSection>
+        </LegalModal>
+      )}
+
+      {/* ============================================
+          PRIVACY POLICY MODAL
+      ============================================ */}
+      {isPrivacyModalOpen && (
+        <LegalModal
+          title="Política de Privacidade"
+          subtitle="Conforme LGPD (Lei nº 13.709/2018) · Última atualização: 15/01/2026"
+          icon={Shield}
+          onClose={() => setIsPrivacyModalOpen(false)}
+          theme={t}
+          mode={mode}
+          rrRed={RR_RED}
+        >
+          <LegalSection title="1. Dados Coletados" theme={t}>
+            <p><strong>Dados de Identificação:</strong> Nome completo, e-mail corporativo, cargo, empresa.</p>
+            <p><strong>Dados de Uso:</strong> Logs de acesso, IP, navegador, sistema operacional.</p>
+            <p><strong>Dados de Negócio:</strong> Informações comerciais, metas, vendas, positivação.</p>
+          </LegalSection>
+          <LegalSection title="2. Base Legal (Art. 7º LGPD)" theme={t}>
+            <p>Tratamos seus dados com base em:</p>
+            <p>• <strong>Consentimento</strong> — para cookies opcionais e comunicações</p>
+            <p>• <strong>Execução de contrato</strong> — para fornecer os serviços da plataforma</p>
+            <p>• <strong>Legítimo interesse</strong> — para segurança e prevenção de fraudes</p>
+            <p>• <strong>Obrigação legal</strong> — quando exigido por lei</p>
+          </LegalSection>
+          <LegalSection title="3. Finalidade do Tratamento" theme={t}>
+            <p>• Autenticação e controle de acesso</p>
+            <p>• Personalização da experiência do usuário</p>
+            <p>• Análise de performance e melhorias contínuas</p>
+            <p>• Comunicações operacionais e de suporte</p>
+            <p>• Cumprimento de obrigações legais e regulatórias</p>
+          </LegalSection>
+          <LegalSection title="4. Compartilhamento" theme={t}>
+            Seus dados NÃO são vendidos a terceiros. Podem ser compartilhados apenas com:
+            <p>• Prestadores de serviços essenciais (hospedagem, e-mail) sob contrato de confidencialidade</p>
+            <p>• Autoridades competentes mediante ordem judicial</p>
+            <p>• Empresas do grupo, conforme necessidade operacional</p>
+          </LegalSection>
+          <LegalSection title="5. Segurança da Informação" theme={t}>
+            Implementamos medidas técnicas e organizacionais para proteger seus dados:
+            <p>• Criptografia em trânsito (TLS 1.3) e em repouso (AES-256)</p>
+            <p>• Controle de acesso baseado em funções (RBAC)</p>
+            <p>• Auditoria e logs de todas as operações sensíveis</p>
+            <p>• Backups regulares e planos de recuperação de desastres</p>
+          </LegalSection>
+          <LegalSection title="6. Retenção de Dados" theme={t}>
+            Seus dados são mantidos pelo tempo necessário para as finalidades descritas ou conforme
+            exigido por lei. Dados de logs são mantidos por até 6 meses. Dados de conta são excluídos
+            em até 90 dias após solicitação de exclusão.
+          </LegalSection>
+          <LegalSection title="7. Seus Direitos (Art. 18 LGPD)" theme={t}>
+            Você pode a qualquer momento:
+            <p>• <strong>Confirmar</strong> a existência de tratamento de seus dados</p>
+            <p>• <strong>Acessar</strong> seus dados pessoais</p>
+            <p>• <strong>Corrigir</strong> dados incompletos ou desatualizados</p>
+            <p>• <strong>Solicitar anonimização</strong>, bloqueio ou eliminação</p>
+            <p>• <strong>Solicitar portabilidade</strong> dos dados</p>
+            <p>• <strong>Revogar consentimento</strong> a qualquer momento</p>
+            <p>• <strong>Peticionar</strong> perante a ANPD</p>
+          </LegalSection>
+          <LegalSection title="8. Cookies" theme={t}>
+            Utilizamos cookies necessários (essenciais), funcionais (preferências), analíticos
+            (estatísticas anonimizadas) e de marketing (opcional). Você pode gerenciar suas
+            preferências a qualquer momento nas configurações.
+          </LegalSection>
+          <LegalSection title="9. Encarregado de Dados (DPO)" theme={t}>
+            <p>Em caso de dúvidas, entre em contato com nosso Encarregado de Dados:</p>
+            <p style={{ marginTop: 8 }}>
+              <strong>E-mail:</strong> dpo@rrmind.com.br<br />
+              <strong>Endereço:</strong> Av. Paulista, 1000 - São Paulo/SP<br />
+              <strong>Prazo de resposta:</strong> até 15 dias úteis
+            </p>
+          </LegalSection>
+          <LegalSection title="10. Alterações nesta Política" theme={t}>
+            Esta política pode ser atualizada periodicamente. Notificaremos sobre alterações
+            significativas por e-mail e através da plataforma com pelo menos 30 dias de antecedência.
+          </LegalSection>
+        </LegalModal>
+      )}
+
+      {/* ============================================
           FORGOT PASSWORD MODAL
-          ============================================ */}
+      ============================================ */}
       {isForgotModalOpen && (
         <div
           style={{
@@ -905,14 +1803,6 @@ export const LoginView: React.FC = () => {
                 display: 'flex',
                 transition: 'all 0.2s',
               }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = mode === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)';
-                e.currentTarget.style.color = t.text;
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = 'transparent';
-                e.currentTarget.style.color = t.textMuted;
-              }}
             >
               <X size={18} />
             </button>
@@ -946,7 +1836,7 @@ export const LoginView: React.FC = () => {
                     letterSpacing: '-0.02em',
                   }}
                 >
-                  InstruÃ§Ãµes enviadas
+                  Instruções enviadas
                 </h3>
                 <p
                   style={{
@@ -956,8 +1846,9 @@ export const LoginView: React.FC = () => {
                     lineHeight: 1.55,
                   }}
                 >
-                  Enviamos o link de recuperaÃ§Ã£o para{' '}
-                  <strong style={{ color: t.text }}>{forgotEmail || email}</strong>. Verifique sua caixa de entrada e pasta de spam.
+                  Enviamos o link de recuperação para{' '}
+                  <strong style={{ color: t.text }}>{forgotEmail || email}</strong>. Verifique sua
+                  caixa de entrada e pasta de spam.
                 </p>
                 <button
                   type="button"
@@ -983,36 +1874,33 @@ export const LoginView: React.FC = () => {
               </div>
             ) : (
               <div>
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '10px',
-                    marginBottom: '14px',
-                  }}
-                >
-                  <span
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
+                  <div
                     style={{
-                      fontFamily: "'Space Grotesk', sans-serif",
-                      fontSize: '11px',
-                      color: RR_RED,
-                      letterSpacing: '2px',
-                      fontWeight: 600,
+                      width: 36,
+                      height: 36,
+                      borderRadius: '10px',
+                      background: `linear-gradient(135deg, ${RR_RED}, ${RR_RED_DARK})`,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
                     }}
                   >
-                    â†’
-                  </span>
-                  <span
-                    style={{
-                      fontSize: '10.5px',
-                      color: t.textMuted,
-                      textTransform: 'uppercase',
-                      letterSpacing: '2px',
-                      fontWeight: 500,
-                    }}
-                  >
-                    RecuperaÃ§Ã£o
-                  </span>
+                    <Mail size={17} color="#fff" />
+                  </div>
+                  <div>
+                    <span
+                      style={{
+                        fontSize: '10.5px',
+                        color: t.textMuted,
+                        textTransform: 'uppercase',
+                        letterSpacing: '2px',
+                        fontWeight: 500,
+                      }}
+                    >
+                      Recuperação
+                    </span>
+                  </div>
                 </div>
                 <h3
                   style={{
@@ -1034,7 +1922,7 @@ export const LoginView: React.FC = () => {
                     lineHeight: 1.55,
                   }}
                 >
-                  Informe seu e-mail cadastrado. Nossa equipe de seguranÃ§a enviarÃ¡ um token de redefiniÃ§Ã£o.
+                  Informe seu e-mail cadastrado. Nossa equipe de segurança enviará um token de redefinição.
                 </p>
 
                 <form onSubmit={handleForgotSubmit}>
@@ -1089,15 +1977,6 @@ export const LoginView: React.FC = () => {
                         fontSize: '13.5px',
                         cursor: 'pointer',
                         fontWeight: 500,
-                        transition: 'all 0.2s',
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.borderColor = t.textSecondary;
-                        e.currentTarget.style.color = t.text;
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.borderColor = t.border;
-                        e.currentTarget.style.color = t.textSecondary;
                       }}
                     >
                       Cancelar
@@ -1115,13 +1994,6 @@ export const LoginView: React.FC = () => {
                         cursor: 'pointer',
                         boxShadow: '0 6px 20px rgba(215,25,32,0.3)',
                         fontFamily: "'Space Grotesk', 'Inter', sans-serif",
-                        transition: 'all 0.2s',
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.background = RR_RED_DARK;
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.background = RR_RED;
                       }}
                     >
                       Enviar link
@@ -1135,8 +2007,8 @@ export const LoginView: React.FC = () => {
       )}
 
       {/* ============================================
-          STYLES & ANIMATIONS
-          ============================================ */}
+          STYLES
+      ============================================ */}
       <style>{`
         @keyframes rr-fadeInUp {
           from { opacity: 0; transform: translateY(20px); }
@@ -1149,6 +2021,10 @@ export const LoginView: React.FC = () => {
         @keyframes rr-modalIn {
           from { opacity: 0; transform: translateY(20px) scale(0.96); }
           to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        @keyframes rr-slideUp {
+          from { opacity: 0; transform: translateY(30px); }
+          to { opacity: 1; transform: translateY(0); }
         }
         @keyframes rr-shakeIn {
           0% { transform: translateX(-8px); opacity: 0; }
@@ -1168,6 +2044,10 @@ export const LoginView: React.FC = () => {
           0% { opacity: 0; transform: scale(0.5); }
           100% { opacity: 1; transform: scale(1); }
         }
+        @keyframes rr-float {
+          0%, 100% { transform: translate(0, 0); }
+          50% { transform: translate(30px, -30px); }
+        }
         @media (max-width: 960px) {
           .rr-login-container {
             grid-template-columns: 1fr !important;
@@ -1177,3 +2057,189 @@ export const LoginView: React.FC = () => {
     </div>
   );
 };
+
+// ============================================
+// COMPONENTES AUXILIARES
+// ============================================
+const LegalModal: React.FC<{
+  title: string;
+  subtitle: string;
+  icon: any;
+  onClose: () => void;
+  children: React.ReactNode;
+  theme: any;
+  mode: string;
+  rrRed: string;
+}> = ({ title, subtitle, icon: Icon, onClose, children, theme: t, mode, rrRed }) => {
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleEsc);
+    document.body.style.overflow = 'hidden';
+    return () => {
+      window.removeEventListener('keydown', handleEsc);
+      document.body.style.overflow = '';
+    };
+  }, [onClose]);
+
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        backgroundColor: 'rgba(0,0,0,0.75)',
+        backdropFilter: 'blur(8px)',
+        WebkitBackdropFilter: 'blur(8px)',
+        zIndex: 10000,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '16px',
+        animation: 'rr-fadeIn 0.25s ease',
+      }}
+      onClick={onClose}
+    >
+      <div
+        style={{
+          width: '100%',
+          maxWidth: '640px',
+          maxHeight: '85vh',
+          background: mode === 'dark' ? 'rgba(20,20,20,0.98)' : '#fff',
+          border: `1px solid ${t.border}`,
+          borderRadius: '16px',
+          display: 'flex',
+          flexDirection: 'column',
+          boxShadow: '0 25px 60px rgba(0,0,0,0.5)',
+          animation: 'rr-modalIn 0.3s cubic-bezier(0.4,0,0.2,1)',
+          overflow: 'hidden',
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div
+          style={{
+            padding: '24px 28px',
+            borderBottom: `1px solid ${t.border}`,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            background: mode === 'dark' ? 'rgba(15,15,15,0.6)' : 'rgba(0,0,0,0.02)',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+            <div
+              style={{
+                width: 44,
+                height: 44,
+                borderRadius: '12px',
+                background: `linear-gradient(135deg, ${rrRed}, #8B0000)`,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                boxShadow: `0 4px 14px ${rrRed}40`,
+              }}
+            >
+              <Icon size={20} color="#fff" />
+            </div>
+            <div>
+              <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: t.text, letterSpacing: '-0.01em' }}>
+                {title}
+              </h2>
+              <p style={{ margin: '2px 0 0', fontSize: '11.5px', color: t.textMuted }}>
+                {subtitle}
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            style={{
+              padding: '8px',
+              background: 'none',
+              border: `1px solid ${t.border}`,
+              color: t.textMuted,
+              cursor: 'pointer',
+              borderRadius: '8px',
+              display: 'flex',
+              alignItems: 'center',
+              transition: 'all 0.2s',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.borderColor = rrRed;
+              e.currentTarget.style.color = rrRed;
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.borderColor = t.border;
+              e.currentTarget.style.color = t.textMuted;
+            }}
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* Content */}
+        <div
+          style={{
+            flex: 1,
+            overflowY: 'auto',
+            padding: '24px 28px',
+            fontSize: '13px',
+            color: t.textSecondary,
+            lineHeight: 1.7,
+          }}
+        >
+          {children}
+        </div>
+
+        {/* Footer */}
+        <div
+          style={{
+            padding: '16px 28px',
+            borderTop: `1px solid ${t.border}`,
+            display: 'flex',
+            justifyContent: 'flex-end',
+            background: mode === 'dark' ? 'rgba(15,15,15,0.6)' : 'rgba(0,0,0,0.02)',
+          }}
+        >
+          <button
+            onClick={onClose}
+            style={{
+              padding: '10px 22px',
+              borderRadius: '8px',
+              border: 'none',
+              background: rrRed,
+              color: '#fff',
+              fontSize: '13px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              boxShadow: `0 4px 14px ${rrRed}40`,
+            }}
+          >
+            Entendi
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const LegalSection: React.FC<{
+  title: string;
+  children: React.ReactNode;
+  theme: any;
+}> = ({ title, children, theme: t }) => (
+  <div style={{ marginBottom: '20px' }}>
+    <h3
+      style={{
+        margin: '0 0 8px',
+        fontSize: '14px',
+        fontWeight: 700,
+        color: t.text,
+        letterSpacing: '-0.01em',
+      }}
+    >
+      {title}
+    </h3>
+    <div style={{ fontSize: '12.5px', lineHeight: 1.65 }}>{children}</div>
+  </div>
+);

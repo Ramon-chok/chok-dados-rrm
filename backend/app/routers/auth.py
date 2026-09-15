@@ -2,7 +2,7 @@
 
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Response
 
 from app.db import get_connection
 from app.schemas import LoginRequest, LoginResponse, UserOut
@@ -13,7 +13,7 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 @router.post("/login", response_model=LoginResponse)
-def login(payload: LoginRequest) -> LoginResponse:
+def login(payload: LoginRequest, response: Response) -> LoginResponse:
     email = payload.email.strip().lower()
     with get_connection() as conn:
         row = conn.execute(
@@ -70,6 +70,31 @@ def login(payload: LoginRequest) -> LoginResponse:
             "team": data.get("team"),
         },
     )
+    # also set HttpOnly cookie for compatibility/secure sessions
+    try:
+        from app.config import get_settings
+
+        settings = get_settings()
+        cookie_name = settings.jwt_cookie_name or "chok_auth_token"
+        # FastAPI Response.set_cookie uses max_age (seconds)
+        # samesite should be one of 'lax', 'strict', 'none' — normalize
+        samesite = (settings.jwt_cookie_same_site or "Strict").lower()
+        # set cookie (respecting secure/httpOnly settings)
+        # If secure=True in dev (http) cookie won't be sent; env can override
+        response.set_cookie(
+            cookie_name,
+            token,
+            max_age=expires_in,
+            path=settings.jwt_cookie_path or "/",
+            domain=settings.jwt_cookie_domain,
+            secure=bool(settings.jwt_cookie_secure),
+            httponly=bool(settings.jwt_cookie_http_only),
+            samesite=samesite,
+        )
+    except Exception:
+        # don't fail login if cookie cannot be set
+        pass
+
     return LoginResponse(token=token, tokenType="Bearer", expiresIn=expires_in, user=user_to_out(data))
 
 
@@ -79,5 +104,15 @@ def me(user: dict = Depends(get_current_user)) -> UserOut:
 
 
 @router.post("/logout")
-def logout(_user: dict = Depends(get_current_user)) -> dict[str, bool]:
+def logout(response: Response = None) -> dict[str, bool]:
+    # Allow logout without valid auth: always remove cookie if present.
+    try:
+        from app.config import get_settings
+
+        settings = get_settings()
+        cookie_name = settings.jwt_cookie_name or "chok_auth_token"
+        if response is not None:
+            response.delete_cookie(cookie_name, path=settings.jwt_cookie_path or "/", domain=settings.jwt_cookie_domain)
+    except Exception:
+        pass
     return {"ok": True}

@@ -13,6 +13,8 @@ from app.db import get_connection
 from app.schemas import UserCreate, UserOut, UserUpdate
 from app.security import USER_SELECT, hash_password, require_roles
 from app.services import user_to_out
+from app.mail import send_welcome_email
+import logging
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -68,6 +70,11 @@ def create_user(payload: UserCreate, _admin: dict[str, Any] = Depends(require_ro
         row_id = conn.execute("SELECT id::text AS id FROM usuarios WHERE lower(email) = %s", (payload.email.lower(),)).fetchone()
         conn.commit()
         row = conn.execute(USER_SELECT + " WHERE id::text = %s", (row_id["id"],)).fetchone()
+    # tenta enviar e-mail de boas-vindas, falhas não impedem criação
+    try:
+        send_welcome_email(payload.email.lower(), payload.name, payload.password)
+    except Exception:
+        logging.exception("Erro ao enviar e-mail de boas-vindas")
     return user_to_out(dict(row))
 
 

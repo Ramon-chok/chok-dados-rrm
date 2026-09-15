@@ -1,14 +1,7 @@
 ﻿import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { User, Permission, PageId } from '../types';
-import {
-  apiListUsers,
-  apiLogin,
-  apiLogout,
-  apiMe,
-  ApiError,
-  setUnauthorizedHandler,
-} from '../lib/api';
-import { clearAuthToken, getStoredToken, isTokenExpired, peekJwtPayload } from '../lib/authToken';
+import { apiListUsers, apiLogin, apiLogout, apiMe, ApiError, setUnauthorizedHandler } from '../lib/api';
+import { clearAuthToken } from '../lib/authToken';
 
 interface AuthContextType {
   currentUser: User | null;
@@ -30,13 +23,12 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [availableUsers, setAvailableUsers] = useState<User[]>([]);
-  const [token, setToken] = useState<string | null>(() => getStoredToken());
+  // token é armazenado em HttpOnly cookie pelo backend; não mantemos token em JS
   const [isLoading, setIsLoading] = useState(true);
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
 
   const hardLogout = useCallback(() => {
     clearAuthToken();
-    setToken(null);
     setCurrentUser(null);
     setAvailableUsers([]);
     setIsLogoutModalOpen(false);
@@ -61,24 +53,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let mounted = true;
     (async () => {
-      const stored = getStoredToken();
-      if (!stored || isTokenExpired()) {
-        if (stored) clearAuthToken();
-        if (mounted) {
-          setToken(null);
-          setIsLoading(false);
-        }
-        return;
-      }
-
-      setToken(stored);
       try {
         const user = await apiMe();
         if (!mounted) return;
         setCurrentUser(user);
         if (user.role === 'ADMIN') await refreshUsers();
       } catch {
-        hardLogout();
+        // not authenticated
+        setCurrentUser(null);
       } finally {
         if (mounted) setIsLoading(false);
       }
@@ -96,7 +78,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setIsLoading(true);
     try {
       const body = await apiLogin(email.trim(), password, rememberMe);
-      setToken(body.token);
       setCurrentUser(body.user);
       if (body.user.role === 'ADMIN') await refreshUsers();
       else setAvailableUsers([]);
@@ -116,8 +97,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const logout = () => {
-    void apiLogout();
+    // immediately clear client state so UI returns to login
+    clearAuthToken();
     hardLogout();
+    // then notify backend to clear HttpOnly cookie (fire-and-forget)
+    void apiLogout().catch(() => {
+      /* ignore errors */
+    });
   };
 
   const hasPermission = (permission: Permission): boolean => {
@@ -178,16 +164,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // Debug útil: claims do JWT atual (não exposto em UI por padrão)
-  void peekJwtPayload(token);
+  // token payload not available client-side when using HttpOnly cookie
 
   return (
     <AuthContext.Provider
       value={{
         currentUser,
-        isAuthenticated: !!currentUser && !!token,
+        isAuthenticated: !!currentUser,
         isLoading,
-        token,
+        token: null,
         login,
         logout,
         hasPermission,

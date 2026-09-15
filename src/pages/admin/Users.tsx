@@ -605,19 +605,18 @@ export const UsersPage: React.FC = () => {
                         maxLength={100}
                         disabled={createLoading} 
                         value={createName} 
-                        onChange={(e) => setCreateName(e.target.value.replace(/[^a-zA-Z\s]/g, '').slice(0, 10))} 
+                        onChange={(e) => setCreateName(e.target.value.replace(/[^a-zA-Z\s]/g, '').slice(0, 100))} 
                         style={inputStyle} 
                         placeholder="Nome do usuário" />
                     </div>
                     <div style={{ gridColumn: 'span 6' }}>
                       <label style={labelStyle}>E-mail corporativo</label>
-                      <input 
-                        required 
+                      <input  
                         type="email" 
                         maxLength={100} 
                         disabled={createLoading} 
                         value={createEmail} 
-                        onChange={(e) => setCreateEmail(e.target.value.replace(/[^a-zA-Z0-9@.]/g, '').slice(0, 10))} 
+                        onChange={(e) => setCreateEmail(e.target.value.replace(/[^a-zA-Z0-9@.]/g, '').slice(0, 100))} 
                         style={inputStyle} 
                         placeholder="nome@empresa.com" />
                     </div>
@@ -722,7 +721,7 @@ export const UsersPage: React.FC = () => {
                         <label style={labelStyle}>CEP</label>
                         {cepLoading && <span style={{ fontSize: '11px', color: t.textSecondary }}>Buscando...</span>}
                       </div>
-                      <input required disabled={createLoading} value={createZipCode} onChange={(e) => {
+                      <input disabled={createLoading} value={createZipCode} onChange={(e) => {
                         const formatted = formatCep(e.target.value);
                         setCreateZipCode(formatted);
                         if (formatted.replace(/\D/g, '').length === 8) lookupCep(formatted, false);
@@ -936,7 +935,7 @@ export const UsersPage: React.FC = () => {
                     </div>
                     <div style={{ gridColumn: 'span 6' }}>
                       <label style={labelStyle}>E-mail corporativo</label>
-                      <input type="email" disabled={editLoading} value={editEmail} onChange={(e) => setEditEmail(e.target.value)} style={inputStyle} placeholder="nome@empresa.com" />
+                      <input type="email" disabled={editLoading} maxLength={100} value={editEmail} onChange={(e) => setEditEmail(e.target.value.slice(0, 100))} style={inputStyle} placeholder="nome@empresa.com" />
                     </div>
                     <div style={{ gridColumn: 'span 6' }}>
                       <label style={labelStyle}>Telefone corporativo</label>

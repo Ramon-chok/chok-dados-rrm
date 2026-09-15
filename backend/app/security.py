@@ -5,7 +5,7 @@ from typing import Any
 
 import bcrypt
 import jwt
-from fastapi import Depends, Header, HTTPException, status
+from fastapi import Depends, Header, HTTPException, status, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.config import get_settings
@@ -159,11 +159,25 @@ def require_import_api_key(x_api_key: str | None = Header(default=None, alias="x
 
 
 def get_current_user(
+    request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
 ) -> dict[str, Any]:
-    if credentials is None or credentials.scheme.lower() != "bearer":
+    token: str | None = None
+    # prefer Authorization header
+    if credentials is not None and credentials.scheme.lower() == "bearer":
+        token = credentials.credentials
+    else:
+        # fallback to cookie
+        try:
+            settings = get_settings()
+            cookie_name = settings.jwt_cookie_name or "chok_auth_token"
+            token = request.cookies.get(cookie_name)
+        except Exception:
+            token = None
+
+    if not token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Não autenticado.")
-    payload = decode_token(credentials.credentials)
+    payload = decode_token(token)
     user_id = payload.get("sub")
     if not user_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token inválido.")

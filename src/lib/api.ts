@@ -1,10 +1,4 @@
-﻿import {
-  authHeader,
-  clearAuthToken,
-  getStoredToken,
-  isTokenExpired,
-  storeAuthToken,
-} from './authToken';
+﻿import { authHeader, clearAuthToken } from './authToken';
 
 // Cliente HTTP único do frontend — só fala com o backend (/api/*).
 // Todas as páginas autenticadas enviam Authorization: Bearer <JWT>.
@@ -224,11 +218,7 @@ function qs(params?: Record<string, string | number | boolean | null | undefined
 async function request<T>(path: string, options?: RequestInit & { skipAuth?: boolean }): Promise<T> {
   const { skipAuth, ...fetchOpts } = options || {};
 
-  if (!skipAuth && isTokenExpired()) {
-    clearAuthToken();
-    onUnauthorized?.();
-    throw new ApiError('Sessão expirada. Faça login novamente.', 401);
-  }
+  // Rely on backend for session expiration (cookie HttpOnly). Do not check local expiration in client.
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -240,6 +230,8 @@ async function request<T>(path: string, options?: RequestInit & { skipAuth?: boo
   const res = await fetch(`/api${path}`, {
     ...fetchOpts,
     headers,
+    // enviar cookies (inclui o cookie HttpOnly setado pelo backend)
+    credentials: 'include',
   });
 
   if (!res.ok) {
@@ -279,7 +271,7 @@ export async function apiLogin(
     throw new ApiError('Login não retornou token.', 500);
   }
 
-  storeAuthToken(body.token, body.expiresIn, rememberMe);
+  // backend sets HttpOnly cookie; do not persist token in localStorage.
   return body;
 }
 
@@ -433,4 +425,4 @@ export function fetchImportHistory(limit = 50): Promise<ImportLogEntry[]> {
   return request<ImportLogEntry[]>(`/imports?limit=${limit}`);
 }
 
-export { request, getStoredToken, clearAuthToken, storeAuthToken };
+export { request, clearAuthToken };

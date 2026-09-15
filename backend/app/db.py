@@ -30,7 +30,11 @@ def get_pool() -> ConnectionPool:
             "conninfo": settings.database_url,
             "min_size": 1,
             "max_size": 10,
-            "kwargs": {"row_factory": dict_row, "autocommit": False},
+            "kwargs": {
+                "row_factory": dict_row, 
+                "autocommit": False,
+                "prepare_threshold": None,
+                },
             "open": True,
         }
         if _needs_ssl(settings.database_url):

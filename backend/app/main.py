@@ -37,10 +37,14 @@ avatars_dir = Path(__file__).resolve().parent.parent / "avatars"
 avatars_dir.mkdir(parents=True, exist_ok=True)
 app.mount("/avatars", StaticFiles(directory=str(avatars_dir)), name="avatars")
 
+# Quando `allow_origins` é '*' os navegadores não permitem `Access-Control-Allow-Credentials: true`.
+# Recomendamos definir origens específicas em produção (ex: https://app.suaempresa.com).
+cors_allow_origins = ["*"] if origins == ["*"] else origins
+cors_allow_credentials = False if cors_allow_origins == ["*"] else True
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"] if origins == ["*"] else origins,
-    allow_credentials=True,
+    allow_origins=cors_allow_origins,
+    allow_credentials=cors_allow_credentials,
     allow_methods=["*"],
     allow_headers=["*"],
 )
