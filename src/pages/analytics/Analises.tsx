@@ -4,9 +4,10 @@ import { useGlobalFilter } from '../../context/GlobalFilterContext';
 import { PeriodSelector } from '../../components/common/PeriodSelector';
 import { EmptyBlock, ErrorBlock, LoadingBlock } from '../../components/common/DataState';
 import { fetchAnalyticsTree, AnalyticsTreeNode } from '../../lib/api';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
+import { BarChart, ComposedChart, Bar, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 
 const fmt = (v: number) => `R$ ${v.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}`;
+const fmtInt = (v: number) => v.toLocaleString('pt-BR', { maximumFractionDigits: 0 });
 
 export const AnalisesPage: React.FC = () => {
   const { t } = useTheme();
@@ -38,6 +39,7 @@ export const AnalisesPage: React.FC = () => {
   }, [ano, mes, startDate, endDate, periodType]);
 
   const chartData = useMemo(() => tree.map((f) => ({ nome: f.nome, meta: f.meta, realizado: f.realizado })), [tree]);
+  const coberturaChartData = useMemo(() => tree.map((f) => ({ nome: f.nome, meta: f.metaCobertura, realizado: f.realizadoCobertura })), [tree]);
 
   return (
     <div>
@@ -65,12 +67,28 @@ export const AnalisesPage: React.FC = () => {
               </BarChart>
             </ResponsiveContainer>
           </div>
+          <div style={{ fontSize: 12, fontWeight: 600, color: t.textSecondary, marginBottom: 6 }}>Cobertura</div>
+          <div style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 12, padding: 16, height: 260, marginBottom: 16 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <ComposedChart data={coberturaChartData}>
+                <CartesianGrid strokeDasharray="3 3" stroke={t.border} />
+                <XAxis dataKey="nome" stroke={t.textMuted} fontSize={11} />
+                <YAxis stroke={t.textMuted} fontSize={11} />
+                <Tooltip />
+                <Bar dataKey="meta" fill={t.textMuted} />
+                <Area type="monotone" dataKey="realizado" stroke={t.accentBlue} fill={t.accentBlue} fillOpacity={0.3} />
+              </ComposedChart>
+            </ResponsiveContainer>
+          </div>
           <div style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 12, overflow: 'hidden' }}>
             {tree.map((fab) => (
               <div key={fab.nome} style={{ borderBottom: `1px solid ${t.border}` }}>
                 <button onClick={() => setExpanded((s) => ({ ...s, [fab.nome]: !s[fab.nome] }))} style={{ width: '100%', textAlign: 'left', padding: '12px 14px', background: 'transparent', border: 'none', color: t.text, cursor: 'pointer', display: 'flex', justifyContent: 'space-between' }}>
                   <strong>{fab.nome}</strong>
-                  <span style={{ color: t.textSecondary }}>{fmt(fab.realizado)} / {fmt(fab.meta)}</span>
+                  <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2, color: t.textSecondary }}>
+                    <span>{fmt(fab.realizado)} / {fmt(fab.meta)}</span>
+                    <span style={{ fontSize: 11 }}>Cobertura: {fmtInt(fab.realizadoCobertura)} / {fmtInt(fab.metaCobertura)}</span>
+                  </span>
                 </button>
                 {expanded[fab.nome] && (fab.equipes || []).map((eq) => (
                   <div key={eq.nome} style={{ padding: '8px 14px 12px 28px', borderTop: `1px solid ${t.border}` }}>
@@ -78,7 +96,10 @@ export const AnalisesPage: React.FC = () => {
                     {(eq.vendedores || []).map((v) => (
                       <div key={v.nome} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, color: t.textSecondary, padding: '4px 0' }}>
                         <span>{v.nome}</span>
-                        <span>{fmt(v.realizado)} / {fmt(v.meta)}</span>
+                        <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
+                          <span>{fmt(v.realizado)} / {fmt(v.meta)}</span>
+                          <span style={{ fontSize: 11 }}>Cobertura: {fmtInt(v.realizadoCobertura)} / {fmtInt(v.metaCobertura)}</span>
+                        </span>
                       </div>
                     ))}
                   </div>
