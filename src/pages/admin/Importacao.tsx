@@ -14,9 +14,10 @@ import {
   Calendar,
   XCircle,
   Layers,
+  Trash2,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
-import { submitImport, fetchImportHistory, ImportLogEntry, ApiError } from '../../lib/api';
+import { submitImport, fetchImportHistory, clearImportHistory, ImportLogEntry, ApiError } from '../../lib/api';
 
 export type ImportType = 'sortimento' | 'top_clientes' | 'dados_app' | 'nao_positivados';
 
@@ -395,6 +396,8 @@ export const ImportacaoPage: React.FC = () => {
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState<boolean>(true);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [isClearingHistory, setIsClearingHistory] = useState(false);
+  const [historyActionError, setHistoryActionError] = useState<string | null>(null);
   // Data que os dados REPRESENTAM (regra 10) — pode ser diferente do dia do
   // upload, por isso é sempre editável e nunca assumida silenciosamente.
   const [dataReferencia, setDataReferencia] = useState<string>(() => new Date().toISOString().slice(0, 10));
@@ -418,6 +421,34 @@ export const ImportacaoPage: React.FC = () => {
     loadHistory();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const handleClearHistory = async () => {
+    if (history.length === 0) return;
+    if (
+      !window.confirm(
+        'Limpar todo o histórico de importações? Esta ação não remove os dados já importados nas tabelas de negócio, apenas os registros de auditoria do histórico.'
+      )
+    ) {
+      return;
+    }
+
+    setIsClearingHistory(true);
+    setHistoryActionError(null);
+    try {
+      await clearImportHistory();
+      setHistory([]);
+    } catch (err) {
+      const message =
+        err instanceof ApiError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : 'Falha ao limpar o histórico de importações.';
+      setHistoryActionError(message);
+    } finally {
+      setIsClearingHistory(false);
+    }
+  };
 
   // Handle file selection (CSV/XLSX) — lê todas as abas exigidas pelo tipo
   // selecionado (uma única aba "livre" para tipos simples, ou N abas com
@@ -1204,12 +1235,53 @@ export const ImportacaoPage: React.FC = () => {
 
       {/* HISTÓRICO DE IMPORTAÇÕES (Requirement 40) */}
       <div style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: '12px', overflow: 'hidden' }}>
-        <div style={{ padding: '16px 20px', borderBottom: `1px solid ${t.border}`, display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <Clock size={17} color={t.primary} />
-          <div style={{ fontSize: '15px', fontWeight: 600, color: t.text }}>
-            Histórico Recente de Importações & Cargas
+        <div style={{ padding: '16px 20px', borderBottom: `1px solid ${t.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Clock size={17} color={t.primary} />
+            <div style={{ fontSize: '15px', fontWeight: 600, color: t.text }}>
+              Histórico de Importações
+            </div>
           </div>
+          <button
+            type="button"
+            onClick={handleClearHistory}
+            disabled={isClearingHistory || isLoadingHistory || history.length === 0}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '8px 12px',
+              borderRadius: '8px',
+              border: '1px solid rgba(227, 6, 19, 0.3)',
+              background: 'rgba(227, 6, 19, 0.1)',
+              color: '#E30613',
+              fontSize: '12.5px',
+              fontWeight: 600,
+              cursor: isClearingHistory || isLoadingHistory || history.length === 0 ? 'not-allowed' : 'pointer',
+              opacity: isClearingHistory || isLoadingHistory || history.length === 0 ? 0.55 : 1,
+            }}
+          >
+            <Trash2 size={14} />
+            {isClearingHistory ? 'Limpando...' : 'Limpar histórico'}
+          </button>
         </div>
+
+        {historyActionError && (
+          <div
+            style={{
+              margin: '12px 16px 0',
+              color: '#e23f3f',
+              background: '#e23f3f15',
+              border: '1px solid #e23f3f30',
+              borderRadius: '8px',
+              padding: '10px 14px',
+              fontSize: '12.5px',
+              fontWeight: 500,
+            }}
+          >
+            {historyActionError}
+          </div>
+        )}
 
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>

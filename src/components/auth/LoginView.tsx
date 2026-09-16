@@ -269,7 +269,7 @@ export const LoginView: React.FC = () => {
       return;
     }
     if (!email.trim()) {
-      setErrorMessage('Por favor, informe seu e-mail corporativo.');
+      setErrorMessage('Por favor, informe seu e-mail ou código.');
       return;
     }
     setSubmitting(true);
@@ -844,7 +844,7 @@ export const LoginView: React.FC = () => {
               {/* Campo E-mail */}
               <div style={{ marginBottom: '22px' }}>
                 <label
-                  htmlFor="email"
+                  htmlFor="text"
                   style={{
                     display: 'block',
                     fontSize: '11px',
@@ -856,7 +856,7 @@ export const LoginView: React.FC = () => {
                     transition: 'color 0.25s',
                   }}
                 >
-                  E-mail Corporativo
+                  E-mail ou código
                 </label>
                 <div
                   className="rr-input-wrapper"
@@ -886,12 +886,13 @@ export const LoginView: React.FC = () => {
                   <input
                     ref={emailInputRef}
                     id="email"
-                    type="email"
+                    type="text"
                     value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    maxLength={100}
+                    onChange={(e) => setEmail(e.target.value.trim())}
                     onFocus={() => setEmailFocused(true)}
                     onBlur={() => setEmailFocused(false)}
-                    placeholder="seu.email@empresa.com.br"
+                    placeholder="E-mail ou código"
                     required
                     autoComplete="email"
                     style={{

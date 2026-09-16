@@ -19,8 +19,11 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 @router.post("/login")
 def login(payload: LoginRequest, response: Response) -> object:
-    email = payload.email.strip().lower()
+    # payload.email is treated as a generic identifier: can be an e-mail or user code
+    identifier_raw = (payload.email or "").strip()
+    identifier_lower = identifier_raw.lower()
     with get_connection() as conn:
+        # try to find by email (case-insensitive) or by codigo (exact match)
         row = conn.execute(
             """
             SELECT
@@ -43,27 +46,30 @@ def login(payload: LoginRequest, response: Response) -> object:
               last_login_at,
               COALESCE(extra_permissions, '{}'::text[]) AS extra_permissions
             FROM usuarios
-            WHERE lower(email) = %s
+            WHERE lower(email) = %s OR codigo = %s
             """,
-            (email,),
+            (identifier_lower, identifier_raw),
         ).fetchone()
 
-        if not row or not verify_password(payload.password, row["password_hash"]):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="E-mail ou credenciais corporativas não encontradas no sistema.",
-            )
-        if row["status"] != "Ativo":
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Usuário inativo.")
+    if not row or not verify_password(payload.password, row["password_hash"]):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Credenciais corporativas incorretas.",
+        )
+    if row["status"] != "Ativo":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Usuário inativo.")
 
+    # update last_login_at
+    with get_connection() as conn:
         conn.execute(
             "UPDATE usuarios SET last_login_at = %s, updated_at = now() WHERE id::text = %s",
             (datetime.now(UTC), row["id"]),
         )
         conn.commit()
-        data = dict(row)
-        data["last_login_at"] = datetime.now(UTC)
-        data.pop("password_hash", None)
+
+    data = dict(row)
+    data["last_login_at"] = datetime.now(UTC)
+    data.pop("password_hash", None)
 
     # Verifica se o usuário possui 2FA habilitado; se sim, retorna um token temporário para verificação do 2FA.
     with get_connection() as conn:

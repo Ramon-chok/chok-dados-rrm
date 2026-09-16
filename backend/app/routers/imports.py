@@ -9,7 +9,7 @@ from app.db import get_connection
 from app.import_types import get_import_type_config
 from app.parse import parse_date_only
 from app.schemas import ImportRequest, ImportResultSummary, ImportRowError
-from app.security import require_import_api_key
+from app.security import require_import_api_key, require_roles
 from app.services import iso
 from app.upsert import SnapshotContext, map_and_validate_rows, upsert_rows
 
@@ -199,6 +199,21 @@ def list_imports(
         item["data_importacao"] = iso(item.get("data_importacao"))
         out.append(item)
     return out
+
+
+@router.delete("/history")
+def clear_import_history(
+    _admin: dict[str, Any] = Depends(require_roles("ADMIN")),
+) -> dict[str, Any]:
+    """Remove todo o histórico de importações (e erros associados via CASCADE)."""
+    with get_connection() as conn:
+        # Apaga erros primeiro para cobrir FKs sem ON DELETE CASCADE em bases legadas.
+        err = conn.execute("DELETE FROM importacoes_erros")
+        result = conn.execute("DELETE FROM importacoes")
+        conn.commit()
+        deleted = int(result.rowcount or 0)
+        deleted_errors = int(err.rowcount or 0)
+    return {"ok": True, "deleted": deleted, "deletedErrors": deleted_errors}
 
 
 @router.get("/{import_id}/erros")

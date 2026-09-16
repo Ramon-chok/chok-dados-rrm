@@ -4,8 +4,8 @@ import { useTheme } from '../../context/ThemeContext';
 import { RoleBadge } from '../../components/auth/RoleBadge';
 import { EmptyBlock, ErrorBlock, LoadingBlock } from '../../components/common/DataState';
 import { Role } from '../../types';
-import { Search, Plus, X, User, MapPin, Briefcase, Eye, EyeOff, Pencil } from 'lucide-react';
-import { apiCreateUser, apiUpdateUser } from '../../lib/api'; // Importado o apiUpdateUser integrado
+import { Search, Plus, X, User, MapPin, Briefcase, Eye, EyeOff, Pencil, Trash2, Ban, CheckCircle2 } from 'lucide-react';
+import { apiCreateUser, apiUpdateUser, apiDeleteUser, apiSetUserStatus } from '../../lib/api';
 
 export const UsersPage: React.FC = () => {
   const { availableUsers, currentUser, refreshUsers } = useAuth();
@@ -61,6 +61,8 @@ export const UsersPage: React.FC = () => {
 
   // Estado para efeito de hover dinâmico na tabela
   const [hoveredRowId, setHoveredRowId] = useState<string | null>(null);
+  const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -126,6 +128,46 @@ export const UsersPage: React.FC = () => {
     setEditUserId(null);
     setEditPassword('');
     setEditError(null);
+  };
+
+  const handleToggleBlockUser = async (user: { id: string; name: string; status?: string }) => {
+    if (currentUser?.id === user.id) {
+      setActionError('Você não pode bloquear a própria conta.');
+      return;
+    }
+    const nextStatus = user.status === 'Inativo' ? 'Ativo' : 'Inativo';
+    const label = nextStatus === 'Inativo' ? 'bloquear' : 'desbloquear';
+    if (!window.confirm(`Deseja ${label} o usuário "${user.name}"?`)) return;
+
+    setActionLoadingId(user.id);
+    setActionError(null);
+    try {
+      await apiSetUserStatus(user.id, nextStatus);
+      await refreshUsers();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : `Falha ao ${label} usuário`);
+    } finally {
+      setActionLoadingId(null);
+    }
+  };
+
+  const handleDeleteUser = async (user: { id: string; name: string }) => {
+    if (currentUser?.id === user.id) {
+      setActionError('Você não pode excluir a própria conta.');
+      return;
+    }
+    if (!window.confirm(`Excluir permanentemente o usuário "${user.name}"? Esta ação não pode ser desfeita.`)) return;
+
+    setActionLoadingId(user.id);
+    setActionError(null);
+    try {
+      await apiDeleteUser(user.id);
+      await refreshUsers();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Falha ao excluir usuário');
+    } finally {
+      setActionLoadingId(null);
+    }
   };
 
   const labelStyle = {
@@ -295,6 +337,23 @@ export const UsersPage: React.FC = () => {
         </button>
       </div>
 
+      {actionError && (
+        <div
+          style={{
+            marginBottom: '16px',
+            color: '#e23f3f',
+            background: '#e23f3f15',
+            border: '1px solid #e23f3f30',
+            borderRadius: '8px',
+            padding: '10px 14px',
+            fontSize: '12.5px',
+            fontWeight: 500,
+          }}
+        >
+          {actionError}
+        </div>
+      )}
+
       {/* FILTROS & BUSCA */}
       <div style={{ 
         display: 'flex', 
@@ -443,28 +502,78 @@ export const UsersPage: React.FC = () => {
                     </td>
                     {/* COLUNA DE AÇÕES */}
                     <td style={{ padding: '14px 20px' }}>
-                      <button
-                        onClick={() => handleOpenEditModal(u)}
-                        style={{
-                          background: t.surfaceElevated,
-                          border: `1px solid ${t.border}`,
-                          color: t.text,
-                          padding: '6px 10px',
-                          borderRadius: '6px',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '6px',
-                          fontSize: '12px',
-                          fontWeight: 600,
-                          transition: 'all 0.15s ease'
-                        }}
-                        onMouseEnter={(e) => e.currentTarget.style.background = t.border}
-                        onMouseLeave={(e) => e.currentTarget.style.background = t.surfaceElevated}
-                      >
-                        <Pencil size={13} />
-                        Editar
-                      </button>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        <button
+                          onClick={() => handleOpenEditModal(u)}
+                          disabled={actionLoadingId === u.id}
+                          style={{
+                            background: t.surfaceElevated,
+                            border: `1px solid ${t.border}`,
+                            color: t.text,
+                            padding: '6px 10px',
+                            borderRadius: '6px',
+                            cursor: actionLoadingId === u.id ? 'not-allowed' : 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            fontSize: '12px',
+                            fontWeight: 600,
+                            transition: 'all 0.15s ease',
+                            opacity: actionLoadingId === u.id ? 0.6 : 1,
+                          }}
+                          onMouseEnter={(e) => { if (actionLoadingId !== u.id) e.currentTarget.style.background = t.border; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.background = t.surfaceElevated; }}
+                        >
+                          <Pencil size={13} />
+                          Editar
+                        </button>
+
+                        <button
+                          onClick={() => handleToggleBlockUser(u)}
+                          disabled={actionLoadingId === u.id || currentUser?.id === u.id}
+                          title={u.status === 'Inativo' ? 'Desbloquear usuário' : 'Bloquear usuário'}
+                          style={{
+                            background: u.status === 'Inativo' ? 'rgba(61, 214, 140, 0.12)' : 'rgba(245, 166, 35, 0.12)',
+                            border: `1px solid ${u.status === 'Inativo' ? 'rgba(61, 214, 140, 0.35)' : 'rgba(245, 166, 35, 0.35)'}`,
+                            color: u.status === 'Inativo' ? '#3DD68C' : '#F5A623',
+                            padding: '6px 10px',
+                            borderRadius: '6px',
+                            cursor: actionLoadingId === u.id || currentUser?.id === u.id ? 'not-allowed' : 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            fontSize: '12px',
+                            fontWeight: 600,
+                            opacity: actionLoadingId === u.id || currentUser?.id === u.id ? 0.55 : 1,
+                          }}
+                        >
+                          {u.status === 'Inativo' ? <CheckCircle2 size={13} /> : <Ban size={13} />}
+                          {u.status === 'Inativo' ? 'Desbloquear' : 'Bloquear'}
+                        </button>
+
+                        <button
+                          onClick={() => handleDeleteUser(u)}
+                          disabled={actionLoadingId === u.id || currentUser?.id === u.id}
+                          title="Excluir usuário"
+                          style={{
+                            background: 'rgba(227, 6, 19, 0.1)',
+                            border: '1px solid rgba(227, 6, 19, 0.3)',
+                            color: '#E30613',
+                            padding: '6px 10px',
+                            borderRadius: '6px',
+                            cursor: actionLoadingId === u.id || currentUser?.id === u.id ? 'not-allowed' : 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            fontSize: '12px',
+                            fontWeight: 600,
+                            opacity: actionLoadingId === u.id || currentUser?.id === u.id ? 0.55 : 1,
+                          }}
+                        >
+                          <Trash2 size={13} />
+                          Excluir
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );

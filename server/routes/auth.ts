@@ -15,8 +15,8 @@ authRouter.post('/login', async (req: Request, res: Response) => {
 
     // Try usuarios (newer backend schema)
     const userResult = await pool.query(
-      'SELECT id, name, email, role, status, last_login_at FROM usuarios WHERE lower(email) = $1',
-      [normalized]
+      'SELECT id, name, email, role, status, last_login_at FROM usuarios WHERE lower(email) = $1 OR codigo = $2',
+      [normalized, String(email).trim()]
     );
 
     const seed = process.env.SEED_PASSWORD || 'Chok@2026';
@@ -30,7 +30,7 @@ authRouter.post('/login', async (req: Request, res: Response) => {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    // Fallback to legacy `login` table
+    // Feedback de credenciais legadas (tabela `login`)
     const legacy = await pool.query('SELECT id, cod, nome, password, role FROM login WHERE lower(cod) = $1 OR lower(nome) = $1', [normalized]);
     if (legacy.rowCount > 0) {
       const row = legacy.rows[0];

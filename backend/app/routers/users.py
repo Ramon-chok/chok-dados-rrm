@@ -82,7 +82,7 @@ def create_user(payload: UserCreate, _admin: dict[str, Any] = Depends(require_ro
 def update_user(
     user_id: str,
     payload: UserUpdate,
-    _admin: dict[str, Any] = Depends(require_roles("ADMIN")),
+    admin: dict[str, Any] = Depends(require_roles("ADMIN")),
 ) -> UserOut:
     fields: list[str] = []
     values: list[Any] = []
@@ -102,6 +102,11 @@ def update_user(
         "supervisor": "supervisor",
         "status": "status",
     }
+
+    # Não permite auto-bloqueio pela tela de usuários.
+    if "status" in data and data["status"] == "Inativo" and str(admin.get("id")) == str(user_id):
+        raise HTTPException(status_code=400, detail="Você não pode bloquear a própria conta.")
+
     for key, column in mapping.items():
         if key in data:
             value = data[key]
@@ -117,6 +122,22 @@ def update_user(
     fields.append("updated_at = now()")
     values.append(user_id)
     with get_connection() as conn:
+        # Impede inativar o último ADMIN.
+        if data.get("status") == "Inativo":
+            target = conn.execute(
+                "SELECT role FROM usuarios WHERE id::text = %s",
+                (user_id,),
+            ).fetchone()
+            if target and str(target.get("role") or "").upper() == "ADMIN":
+                admin_count = conn.execute(
+                    "SELECT COUNT(*) AS total FROM usuarios WHERE upper(role) = 'ADMIN' AND status = 'Ativo'"
+                ).fetchone()
+                if int(admin_count["total"] or 0) <= 1:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Não é possível bloquear o último administrador ativo.",
+                    )
+
         result = conn.execute(
             f"UPDATE usuarios SET {', '.join(fields)} WHERE id::text = %s",
             values,
@@ -129,8 +150,30 @@ def update_user(
 
 
 @router.delete("/{user_id}")
-def delete_user(user_id: str, _admin: dict[str, Any] = Depends(require_roles("ADMIN"))) -> dict[str, bool]:
+def delete_user(user_id: str, admin: dict[str, Any] = Depends(require_roles("ADMIN"))) -> dict[str, bool]:
+    if str(admin.get("id")) == str(user_id):
+        raise HTTPException(status_code=400, detail="Você não pode excluir a própria conta.")
+
     with get_connection() as conn:
+        target = conn.execute(
+            "SELECT id::text AS id, role FROM usuarios WHERE id::text = %s",
+            (user_id,),
+        ).fetchone()
+        if not target:
+            raise HTTPException(status_code=404, detail="Usuário não encontrado.")
+
+        # Evita remover o último ADMIN do sistema.
+        if str(target.get("role") or "").upper() == "ADMIN":
+            admin_count = conn.execute(
+                "SELECT COUNT(*) AS total FROM usuarios WHERE upper(role) = 'ADMIN'"
+            ).fetchone()
+            if int(admin_count["total"] or 0) <= 1:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Não é possível excluir o último administrador do sistema.",
+                )
+
+        conn.execute("DELETE FROM autenticacao_2fa WHERE user_id = %s", (user_id,))
         result = conn.execute("DELETE FROM usuarios WHERE id::text = %s", (user_id,))
         if result.rowcount == 0:
             raise HTTPException(status_code=404, detail="Usuário não encontrado.")

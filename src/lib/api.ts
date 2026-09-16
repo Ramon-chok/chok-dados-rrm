@@ -421,6 +421,16 @@ export function apiUpdateUser(id: string, payload: Partial<UserCreatePayload>): 
   });
 }
 
+export function apiDeleteUser(id: string): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>(`/users/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  });
+}
+
+export function apiSetUserStatus(id: string, status: 'Ativo' | 'Inativo'): Promise<import('../types').User> {
+  return apiUpdateUser(id, { status });
+}
+
 export function fetchDashboard(params?: {
   ano?: number;
   mes?: number;
@@ -526,6 +536,12 @@ export function submitImport(params: SubmitImportParams): Promise<ImportResultSu
 
 export function fetchImportHistory(limit = 50): Promise<ImportLogEntry[]> {
   return request<ImportLogEntry[]>(`/imports?limit=${limit}`);
+}
+
+export function clearImportHistory(): Promise<{ ok: boolean; deleted: number; deletedErrors?: number }> {
+  return request<{ ok: boolean; deleted: number; deletedErrors?: number }>('/imports/history', {
+    method: 'DELETE',
+  });
 }
 
 export { request, clearAuthToken };
