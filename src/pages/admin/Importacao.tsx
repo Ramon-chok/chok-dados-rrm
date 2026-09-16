@@ -38,6 +38,19 @@ interface ImportSheetOption {
    * ficam ocultas na tela.
    */
   visibleColumns?: string[];
+  /**
+   * Linha (1-based) onde fica o cabeçalho real dentro da aba — algumas
+   * planilhas reais têm linhas de filtro/pivot antes do cabeçalho (ex.:
+   * aba "top_clientes" do arquivo Top Clientes, cabeçalho na linha 4).
+   * Padrão: 1 (primeira linha).
+   */
+  headerRow?: number;
+  /**
+   * Dica de correspondência coluna do sistema -> nome exato do cabeçalho na
+   * planilha real (quando o nome real usa acentos/pontuação/ordem diferente
+   * do nome de sistema e o casamento automático por substring não funciona).
+   */
+  headerHints?: Record<string, string>;
 }
 
 interface ImportTypeOption {
@@ -61,6 +74,12 @@ const IMPORT_TYPES: ImportTypeOption[] = [
         sheetName: '',
         label: 'Sortimento',
         columns: ['cod_produto', 'descricao_produto', 'fornecedor', 'categoria'],
+        headerHints: {
+          cod_produto: 'CÓDIGO',
+          descricao_produto: 'PRODUTO',
+          fornecedor: 'FABRICANTE',
+          categoria: 'CATEGORIA',
+        },
       },
     ],
   },
@@ -105,12 +124,41 @@ const IMPORT_TYPES: ImportTypeOption[] = [
           'mes_26',
           'pct_cresc_mes',
         ],
+        headerHints: {
+          nivel: 'Nível',
+          gerencia: 'Gerências',
+          equipe: 'Equipes',
+          cod_vendedor: 'Cod',
+          nome_vendedor: 'Vendedor',
+          pasta: 'Pasta',
+          cod_cliente: 'Cod cliente',
+          cliente_redes: 'Cliente/Redes',
+          trimestre_25: 'Trimestre 25',
+          trimestre_26: 'Trimestre 26',
+          pct_cresc_trimestre: '% Cresc.',
+          // A planilha real repete "% Cresc." (trimestre e mês) — a 2ª
+          // ocorrência é desambiguada para "% Cresc. (2)" na leitura (ver
+          // dedup de cabeçalhos em handleFileChange).
+          pct_cresc_mes: '% Cresc. (2)',
+          // mes_25/mes_26: cabeçalho real é a própria data do mês (muda a
+          // cada carga) — sem texto fixo para casar automaticamente, o
+          // usuário escolhe manualmente no mapeamento.
+        },
       },
       {
         key: 'top_clientes',
         sheetName: 'top_clientes',
         label: 'Top Clientes (Venda Total no Mês)',
         columns: ['cod_cliente', 'cliente', 'venda_total_mes'],
+        // Na planilha real desta aba, as 3 primeiras linhas são filtros da
+        // tabela dinâmica (tp_ped / dt_ped) — o cabeçalho de verdade só
+        // aparece na linha 4.
+        headerRow: 4,
+        headerHints: {
+          cod_cliente: 'cd_clien',
+          cliente: 'razão social',
+          venda_total_mes: 'Soma de vl_venda',
+        },
       },
     ],
   },
@@ -137,6 +185,18 @@ const IMPORT_TYPES: ImportTypeOption[] = [
           'realizado_sortimento',
           'pct_margem',
         ],
+        headerHints: {
+          cod_vendedor: 'Vendedor',
+          gerencia: 'Gerência',
+          nome_vendedor: 'Nome Vendedor',
+          meta_faturamento: 'Meta Faturamento',
+          realizado_faturamento: 'Realizado Faturamento',
+          meta_cobertura: 'Meta Cobertura',
+          realizado_cobertura: 'Realizado Cobertura',
+          meta_sortimento: 'Meta Sortimento',
+          realizado_sortimento: 'Realizado Sortimento',
+          pct_margem: '%Margem',
+        },
       },
       {
         key: 'positivacao',
@@ -170,6 +230,17 @@ const IMPORT_TYPES: ImportTypeOption[] = [
           'realizado_cobertura',
           'pct_margem',
         ],
+        headerHints: {
+          cod_vendedor: 'Cod',
+          fabricante: 'Fabricantes',
+          gerencia: 'Gerências',
+          equipe: 'Equipes',
+          meta: 'Meta',
+          realizado: 'Realizado',
+          cobertura: 'Cobertura',
+          realizado_cobertura: 'Realizado Cob.',
+          pct_margem: '%Margem',
+        },
       },
     ],
   },
@@ -329,27 +400,56 @@ export const ImportacaoPage: React.FC = () => {
           const data = XLSX.utils.sheet_to_json(ws, { header: 1 }) as any[][];
           if (!data || data.length === 0) return;
 
-          const headers = (data[0] || []).map((h: any) => String(h || '').trim());
+          // Algumas planilhas reais têm linhas de filtro/pivot antes do
+          // cabeçalho de verdade (ex.: aba "top_clientes" do arquivo Top
+          // Clientes) — headerRow indica em que linha (1-based) ele está.
+          const headerRowIdx = (sheetCfg.headerRow ?? 1) - 1;
+          const rawHeaders = (data[headerRowIdx] || []).map((h: any) => String(h || '').trim());
+
+          // A mesma planilha real pode repetir um nome de coluna (ex.: duas
+          // colunas "% Cresc."). Sem desambiguar, a segunda sobrescreveria a
+          // primeira no objeto da linha — aqui cada repetição ganha um
+          // sufixo " (2)", " (3)"... para continuar endereçável no mapeamento.
+          const seenHeaderCount: Record<string, number> = {};
+          const headers = rawHeaders.map((h, idx) => {
+            const base = h || `Coluna_${idx}`;
+            seenHeaderCount[base] = (seenHeaderCount[base] || 0) + 1;
+            return seenHeaderCount[base] > 1 ? `${base} (${seenHeaderCount[base]})` : base;
+          });
+
           const rowToObj = (row: any[]) => {
             const obj: Record<string, any> = {};
             headers.forEach((h: string, idx: number) => {
-              obj[h || `Coluna_${idx}`] = row[idx] ?? '';
+              obj[h] = row[idx] ?? '';
             });
             return obj;
           };
 
           // Todas as linhas de dados (usadas no envio real ao backend) —
           // ignora linhas totalmente em branco que o Excel às vezes deixa no final.
-          const dataRows = data.slice(1).filter((row) => (row || []).some((cell) => cell !== undefined && cell !== ''));
+          const dataRows = data
+            .slice(headerRowIdx + 1)
+            .filter((row) => (row || []).some((cell) => cell !== undefined && cell !== ''));
           const parsedRows = dataRows.map(rowToObj);
           newSheetsData[sheetCfg.key] = { headers, rows: parsedRows };
 
-          // Auto match columns (inclui as ocultas — elas continuam sendo enviadas)
+          // Auto match columns (inclui as ocultas — elas continuam sendo enviadas).
+          // Primeiro tenta a dica de cabeçalho real (headerHints) quando existe,
+          // com igualdade exata tendo prioridade sobre correspondência parcial.
           const autoMap: Record<string, string> = {};
           sheetCfg.columns.forEach((req) => {
-            const matched = headers.find(
-              (h) => h.toLowerCase() === req.toLowerCase() || h.toLowerCase().includes(req.toLowerCase())
-            );
+            const candidates = [sheetCfg.headerHints?.[req], req].filter(Boolean) as string[];
+            let matched: string | undefined;
+            for (const cand of candidates) {
+              matched = headers.find((h) => h.toLowerCase() === cand.toLowerCase());
+              if (matched) break;
+            }
+            if (!matched) {
+              for (const cand of candidates) {
+                matched = headers.find((h) => h.toLowerCase().includes(cand.toLowerCase()));
+                if (matched) break;
+              }
+            }
             autoMap[req] = matched || headers[0] || '';
           });
           newMappings[sheetCfg.key] = autoMap;
