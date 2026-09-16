@@ -54,6 +54,63 @@ def products(
     ]
 
 
+@router.get("/catalog/sortimento")
+def sortimento(
+    q: str | None = None,
+    fabricante: str | None = None,
+    categoria: str | None = None,
+    linha: str | None = None,
+    _user: dict[str, Any] = Depends(get_current_user),
+) -> list[dict[str, Any]]:
+    """Lista o catálogo importado na tabela sortimento (Lista de Sortimento)."""
+    params: list[Any] = []
+    parts = ["1=1"]
+    if fabricante:
+        parts.append("s.fabricante = %s")
+        params.append(fabricante)
+    if categoria:
+        parts.append("s.categoria = %s")
+        params.append(categoria)
+    if linha:
+        parts.append("s.linha = %s")
+        params.append(linha)
+    if q:
+        parts.append(
+            "(s.cod_produto ILIKE %s OR COALESCE(s.produto, '') ILIKE %s "
+            "OR COALESCE(s.fabricante, '') ILIKE %s OR COALESCE(s.categoria, '') ILIKE %s "
+            "OR COALESCE(s.linha, '') ILIKE %s)"
+        )
+        like = f"%{q}%"
+        params.extend([like, like, like, like, like])
+    with get_connection() as conn:
+        rows = conn.execute(
+            f"""
+            SELECT
+              s.cod_produto,
+              s.produto,
+              s.fabricante,
+              s.categoria,
+              s.linha,
+              s.atualizado_em
+            FROM sortimento s
+            WHERE {" AND ".join(parts)}
+            ORDER BY s.fabricante NULLS LAST, s.produto NULLS LAST, s.cod_produto
+            """,
+            params,
+        ).fetchall()
+    return [
+        {
+            "codigo": r["cod_produto"],
+            "produto": r["produto"],
+            "fabricante": r["fabricante"],
+            "categoria": r["categoria"],
+            "linha": r["linha"],
+            "atualizadoEm": iso(r["atualizado_em"]),
+        }
+        for r in rows
+    ]
+
+
 @router.get("/catalog/customers")
 def customers(
     q: str | None = None,

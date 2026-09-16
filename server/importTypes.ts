@@ -259,9 +259,10 @@ export const IMPORT_TYPE_CONFIGS: Record<string, ImportTypeConfig> = {
     tracksImport: false,
     columns: [
       { name: 'cod_produto', kind: 'text' },
-      { name: 'descricao_produto', kind: 'text' },
-      { name: 'fornecedor', kind: 'text' },
+      { name: 'produto', kind: 'text' },
+      { name: 'fabricante', kind: 'text' },
       { name: 'categoria', kind: 'text' },
+      { name: 'linha', kind: 'text' },
     ],
   },
 

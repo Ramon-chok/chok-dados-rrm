@@ -317,3 +317,23 @@ CREATE TABLE IF NOT EXISTS importacoes_erros (
   motivo         TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_importacoes_erros_importacao ON importacoes_erros(importacao_id);
+
+-- ---------------------------------------------------------------------------
+-- TELA DE IMPORTAÇÃO — Lista de Sortimento
+-- Colunas alinhadas com a UI (Importacao.tsx): CÓDIGO, PRODUTO, FABRICANTE,
+-- CATEGORIA, LINHA.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS sortimento (
+  cod_produto   TEXT PRIMARY KEY,
+  produto       TEXT,
+  fabricante    TEXT,
+  categoria     TEXT,
+  linha         TEXT,
+  atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+-- Bancos já existentes com layout antigo (descricao_produto/fornecedor):
+ALTER TABLE sortimento ADD COLUMN IF NOT EXISTS produto TEXT;
+ALTER TABLE sortimento ADD COLUMN IF NOT EXISTS fabricante TEXT;
+ALTER TABLE sortimento ADD COLUMN IF NOT EXISTS categoria TEXT;
+ALTER TABLE sortimento ADD COLUMN IF NOT EXISTS linha TEXT;
+ALTER TABLE sortimento ADD COLUMN IF NOT EXISTS atualizado_em TIMESTAMPTZ DEFAULT now();

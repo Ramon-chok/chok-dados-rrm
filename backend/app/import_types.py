@@ -175,6 +175,22 @@ IMPORT_TYPE_CONFIGS: dict[str, ImportTypeConfig] = {
             ImportColumn("preco_tabela", "numeric"),
         ),
     ),
+    "sortimento": ImportTypeConfig(
+        id="sortimento",
+        label="Lista de Sortimento",
+        table="sortimento",
+        key_columns=("cod_produto",),
+        snapshot=False,
+        tracks_import=False,
+        columns=(
+            # Nomes alinhados com src/pages/admin/Importacao.tsx
+            ImportColumn("cod_produto", "text"),
+            ImportColumn("produto", "text"),
+            ImportColumn("fabricante", "text"),
+            ImportColumn("categoria", "text"),
+            ImportColumn("linha", "text"),
+        ),
+    ),
     "visitas": ImportTypeConfig(
         id="visitas",
         label="Roteiros de Visitas & Positivação",
