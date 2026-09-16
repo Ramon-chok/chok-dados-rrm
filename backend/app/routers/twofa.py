@@ -83,6 +83,44 @@ def _aware(dt: datetime | None) -> datetime | None:
     return dt
 
 
+def _normalize_totp_secret(secret: str | None) -> str:
+    """Base32 secrets sometimes arrive with spaces/dashes/lowercase from clients/DB."""
+    if not secret:
+        return ""
+    return (
+        str(secret)
+        .strip()
+        .replace(" ", "")
+        .replace("-", "")
+        .replace("\n", "")
+        .replace("\t", "")
+        .upper()
+    )
+
+
+def _normalize_otp_code(code: str | None) -> str:
+    """Keep digits only (apps sometimes include spaces or a dash)."""
+    if code is None:
+        return ""
+    return "".join(ch for ch in str(code).strip() if ch.isdigit())
+
+
+def _verify_totp(secret: str | None, code: str | None, *, window: int = 2) -> bool:
+    """
+    Validate a TOTP code with a wider window to tolerate small clock skew
+    between the server and the authenticator device.
+    window=2 => current ± 2 steps (about ±60s with 30s period).
+    """
+    sec = _normalize_totp_secret(secret)
+    code_n = _normalize_otp_code(code)
+    if not sec or len(code_n) != 6:
+        return False
+    try:
+        return bool(pyotp.TOTP(sec).verify(code_n, valid_window=window))
+    except Exception:
+        return False
+
+
 @router.get("/status")
 def twofa_status(user: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
     with get_connection() as conn:
@@ -118,11 +156,13 @@ def twofa_init(body: dict = Body(...), user: dict[str, Any] = Depends(get_curren
         _ensure_table(conn)
 
         if method == "authenticator":
-            secret = pyotp.random_base32()
+            secret = _normalize_totp_secret(pyotp.random_base32())
             totp = pyotp.TOTP(secret)
+            # issuer without spaces avoids quirks in some authenticator apps
+            account_name = str(user.get("email") or user["id"]).strip()
             provisioning_uri = totp.provisioning_uri(
-                name=str(user.get("email") or user["id"]),
-                issuer_name="CHOK Dados",
+                name=account_name,
+                issuer_name="CHOK-Dados",
             )
             conn.execute(
                 """
@@ -142,7 +182,7 @@ def twofa_init(body: dict = Body(...), user: dict[str, Any] = Depends(get_curren
                     backup_codes = '{}',
                     activated_at = NULL
                 """,
-                (user["id"], "authenticator", secret, phone, email),
+                (str(user["id"]), "authenticator", secret, phone, email),
             )
             conn.commit()
             return {
@@ -260,7 +300,9 @@ def twofa_resend(body: dict = Body(default={}), user: dict[str, Any] = Depends(g
 
 @router.post("/verify")
 def twofa_verify(body: dict = Body(...), user: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
-    code = str(body.get("code", "")).strip().replace(" ", "")
+    raw_code = body.get("code", "")
+    code = _normalize_otp_code(raw_code)
+    # backup-style codes (XXXX-XXXX) may appear here only after enable; activation uses 6 digits
     require_next = body.get("requireNextLogin")
     if require_next is None:
         require_next = True
@@ -268,24 +310,32 @@ def twofa_verify(body: dict = Body(...), user: dict[str, Any] = Depends(get_curr
 
     if not code:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Código é obrigatório")
+    if len(code) != 6:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Informe o código de 6 dígitos do aplicativo autenticador.",
+        )
 
     with get_connection() as conn:
         _ensure_table(conn)
         row = conn.execute(
             "SELECT metodo, segredo, codigo_temp, expira_temp, status FROM autenticacao_2fa WHERE user_id = %s",
-            (user["id"],),
+            (str(user["id"]),),
         ).fetchone()
         if not row:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Configuração 2FA não encontrada")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Configuração 2FA não encontrada. Gere o QR novamente.")
 
-        method = row["metodo"]
+        method = (row["metodo"] or "").lower().strip()
         ok = False
 
         if method == "authenticator":
             secret = row["segredo"]
             if not secret:
-                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Segredo não encontrado")
-            ok = pyotp.TOTP(secret).verify(code, valid_window=1)
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Segredo não encontrado. Volte e gere o QR code novamente.",
+                )
+            ok = _verify_totp(secret, code, window=2)
         elif method in ("email", "sms"):
             temp = row["codigo_temp"]
             exp = _aware(row["expira_temp"])
@@ -296,12 +346,15 @@ def twofa_verify(body: dict = Body(...), user: dict[str, Any] = Depends(get_curr
                 )
             if datetime.now(UTC) > exp:
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Código expirado")
-            ok = secrets.compare_digest(code, str(temp))
+            ok = secrets.compare_digest(code, _normalize_otp_code(str(temp)))
         else:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Método desconhecido")
 
         if not ok:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Código inválido")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Código inválido. Confira o horário do celular e use o código atual do app (ou gere o QR de novo).",
+            )
 
         backup_codes = _generate_backup_codes(8)
         now = datetime.now(UTC)
@@ -354,13 +407,14 @@ def twofa_disable(body: dict = Body(default={}), user: dict[str, Any] = Depends(
             return {"ok": True, "enabled": False}
 
         if code:
-            method = row["metodo"]
+            method = (row["metodo"] or "").lower().strip()
             valid = False
             if method == "authenticator" and row.get("segredo"):
-                valid = pyotp.TOTP(row["segredo"]).verify(code, valid_window=1)
+                valid = _verify_totp(row["segredo"], code, window=2)
             if not valid and row.get("backup_codes"):
                 codes = list(row["backup_codes"] or [])
-                if code.upper() in [c.upper() for c in codes]:
+                code_up = str(code).strip().upper().replace(" ", "")
+                if code_up in [str(c).upper().replace(" ", "") for c in codes]:
                     valid = True
             if not valid:
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Código inválido")

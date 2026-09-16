@@ -269,20 +269,35 @@ export const SettingsPage: React.FC = () => {
   };
 
   const handleCodeDigitChange = (index: number, value: string) => {
-    if (!/^\d*$/.test(value)) return;
+    // Aceita colar vários dígitos no mesmo campo
+    const cleaned = value.replace(/\D/g, '');
+    if (!cleaned) {
+      const newDigits = [...codeDigits];
+      newDigits[index] = '';
+      setCodeDigits(newDigits);
+      setVerifyError('');
+      return;
+    }
+
+    if (cleaned.length > 1) {
+      const newDigits = [...codeDigits];
+      for (let i = 0; i < cleaned.length && index + i < 6; i++) {
+        newDigits[index + i] = cleaned[i];
+      }
+      setCodeDigits(newDigits);
+      setVerifyError('');
+      const nextEmpty = newDigits.findIndex((d) => !d);
+      codeInputRefs.current[nextEmpty === -1 ? 5 : nextEmpty]?.focus();
+      return;
+    }
+
     const newDigits = [...codeDigits];
-    newDigits[index] = value.slice(-1);
+    newDigits[index] = cleaned.slice(-1);
     setCodeDigits(newDigits);
     setVerifyError('');
 
-    // Auto-advance
-    if (value && index < 5) {
+    if (cleaned && index < 5) {
       codeInputRefs.current[index + 1]?.focus();
-    }
-
-    // Auto-verify when all filled
-    if (newDigits.every((d) => d !== '') && newDigits.join('').length === 6) {
-      setTimeout(() => handleVerifyCode(newDigits.join('')), 200);
     }
   };
 
@@ -314,14 +329,19 @@ export const SettingsPage: React.FC = () => {
     }
   };
 
-  const handleVerifyCode = async (code: string) => {
+  const handleVerifyCode = async (code?: string) => {
     if (verifyingRef.current) return;
+    const normalized = (code ?? codeDigits.join('')).replace(/\D/g, '').slice(0, 6);
+    if (normalized.length !== 6) {
+      setVerifyError('Informe os 6 dígitos do aplicativo autenticador.');
+      return;
+    }
     verifyingRef.current = true;
     setIsVerifying(true);
     setVerifyError('');
     try {
       const res = await apiTwoFAVerify({
-        code,
+        code: normalized,
         requireNextLogin: require2FAOnNextLogin,
       });
       setBackupCodes(res.backupCodes || []);
@@ -1502,7 +1522,31 @@ export const SettingsPage: React.FC = () => {
                       <ArrowLeft size={14} />
                       Voltar
                     </button>
+                    <button
+                      type="button"
+                      disabled={isVerifying || codeDigits.join('').replace(/\D/g, '').length !== 6}
+                      onClick={() => void handleVerifyCode()}
+                      style={{
+                        ...primaryBtnStyle(t),
+                        opacity:
+                          isVerifying || codeDigits.join('').replace(/\D/g, '').length !== 6 ? 0.5 : 1,
+                        cursor:
+                          isVerifying || codeDigits.join('').replace(/\D/g, '').length !== 6
+                            ? 'not-allowed'
+                            : 'pointer',
+                      }}
+                    >
+                      {isVerifying ? 'Verificando...' : 'Confirmar código'}
+                      <Check size={14} />
+                    </button>
                   </div>
+                  {twoFAMethod === 'authenticator' && (
+                    <p style={{ margin: '14px 0 0', fontSize: 11.5, color: t.textMuted, lineHeight: 1.5 }}>
+                      Se o código não for aceito: confira o horário automático do celular, use o código
+                      atual (muda a cada 30s) e, se necessário, volte e escaneie o QR novamente (um QR
+                      antigo fica inválido).
+                    </p>
+                  )}
                 </div>
               )}
 

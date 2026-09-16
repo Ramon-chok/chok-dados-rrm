@@ -20,6 +20,7 @@ export type LoginOutcome =
 interface AuthContextType {
   currentUser: User | null;
   isAuthenticated: boolean;
+  /** true apenas enquanto a sessão inicial (cookie/me) está sendo validada */
   isLoading: boolean;
   token: string | null;
   login: (email: string, password?: string, rememberMe?: boolean) => Promise<LoginOutcome>;
@@ -39,6 +40,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [availableUsers, setAvailableUsers] = useState<User[]>([]);
   // token é armazenado em HttpOnly cookie pelo backend; não mantemos token em JS
+  // isLoading = bootstrap da sessão. NÃO usar no login/2FA — isso desmonta o LoginView e perde o estado pending2FA.
   const [isLoading, setIsLoading] = useState(true);
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
 
@@ -90,11 +92,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     password = '',
     rememberMe = true
   ): Promise<LoginOutcome> => {
-    setIsLoading(true);
+    // Não alterar isLoading aqui: o App desmonta LoginView quando isLoading=true
+    // e o estado local de 2FA (pending2FA) seria perdido.
     try {
       const body = await apiLogin(email.trim(), password, rememberMe);
       if (isLoginRequires2FA(body)) {
-        setIsLoading(false);
         return {
           success: false,
           requires2FA: true,
@@ -115,13 +117,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             ? err.message
             : 'Falha ao autenticar.';
       return { success: false, error: message };
-    } finally {
-      setIsLoading(false);
     }
   };
 
   const complete2FALogin = async (tempToken: string, code: string): Promise<LoginOutcome> => {
-    setIsLoading(true);
+    // Mesmo motivo do login: manter LoginView montado até o usuário autenticar de fato.
     try {
       const body = await apiLogin2FA(tempToken, code.trim());
       setCurrentUser(body.user);
@@ -136,8 +136,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             ? err.message
             : 'Código 2FA inválido.';
       return { success: false, error: message };
-    } finally {
-      setIsLoading(false);
     }
   };
 

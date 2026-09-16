@@ -96,9 +96,45 @@ def login(payload: LoginRequest, response: Response) -> object:
         conn.commit()
 
         row2 = conn.execute(
-            "SELECT status, metodo, require_next_login FROM autenticacao_2fa WHERE user_id = %s",
-            (data["id"],),
+            """
+            SELECT status, metodo, require_next_login, telefone, email
+            FROM autenticacao_2fa
+            WHERE user_id = %s
+            """,
+            (str(data["id"]),),
         ).fetchone()
+
+        # Se 2FA ativo e método e-mail/SMS, gera e envia código para este login
+        if row2 and row2["status"]:
+            method = (row2.get("metodo") or "authenticator").lower().strip()
+            if method in ("email", "sms"):
+                import secrets as _secrets
+
+                code = "".join(str(_secrets.randbelow(10)) for _ in range(6))
+                expires = datetime.now(UTC) + timedelta(minutes=5)
+                conn.execute(
+                    """
+                    UPDATE autenticacao_2fa
+                    SET codigo_temp = %s, expira_temp = %s
+                    WHERE user_id = %s
+                    """,
+                    (code, expires, str(data["id"])),
+                )
+                conn.commit()
+                if method == "email":
+                    dest = (row2.get("email") or data.get("email") or "").strip()
+                    if dest:
+                        try:
+                            from app.mail import send_test_email
+
+                            send_test_email(
+                                dest,
+                                subject="Seu código CHOK 2FA",
+                                body=f"Seu código de verificação de login é: {code}\n\nVálido por 5 minutos.",
+                            )
+                        except Exception:
+                            pass
+
     if row2 and row2["status"]:
         # create short-lived temp token for 2FA verification (5 minutes)
         settings = get_settings()
@@ -115,7 +151,7 @@ def login(payload: LoginRequest, response: Response) -> object:
         return {
             "requires2FA": True,
             "tempToken": temp_token,
-            "method": row2.get("metodo") or "authenticator",
+            "method": (row2.get("metodo") or "authenticator"),
         }
 
     token, expires_in = create_access_token(
@@ -130,8 +166,6 @@ def login(payload: LoginRequest, response: Response) -> object:
     )
     # also set HttpOnly cookie for compatibility/secure sessions
     try:
-        from app.config import get_settings
-
         settings = get_settings()
         cookie_name = settings.jwt_cookie_name or "chok_auth_token"
         # FastAPI Response.set_cookie uses max_age (seconds)
@@ -175,8 +209,11 @@ def twofa_login(payload: dict = Body(...), response: Response = None):
     if decoded.get("typ") != "2fa_pending":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Temp token inválido")
 
-    user_id = decoded.get("sub")
-    code_norm = code.strip().replace(" ", "")
+    user_id = str(decoded.get("sub") or "")
+    from app.routers.twofa import _normalize_otp_code, _verify_totp
+
+    code_digits = _normalize_otp_code(code)
+    code_raw = str(code or "").strip().replace(" ", "").upper()
     with get_connection() as conn:
         row = conn.execute(
             """
@@ -188,33 +225,40 @@ def twofa_login(payload: dict = Body(...), response: Response = None):
         ).fetchone()
         if not row or not row.get("status"):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Configuração 2FA não encontrada")
-        method = row["metodo"]
+        method = (row["metodo"] or "").lower().strip()
         ok = False
         used_backup: str | None = None
         if method == "authenticator":
-            secret = row["segredo"]
-            if secret:
-                import pyotp
-
-                ok = pyotp.TOTP(secret).verify(code_norm, valid_window=1)
+            ok = _verify_totp(row.get("segredo"), code_digits, window=2)
         else:
             temp_code = row["codigo_temp"]
             exp = row["expira_temp"]
             if exp is not None and getattr(exp, "tzinfo", None) is None:
                 exp = exp.replace(tzinfo=UTC)
             if temp_code and exp and datetime.now(UTC) <= exp:
-                ok = code_norm == str(temp_code)
+                ok = code_digits == _normalize_otp_code(str(temp_code))
 
-        # códigos de backup (one-time)
+        # códigos de backup (one-time) — formato XXXX-XXXX
         if not ok:
             backups = list(row.get("backup_codes") or [])
-            upper_map = {str(c).upper(): str(c) for c in backups}
-            if code_norm.upper() in upper_map:
+            upper_map = {str(c).upper().replace(" ", ""): str(c) for c in backups}
+            if code_raw in upper_map:
                 ok = True
-                used_backup = upper_map[code_norm.upper()]
+                used_backup = upper_map[code_raw]
+            elif code_digits and code_digits in {str(c).upper().replace("-", "").replace(" ", "") for c in backups}:
+                # aceita backup sem hífen
+                for original in backups:
+                    compact = str(original).upper().replace("-", "").replace(" ", "")
+                    if compact == code_digits:
+                        ok = True
+                        used_backup = str(original)
+                        break
 
         if not ok:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Código inválido")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Código inválido. Use o código atual do autenticador (6 dígitos) ou um código de backup.",
+            )
 
         if used_backup:
             remaining = [c for c in (row.get("backup_codes") or []) if str(c) != used_backup]
@@ -258,8 +302,6 @@ def twofa_login(payload: dict = Body(...), response: Response = None):
     token, expires_in = create_access_token(data["id"], data["email"], data["role"], remember_me=True)
     # set cookie
     try:
-        from app.config import get_settings
-
         settings = get_settings()
         cookie_name = settings.jwt_cookie_name or "chok_auth_token"
         samesite = (settings.jwt_cookie_same_site or "Strict").lower()
@@ -297,8 +339,6 @@ def email_test(payload: dict = Body(...), _admin: dict[str, Any] = Depends(requi
 def logout(response: Response = None) -> dict[str, bool]:
     # Allow logout without valid auth: always remove cookie if present.
     try:
-        from app.config import get_settings
-
         settings = get_settings()
         cookie_name = settings.jwt_cookie_name or "chok_auth_token"
         if response is not None:
