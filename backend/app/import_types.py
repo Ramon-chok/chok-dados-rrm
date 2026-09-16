@@ -395,6 +395,59 @@ IMPORT_TYPE_CONFIGS: dict[str, ImportTypeConfig] = {
             ImportColumn("pct_margem", "numeric"),
         ),
     ),
+    # Não Positivados — cada fabricante é uma coluna própria na planilha real
+    # (matriz cliente x fabricante), então só os campos de identificação do
+    # cliente são mapeados explicitamente; todo o resto do cabeçalho é
+    # capturado automaticamente na coluna jsonb "fabricantes" (ver
+    # dynamic_json_column em app.upsert.map_and_validate_rows). Isso também
+    # habilita o filtro por categoria/fabricante na tela.
+    "nao_positivados__por_vendedor": ImportTypeConfig(
+        id="nao_positivados__por_vendedor",
+        label='Não Positivados — Por Vendedor',
+        table="nao_positivados_vendedor",
+        key_columns=("data_referencia", "cod_vendedor", "cod_cliente"),
+        snapshot=True,
+        dynamic_json_column="fabricantes",
+        columns=(
+            ImportColumn("cod_vendedor", "text"),
+            ImportColumn("cod_cliente", "text"),
+            ImportColumn("razao_social", "text"),
+            ImportColumn("nome_fantasia", "text"),
+            ImportColumn("municipio", "text"),
+            ImportColumn("fabricantes", "jsonb"),
+        ),
+    ),
+    "nao_positivados__equipe": ImportTypeConfig(
+        id="nao_positivados__equipe",
+        label='Não Positivados — Equipe',
+        table="nao_positivados_equipe",
+        key_columns=("data_referencia", "equipe", "cod_cliente"),
+        snapshot=True,
+        dynamic_json_column="fabricantes",
+        columns=(
+            ImportColumn("equipe", "text"),
+            ImportColumn("cod_cliente", "text"),
+            ImportColumn("razao_social", "text"),
+            ImportColumn("nome_fantasia", "text"),
+            ImportColumn("municipio", "text"),
+            ImportColumn("fabricantes", "jsonb"),
+        ),
+    ),
+    "nao_positivados__chok_total": ImportTypeConfig(
+        id="nao_positivados__chok_total",
+        label='Não Positivados — Chok Total',
+        table="nao_positivados_chok_total",
+        key_columns=("data_referencia", "cod_cliente"),
+        snapshot=True,
+        dynamic_json_column="fabricantes",
+        columns=(
+            ImportColumn("cod_cliente", "text"),
+            ImportColumn("razao_social", "text"),
+            ImportColumn("nome_fantasia", "text"),
+            ImportColumn("municipio", "text"),
+            ImportColumn("fabricantes", "jsonb"),
+        ),
+    ),
 }
 
 

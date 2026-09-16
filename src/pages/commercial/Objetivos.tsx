@@ -1,20 +1,99 @@
 ﻿import React, { useEffect, useMemo, useState } from 'react';
 import { useTheme } from '../../context/ThemeContext';
+import { useAuth } from '../../context/AuthContext';
 import { useGlobalFilter } from '../../context/GlobalFilterContext';
 import { ExportExcelButton } from '../../components/common/ExportExcelButton';
 import { EmptyBlock, ErrorBlock, LoadingBlock } from '../../components/common/DataState';
-import { fetchTargets, TargetRow } from '../../lib/api';
-import { Target } from 'lucide-react';
+import {
+  fetchTargets,
+  fetchObjetivosFaseamento,
+  fetchDashboardFilterOptions,
+  TargetRow,
+  ObjetivosFaseamentoResponse,
+  DashboardFilterOptions,
+} from '../../lib/api';
+import { Target, ChevronDown } from 'lucide-react';
 
 const fmt = (v: number) => `R$ ${v.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}`;
+const fmtPct = (v: number) => `${v.toFixed(1)}%`;
 
 export const ObjetivosPage: React.FC = () => {
   const { t } = useTheme();
-  const { ano, mes, periodType } = useGlobalFilter();
+  const { currentUser } = useAuth();
+  const { ano, mes, startDate, endDate, periodType } = useGlobalFilter();
   const [rows, setRows] = useState<TargetRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
+
+  const role = currentUser?.role;
+  // Admin/Gerência filtram por equipe ou vendedor; Supervisor só por
+  // vendedor da própria equipe (equipe já travada no backend); Vendedor não
+  // tem filtro (só vê os próprios dados).
+  const canFilterEquipe = role === 'ADMIN' || role === 'GERENTE';
+  const canFilterVendedor = role === 'ADMIN' || role === 'GERENTE' || role === 'SUPERVISOR';
+
+  const [filterOptions, setFilterOptions] = useState<DashboardFilterOptions | null>(null);
+  const [selectedEquipe, setSelectedEquipe] = useState('');
+  const [selectedVendedor, setSelectedVendedor] = useState('');
+
+  const [faseamento, setFaseamento] = useState<ObjetivosFaseamentoResponse | null>(null);
+  const [faseamentoLoading, setFaseamentoLoading] = useState(true);
+  const [faseamentoError, setFaseamentoError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!canFilterEquipe && !canFilterVendedor) return;
+    let mounted = true;
+    (async () => {
+      try {
+        const opts = await fetchDashboardFilterOptions();
+        if (mounted) setFilterOptions(opts);
+      } catch {
+        // Filtros são um extra da tela — sem eles, segue no escopo padrão do usuário.
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const vendedorOptions = useMemo(() => {
+    const all = filterOptions?.vendedores || [];
+    return selectedEquipe ? all.filter((v) => v.equipe === selectedEquipe) : all;
+  }, [filterOptions, selectedEquipe]);
+
+  useEffect(() => {
+    if (selectedVendedor && !vendedorOptions.some((v) => v.codVendedor === selectedVendedor)) {
+      setSelectedVendedor('');
+    }
+  }, [vendedorOptions, selectedVendedor]);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      setFaseamentoLoading(true);
+      setFaseamentoError(null);
+      try {
+        const res = await fetchObjetivosFaseamento({
+          ano: periodType === 'personalizado' ? undefined : ano,
+          mes: periodType === 'mensal' ? mes : undefined,
+          start: startDate || undefined,
+          end: endDate || undefined,
+          equipe: canFilterEquipe && selectedEquipe ? selectedEquipe : undefined,
+          vendedor: canFilterVendedor && selectedVendedor ? selectedVendedor : undefined,
+        });
+        if (mounted) setFaseamento(res);
+      } catch (e) {
+        if (mounted) setFaseamentoError(e instanceof Error ? e.message : 'Falha ao carregar metas de faseamento');
+      } finally {
+        if (mounted) setFaseamentoLoading(false);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [ano, mes, startDate, endDate, periodType, canFilterEquipe, canFilterVendedor, selectedEquipe, selectedVendedor]);
 
   const anoMes = periodType === 'mensal' && ano && mes
     ? `${ano}-${String(mes).padStart(2, '0')}`
@@ -65,6 +144,40 @@ export const ObjetivosPage: React.FC = () => {
     })),
   }];
 
+  const faseamentoSelectStyle: React.CSSProperties = {
+    fontSize: '13px',
+    fontWeight: 600,
+    color: t.text,
+    background: t.surfaceElevated,
+    border: `1px solid ${t.border}`,
+    borderRadius: '6px',
+    padding: '5px 26px 5px 10px',
+    cursor: 'pointer',
+    outline: 'none',
+    appearance: 'none',
+    WebkitAppearance: 'none',
+  };
+
+  const faseamentoCard = (title: string, block: { meta: number; realizado: number; pct: number } | undefined) => (
+    <div style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 10, padding: 12, flex: 1, minWidth: 160 }}>
+      <div style={{ fontSize: 11, color: t.textMuted, marginBottom: 6 }}>{title}</div>
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+        <div>
+          <div style={{ fontSize: 10, color: t.textMuted }}>Meta</div>
+          <div className="num" style={{ fontWeight: 700, color: t.text }}>{fmt(block?.meta || 0)}</div>
+        </div>
+        <div>
+          <div style={{ fontSize: 10, color: t.textMuted }}>Realizado</div>
+          <div className="num" style={{ fontWeight: 700, color: t.text }}>{fmt(block?.realizado || 0)}</div>
+        </div>
+        <div>
+          <div style={{ fontSize: 10, color: t.textMuted }}>Ating.</div>
+          <div className="num" style={{ fontWeight: 700, color: t.primary }}>{fmtPct(block?.pct || 0)}</div>
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
@@ -72,8 +185,48 @@ export const ObjetivosPage: React.FC = () => {
           <h1 className="num" style={{ margin: '0 0 4px', fontSize: 24, fontWeight: 700, color: t.text }}>Objetivos</h1>
           <p style={{ margin: 0, fontSize: 13, color: t.textSecondary }}>Metas mensais a partir da tabela metas_mensais.</p>
         </div>
-        <ExportExcelButton getSheets={handleExport} fileName="objetivos" />
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          {canFilterEquipe && (
+            <div style={{ position: 'relative' }}>
+              <select value={selectedEquipe} onChange={(e) => setSelectedEquipe(e.target.value)} style={faseamentoSelectStyle}>
+                <option value="">Todas as equipes</option>
+                {(filterOptions?.equipes || []).map((eq) => (
+                  <option key={eq} value={eq}>{eq}</option>
+                ))}
+              </select>
+              <ChevronDown size={13} color={t.textMuted} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+            </div>
+          )}
+          {canFilterVendedor && (
+            <div style={{ position: 'relative' }}>
+              <select value={selectedVendedor} onChange={(e) => setSelectedVendedor(e.target.value)} style={faseamentoSelectStyle}>
+                <option value="">Todos os vendedores</option>
+                {vendedorOptions.map((v) => (
+                  <option key={v.codVendedor} value={v.codVendedor}>{v.nome}</option>
+                ))}
+              </select>
+              <ChevronDown size={13} color={t.textMuted} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+            </div>
+          )}
+          <ExportExcelButton getSheets={handleExport} fileName="objetivos" />
+        </div>
       </div>
+
+      {/* Metas de Faseamento / Faseamento II / Desconcentração / Desafio — aba "Mês" do Dados App */}
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: t.text, marginBottom: 10 }}>Faseamento &amp; Desafios</div>
+        {faseamentoLoading && <LoadingBlock />}
+        {faseamentoError && <ErrorBlock message={faseamentoError} />}
+        {!faseamentoLoading && !faseamentoError && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+            {faseamentoCard('Meta Faseamento', faseamento?.faseamento)}
+            {faseamentoCard('Meta Faseamento II', faseamento?.faseamentoII)}
+            {faseamentoCard('Meta Desconcentração', faseamento?.desconcentracao)}
+            {faseamentoCard('Meta Desafio', faseamento?.desafio)}
+          </div>
+        )}
+      </div>
+
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(160px,1fr))', gap: 10, marginBottom: 14 }}>
         <div style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 10, padding: 12 }}>
           <div style={{ fontSize: 11, color: t.textMuted, display: 'flex', alignItems: 'center', gap: 6 }}><Target size={14} /> Meta faturamento</div>

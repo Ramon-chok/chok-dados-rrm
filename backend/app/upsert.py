@@ -12,6 +12,7 @@ from datetime import datetime
 from typing import Any
 
 from psycopg import Connection
+from psycopg.types.json import Jsonb
 
 from app.import_types import ImportTypeConfig
 from app.parse import parse_boolean, parse_date_only, parse_integer, parse_numeric, parse_text
@@ -125,8 +126,9 @@ def _row_params(
     for c in value_columns:
         val = row.values.get(c)
         col_cfg = next((cc for cc in cfg.columns if cc.name == c), None)
-        if col_cfg and col_cfg.kind == "jsonb" and val is None:
-            val = {}
+        if col_cfg and col_cfg.kind == "jsonb":
+            # psycopg não adapta dict puro para jsonb — precisa do wrapper.
+            val = Jsonb(val if isinstance(val, dict) else {})
         params.append(val)
     if cfg.snapshot and snapshot:
         params.extend([snapshot.data_referencia, snapshot.mes_referencia, snapshot.ano_referencia])

@@ -369,3 +369,71 @@ END
 $sortimento_pk$;
 CREATE INDEX IF NOT EXISTS idx_sortimento_cod ON sortimento(cod_produto);
 CREATE INDEX IF NOT EXISTS idx_sortimento_fab ON sortimento(fabricante);
+
+-- Não Positivados — 3 níveis da mesma planilha (Por Vendedor / Equipe / Chok
+-- Total), cada um com seu próprio destino. Cada fabricante é uma coluna na
+-- planilha real; todas as colunas não mapeadas explicitamente na importação
+-- são capturadas em "fabricantes" (jsonb), o que também alimenta o filtro
+-- por categoria na tela.
+CREATE TABLE IF NOT EXISTS nao_positivados_vendedor (
+  data_referencia  DATE NOT NULL,
+  cod_vendedor     TEXT NOT NULL,
+  cod_cliente      TEXT NOT NULL,
+  razao_social     TEXT,
+  nome_fantasia    TEXT,
+  municipio        TEXT,
+  fabricantes      JSONB NOT NULL DEFAULT '{}'::jsonb,
+  mes_referencia   INT NOT NULL,
+  ano_referencia   INT NOT NULL,
+  data_importacao  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  importacao_id    BIGINT,
+  PRIMARY KEY (data_referencia, cod_vendedor, cod_cliente)
+);
+-- Bancos já existentes (ex.: criados pelo antigo espelho Node) podem ter
+-- essa tabela sem as colunas do novo formato jsonb — adiciona sem apagar nada.
+ALTER TABLE nao_positivados_vendedor ADD COLUMN IF NOT EXISTS razao_social TEXT;
+ALTER TABLE nao_positivados_vendedor ADD COLUMN IF NOT EXISTS nome_fantasia TEXT;
+ALTER TABLE nao_positivados_vendedor ADD COLUMN IF NOT EXISTS municipio TEXT;
+ALTER TABLE nao_positivados_vendedor ADD COLUMN IF NOT EXISTS fabricantes JSONB NOT NULL DEFAULT '{}'::jsonb;
+CREATE INDEX IF NOT EXISTS idx_nao_pos_vend_periodo ON nao_positivados_vendedor(ano_referencia, mes_referencia);
+CREATE INDEX IF NOT EXISTS idx_nao_pos_vend_vendedor ON nao_positivados_vendedor(cod_vendedor, data_referencia);
+
+CREATE TABLE IF NOT EXISTS nao_positivados_equipe (
+  data_referencia  DATE NOT NULL,
+  equipe           TEXT NOT NULL,
+  cod_cliente      TEXT NOT NULL,
+  razao_social     TEXT,
+  nome_fantasia    TEXT,
+  municipio        TEXT,
+  fabricantes      JSONB NOT NULL DEFAULT '{}'::jsonb,
+  mes_referencia   INT NOT NULL,
+  ano_referencia   INT NOT NULL,
+  data_importacao  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  importacao_id    BIGINT,
+  PRIMARY KEY (data_referencia, equipe, cod_cliente)
+);
+ALTER TABLE nao_positivados_equipe ADD COLUMN IF NOT EXISTS razao_social TEXT;
+ALTER TABLE nao_positivados_equipe ADD COLUMN IF NOT EXISTS nome_fantasia TEXT;
+ALTER TABLE nao_positivados_equipe ADD COLUMN IF NOT EXISTS municipio TEXT;
+ALTER TABLE nao_positivados_equipe ADD COLUMN IF NOT EXISTS fabricantes JSONB NOT NULL DEFAULT '{}'::jsonb;
+CREATE INDEX IF NOT EXISTS idx_nao_pos_equipe_periodo ON nao_positivados_equipe(ano_referencia, mes_referencia);
+CREATE INDEX IF NOT EXISTS idx_nao_pos_equipe_equipe ON nao_positivados_equipe(equipe, data_referencia);
+
+CREATE TABLE IF NOT EXISTS nao_positivados_chok_total (
+  data_referencia  DATE NOT NULL,
+  cod_cliente      TEXT NOT NULL,
+  razao_social     TEXT,
+  nome_fantasia    TEXT,
+  municipio        TEXT,
+  fabricantes      JSONB NOT NULL DEFAULT '{}'::jsonb,
+  mes_referencia   INT NOT NULL,
+  ano_referencia   INT NOT NULL,
+  data_importacao  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  importacao_id    BIGINT,
+  PRIMARY KEY (data_referencia, cod_cliente)
+);
+ALTER TABLE nao_positivados_chok_total ADD COLUMN IF NOT EXISTS razao_social TEXT;
+ALTER TABLE nao_positivados_chok_total ADD COLUMN IF NOT EXISTS nome_fantasia TEXT;
+ALTER TABLE nao_positivados_chok_total ADD COLUMN IF NOT EXISTS municipio TEXT;
+ALTER TABLE nao_positivados_chok_total ADD COLUMN IF NOT EXISTS fabricantes JSONB NOT NULL DEFAULT '{}'::jsonb;
+CREATE INDEX IF NOT EXISTS idx_nao_pos_total_periodo ON nao_positivados_chok_total(ano_referencia, mes_referencia);

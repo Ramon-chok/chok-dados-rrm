@@ -11,6 +11,20 @@ from app.services import iso, num, scope_filters
 router = APIRouter(tags=["catalog"])
 
 
+def _resolve_equipe_vendedor(
+    user: dict[str, Any], equipe_param: str | None, vendedor_param: str | None
+) -> tuple[str | None, str | None]:
+    """Mesma regra do Dashboard: ADMIN/GERENTE filtram livremente por equipe
+    e/ou vendedor; SUPERVISOR tem a equipe travada na própria; VENDEDOR
+    sempre vê só o próprio código."""
+    role = user["role"]
+    if role == "VENDEDOR":
+        return None, user.get("seller_code")
+    if role == "SUPERVISOR":
+        return user.get("team"), vendedor_param
+    return equipe_param, vendedor_param
+
+
 @router.get("/catalog/products")
 def products(
     q: str | None = None,
@@ -230,6 +244,80 @@ def targets(
     ]
 
 
+@router.get("/commercial/objetivos-faseamento")
+def objetivos_faseamento(
+    ano: int | None = None,
+    mes: int | None = None,
+    start: str | None = None,
+    end: str | None = None,
+    equipe: str | None = None,
+    vendedor: str | None = None,
+    user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Metas de Faseamento, Faseamento II, Desconcentração e Desafio (aba
+    "Mês" do Dados App, tabela indicadores_vendedor) — total do escopo do
+    usuário, com Admin/Gerência podendo filtrar por equipe ou vendedor e
+    Supervisor podendo filtrar por vendedor da própria equipe."""
+    eff_equipe, eff_vendedor = _resolve_equipe_vendedor(user, equipe, vendedor)
+
+    join_scope = " JOIN vendedores vsc ON vsc.cod_vendedor = iv.cod_vendedor" if eff_equipe else ""
+    params: list[Any] = []
+    parts = ["1=1"]
+    if ano:
+        parts.append("iv.ano_referencia = %s")
+        params.append(ano)
+    if mes:
+        parts.append("iv.mes_referencia = %s")
+        params.append(mes)
+    if start:
+        parts.append("iv.data_referencia >= %s")
+        params.append(start)
+    if end:
+        parts.append("iv.data_referencia <= %s")
+        params.append(end)
+    if eff_equipe:
+        parts.append("vsc.equipe = %s")
+        params.append(eff_equipe)
+    if eff_vendedor:
+        parts.append("iv.cod_vendedor = %s")
+        params.append(eff_vendedor)
+
+    with get_connection() as conn:
+        row = conn.execute(
+            f"""
+            SELECT
+              COALESCE(SUM(iv.meta_faseamento), 0) AS meta_faseamento,
+              COALESCE(SUM(iv.realizado_faseamento), 0) AS realizado_faseamento,
+              COALESCE(SUM(iv.meta_faseamento_ii), 0) AS meta_faseamento_ii,
+              COALESCE(SUM(iv.realizado_faseamento_ii), 0) AS realizado_faseamento_ii,
+              COALESCE(SUM(iv.meta_desconcentracao), 0) AS meta_desconcentracao,
+              COALESCE(SUM(iv.realizado_desconcentracao), 0) AS realizado_desconcentracao,
+              COALESCE(SUM(iv.meta_desafio), 0) AS meta_desafio,
+              COALESCE(SUM(iv.realizado_desafio), 0) AS realizado_desafio
+            FROM indicadores_vendedor iv
+            {join_scope}
+            WHERE {" AND ".join(parts)}
+            """,
+            params,
+        ).fetchone()
+
+    def block(meta_key: str, realizado_key: str) -> dict[str, float]:
+        meta_v = num(row[meta_key])
+        real_v = num(row[realizado_key])
+        return {
+            "meta": meta_v,
+            "realizado": real_v,
+            "pct": round((real_v / meta_v * 100) if meta_v else 0, 1),
+        }
+
+    return {
+        "faseamento": block("meta_faseamento", "realizado_faseamento"),
+        "faseamentoII": block("meta_faseamento_ii", "realizado_faseamento_ii"),
+        "desconcentracao": block("meta_desconcentracao", "realizado_desconcentracao"),
+        "desafio": block("meta_desafio", "realizado_desafio"),
+    }
+
+
 @router.get("/commercial/top-customers")
 def top_customers(
     start: str | None = None,
@@ -237,33 +325,41 @@ def top_customers(
     limit: int = Query(default=20, ge=1, le=200),
     user: dict[str, Any] = Depends(get_current_user),
 ) -> list[dict[str, Any]]:
+    # Vem da planilha "Top Clientes" (aba "top_clientes", venda total no mês
+    # por cliente) — a tabela `vendas` não tem importação implementada ainda.
+    # tv.equipe (via join com vendedores, fonte confiável) tem prioridade
+    # sobre tc.equipe (valor já importado, usado como fallback).
     params: list[Any] = []
     parts = ["1=1"]
     scope = scope_filters(user)
     if start:
-        parts.append("v.data_emissao >= %s")
+        parts.append("tc.data_referencia >= %s")
         params.append(start)
     if end:
-        parts.append("v.data_emissao <= %s")
+        parts.append("tc.data_referencia <= %s")
         params.append(end)
     if scope.get("vendedor"):
-        parts.append("v.cod_vendedor = %s")
+        parts.append("tc.cod_vendedor = %s")
         params.append(scope["vendedor"])
+    if scope.get("equipe"):
+        parts.append("COALESCE(tv.equipe, tc.equipe) = %s")
+        params.append(scope["equipe"])
     params.append(limit)
     with get_connection() as conn:
         rows = conn.execute(
             f"""
-            SELECT v.cod_cliente,
-                   COALESCE(c.razao_social, v.cod_cliente) AS nome,
-                   v.cod_vendedor,
-                   ve.nome AS nome_vendedor,
-                   ve.equipe,
-                   COALESCE(SUM(v.valor_total), 0) AS faturamento
-            FROM vendas v
-            LEFT JOIN clientes c ON c.cod_cliente = v.cod_cliente
-            LEFT JOIN vendedores ve ON ve.cod_vendedor = v.cod_vendedor
+            SELECT tc.cod_cliente,
+                   COALESCE(c.razao_social, tc.cliente, tc.cod_cliente) AS nome,
+                   tc.cod_vendedor,
+                   COALESCE(tv.nome, tc.nome_vendedor) AS nome_vendedor,
+                   COALESCE(tv.equipe, tc.equipe) AS equipe,
+                   COALESCE(SUM(tc.venda_total_mes), 0) AS faturamento
+            FROM top_clientes tc
+            LEFT JOIN clientes c ON c.cod_cliente = tc.cod_cliente
+            LEFT JOIN vendedores tv ON tv.cod_vendedor = tc.cod_vendedor
             WHERE {" AND ".join(parts)}
-            GROUP BY v.cod_cliente, c.razao_social, v.cod_vendedor, ve.nome, ve.equipe
+            GROUP BY tc.cod_cliente, c.razao_social, tc.cliente, tc.cod_vendedor,
+                     tv.nome, tc.nome_vendedor, tv.equipe, tc.equipe
             ORDER BY faturamento DESC
             LIMIT %s
             """,
@@ -286,6 +382,192 @@ def top_customers(
             }
         )
     return out
+
+
+@router.get("/commercial/top-20-customers")
+def top_20_customers(
+    ano: int | None = None,
+    mes: int | None = None,
+    start: str | None = None,
+    end: str | None = None,
+    gerencia: str | None = None,
+    equipe: str | None = None,
+    vendedor: str | None = None,
+    user: dict[str, Any] = Depends(get_current_user),
+) -> list[dict[str, Any]]:
+    """Lista bruta da planilha "Top Clientes" (aba "top_20_clientes") — dados
+    exatamente como importados, sem agregação. Admin/Gerência veem tudo e
+    podem filtrar por gerência, equipe ou vendedor; Supervisor só vê a
+    própria equipe (podendo filtrar por vendedor dela); Vendedor só vê os
+    próprios registros.
+    """
+    eff_equipe, eff_vendedor = _resolve_equipe_vendedor(user, equipe, vendedor)
+    eff_gerencia = gerencia if user["role"] in ("ADMIN", "GERENTE") else None
+
+    params: list[Any] = []
+    parts = ["1=1"]
+    if ano:
+        parts.append("t.ano_referencia = %s")
+        params.append(ano)
+    if mes:
+        parts.append("t.mes_referencia = %s")
+        params.append(mes)
+    if start:
+        parts.append("t.data_referencia >= %s")
+        params.append(start)
+    if end:
+        parts.append("t.data_referencia <= %s")
+        params.append(end)
+    if eff_vendedor:
+        parts.append("t.cod_vendedor = %s")
+        params.append(eff_vendedor)
+    if eff_equipe:
+        # Prioriza a equipe resolvida via vendedores (fonte confiável) sobre
+        # o valor já importado na própria planilha.
+        parts.append("COALESCE(tv.equipe, t.equipe) = %s")
+        params.append(eff_equipe)
+    if eff_gerencia:
+        parts.append("t.gerencia = %s")
+        params.append(eff_gerencia)
+
+    with get_connection() as conn:
+        rows = conn.execute(
+            f"""
+            SELECT t.data_referencia, t.nivel, t.gerencia,
+                   COALESCE(tv.equipe, t.equipe) AS equipe,
+                   t.cod_vendedor, COALESCE(tv.nome, t.nome_vendedor) AS nome_vendedor,
+                   t.pasta, t.cod_cliente, t.cliente_redes,
+                   t.trimestre_25, t.trimestre_26, t.pct_cresc_trimestre,
+                   t.mes_25, t.mes_26, t.pct_cresc_mes
+            FROM top_20_clientes t
+            LEFT JOIN vendedores tv ON tv.cod_vendedor = t.cod_vendedor
+            WHERE {" AND ".join(parts)}
+            ORDER BY t.gerencia, COALESCE(tv.equipe, t.equipe), t.cod_vendedor, t.nivel
+            """,
+            params,
+        ).fetchall()
+
+    return [
+        {
+            "dataReferencia": iso(r["data_referencia"]),
+            "nivel": r["nivel"],
+            "gerencia": r["gerencia"],
+            "equipe": r["equipe"],
+            "codVendedor": r["cod_vendedor"],
+            "nomeVendedor": r["nome_vendedor"],
+            "pasta": r["pasta"],
+            "codCliente": r["cod_cliente"],
+            "clienteRedes": r["cliente_redes"],
+            "trimestre25": num(r["trimestre_25"]),
+            "trimestre26": num(r["trimestre_26"]),
+            "pctCrescTrimestre": num(r["pct_cresc_trimestre"]),
+            "mes25": num(r["mes_25"]),
+            "mes26": num(r["mes_26"]),
+            "pctCrescMes": num(r["pct_cresc_mes"]),
+        }
+        for r in rows
+    ]
+
+
+@router.get("/commercial/nao-positivados-import")
+def nao_positivados_import(
+    ano: int | None = None,
+    mes: int | None = None,
+    start: str | None = None,
+    end: str | None = None,
+    nivel: str | None = Query(default=None, pattern="^(vendedor|equipe|total)$"),
+    equipe: str | None = None,
+    vendedor: str | None = None,
+    user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Não Positivados a partir da planilha importada (3 abas/tabelas
+    separadas — não é uma agregação derivada). Vendedor só vê a própria
+    linha (nível "vendedor" travado); Supervisor só vê a própria equipe
+    (nível "equipe" travado); Admin/Gerência veem o Chok Total por padrão,
+    podendo trocar para o nível vendedor ou equipe (com filtro opcional).
+    Cada fabricante é uma coluna na planilha original, capturada na coluna
+    "fabricantes" — a lista de categorias devolvida vem exatamente dela.
+    """
+    role = user["role"]
+    if role == "VENDEDOR":
+        eff_nivel = "vendedor"
+        eff_equipe = None
+        eff_vendedor = user.get("seller_code")
+    elif role == "SUPERVISOR":
+        eff_nivel = "equipe"
+        eff_equipe = user.get("team")
+        eff_vendedor = None
+    else:
+        eff_nivel = nivel or "total"
+        eff_equipe = equipe
+        eff_vendedor = vendedor
+
+    params: list[Any] = []
+    parts = ["1=1"]
+    if ano:
+        parts.append("n.ano_referencia = %s")
+        params.append(ano)
+    if mes:
+        parts.append("n.mes_referencia = %s")
+        params.append(mes)
+    if start:
+        parts.append("n.data_referencia >= %s")
+        params.append(start)
+    if end:
+        parts.append("n.data_referencia <= %s")
+        params.append(end)
+
+    join = ""
+    extra_select = ""
+    if eff_nivel == "vendedor":
+        table = "nao_positivados_vendedor"
+        join = "LEFT JOIN vendedores v ON v.cod_vendedor = n.cod_vendedor"
+        extra_select = ", n.cod_vendedor, COALESCE(v.nome, n.cod_vendedor) AS vendedor_nome, v.equipe AS vendedor_equipe"
+        if eff_vendedor:
+            parts.append("n.cod_vendedor = %s")
+            params.append(eff_vendedor)
+    elif eff_nivel == "equipe":
+        table = "nao_positivados_equipe"
+        extra_select = ", n.equipe"
+        if eff_equipe:
+            parts.append("n.equipe = %s")
+            params.append(eff_equipe)
+    else:
+        table = "nao_positivados_chok_total"
+
+    with get_connection() as conn:
+        rows = conn.execute(
+            f"""
+            SELECT n.cod_cliente, n.razao_social, n.nome_fantasia, n.municipio, n.fabricantes
+                   {extra_select}
+            FROM {table} n
+            {join}
+            WHERE {" AND ".join(parts)}
+            ORDER BY n.razao_social
+            """,
+            params,
+        ).fetchall()
+
+    categorias = sorted({k for r in rows for k in (r["fabricantes"] or {}).keys()})
+
+    out_rows = []
+    for r in rows:
+        item: dict[str, Any] = {
+            "codCliente": r["cod_cliente"],
+            "razaoSocial": r["razao_social"],
+            "nomeFantasia": r["nome_fantasia"],
+            "municipio": r["municipio"],
+            "fabricantes": r["fabricantes"] or {},
+        }
+        if eff_nivel == "vendedor":
+            item["codVendedor"] = r["cod_vendedor"]
+            item["vendedor"] = r["vendedor_nome"]
+            item["equipe"] = r["vendedor_equipe"]
+        elif eff_nivel == "equipe":
+            item["equipe"] = r["equipe"]
+        out_rows.append(item)
+
+    return {"nivel": eff_nivel, "categorias": categorias, "rows": out_rows}
 
 
 @router.get("/commercial/not-positivated")

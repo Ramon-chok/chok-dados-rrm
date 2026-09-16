@@ -85,8 +85,27 @@ export interface FabricanteVendedorRow {
 }
 
 export interface DashboardFilterOptions {
+  gerencias: string[];
   equipes: string[];
   vendedores: Array<{ codVendedor: string; nome: string; equipe: string | null }>;
+}
+
+export interface Top20ClienteRow {
+  dataReferencia: string;
+  nivel: string | null;
+  gerencia: string | null;
+  equipe: string | null;
+  codVendedor: string;
+  nomeVendedor: string | null;
+  pasta: string | null;
+  codCliente: string;
+  clienteRedes: string | null;
+  trimestre25: number;
+  trimestre26: number;
+  pctCrescTrimestre: number;
+  mes25: number;
+  mes26: number;
+  pctCrescMes: number;
 }
 
 export interface FabricanteDetalheResponse {
@@ -211,6 +230,27 @@ export interface NotPositivatedResponse {
     dias: number;
     status: string;
   }>;
+}
+
+export type NaoPositivadoNivel = 'vendedor' | 'equipe' | 'total';
+
+export interface NaoPositivadoRow {
+  codCliente: string;
+  razaoSocial: string | null;
+  nomeFantasia: string | null;
+  municipio: string | null;
+  // Uma chave por fabricante — exatamente como veio da planilha (cada
+  // fabricante era uma coluna própria no arquivo original).
+  fabricantes: Record<string, number | string>;
+  codVendedor?: string;
+  vendedor?: string | null;
+  equipe?: string | null;
+}
+
+export interface NaoPositivadosImportResponse {
+  nivel: NaoPositivadoNivel;
+  categorias: string[];
+  rows: NaoPositivadoRow[];
 }
 
 export interface TargetRow {
@@ -589,12 +629,60 @@ export function fetchTargets(params?: { ano_mes?: string }): Promise<TargetRow[]
   return request<TargetRow[]>(`/commercial/targets${qs(params)}`);
 }
 
+export interface ObjetivoBloco {
+  meta: number;
+  realizado: number;
+  pct: number;
+}
+
+export interface ObjetivosFaseamentoResponse {
+  faseamento: ObjetivoBloco;
+  faseamentoII: ObjetivoBloco;
+  desconcentracao: ObjetivoBloco;
+  desafio: ObjetivoBloco;
+}
+
+export function fetchObjetivosFaseamento(params?: {
+  ano?: number;
+  mes?: number;
+  start?: string;
+  end?: string;
+  equipe?: string;
+  vendedor?: string;
+}): Promise<ObjetivosFaseamentoResponse> {
+  return request<ObjetivosFaseamentoResponse>(`/commercial/objetivos-faseamento${qs(params)}`);
+}
+
+export function fetchTop20Customers(params?: {
+  ano?: number;
+  mes?: number;
+  start?: string;
+  end?: string;
+  gerencia?: string;
+  equipe?: string;
+  vendedor?: string;
+}): Promise<Top20ClienteRow[]> {
+  return request<Top20ClienteRow[]>(`/commercial/top-20-customers${qs(params)}`);
+}
+
 export function fetchTopCustomers(params?: {
   start?: string;
   end?: string;
   limit?: number;
 }): Promise<TopCustomerRow[]> {
   return request<TopCustomerRow[]>(`/commercial/top-customers${qs(params)}`);
+}
+
+export function fetchNaoPositivadosImport(params?: {
+  ano?: number;
+  mes?: number;
+  start?: string;
+  end?: string;
+  nivel?: NaoPositivadoNivel;
+  equipe?: string;
+  vendedor?: string;
+}): Promise<NaoPositivadosImportResponse> {
+  return request<NaoPositivadosImportResponse>(`/commercial/nao-positivados-import${qs(params)}`);
 }
 
 export function fetchNotPositivated(params?: {

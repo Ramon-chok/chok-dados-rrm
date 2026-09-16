@@ -3,6 +3,7 @@ import { useTheme } from '../../context/ThemeContext';
 import { useGlobalFilter } from '../../context/GlobalFilterContext';
 import { EmptyBlock, ErrorBlock, LoadingBlock } from '../../components/common/DataState';
 import { ExportExcelButton } from '../../components/common/ExportExcelButton';
+import { PeriodSelector } from '../../components/common/PeriodSelector';
 import { fetchDashboard, DashboardResponse } from '../../lib/api';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
 
@@ -60,7 +61,10 @@ export const VisaoMacroPage: React.FC = () => {
           <h1 className="num" style={{ margin: '0 0 4px', fontSize: 24, fontWeight: 700, color: t.text }}>Visão Macro</h1>
           <p style={{ margin: 0, fontSize: 13, color: t.textSecondary }}>Consolidado corporativo a partir dos indicadores do banco.</p>
         </div>
-        <ExportExcelButton getSheets={handleExport} fileName="visao-macro" />
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <PeriodSelector />
+          <ExportExcelButton getSheets={handleExport} fileName="visao-macro" />
+        </div>
       </div>
       {loading && <LoadingBlock />}
       {error && <ErrorBlock message={error} />}

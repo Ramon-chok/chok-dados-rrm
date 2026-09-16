@@ -391,14 +391,19 @@ def filter_options(user: dict[str, Any] = Depends(get_current_user)) -> dict[str
     role = user["role"]
     with get_connection() as conn:
         if role in ("ADMIN", "GERENTE"):
+            gerencias_rows = conn.execute(
+                "SELECT DISTINCT nome_gerencia FROM gerencias WHERE nome_gerencia IS NOT NULL ORDER BY nome_gerencia"
+            ).fetchall()
             equipes_rows = conn.execute(
                 "SELECT DISTINCT equipe FROM vendedores WHERE equipe IS NOT NULL ORDER BY equipe"
             ).fetchall()
             vendedores_rows = conn.execute(
                 "SELECT cod_vendedor, nome, equipe FROM vendedores ORDER BY nome"
             ).fetchall()
+            gerencias = [r["nome_gerencia"] for r in gerencias_rows]
             equipes = [r["equipe"] for r in equipes_rows]
         elif role == "SUPERVISOR":
+            gerencias = []
             team = user.get("team")
             equipes = [team] if team else []
             vendedores_rows = (
@@ -410,10 +415,12 @@ def filter_options(user: dict[str, Any] = Depends(get_current_user)) -> dict[str
                 else []
             )
         else:
+            gerencias = []
             equipes = []
             vendedores_rows = []
 
     return {
+        "gerencias": gerencias,
         "equipes": equipes,
         "vendedores": [
             {"codVendedor": r["cod_vendedor"], "nome": r["nome"], "equipe": r["equipe"]}

@@ -2,12 +2,12 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import { useGlobalFilter } from '../context/GlobalFilterContext';
-import { PeriodSelector } from '../components/common/PeriodSelector';
 import { ExportExcelButton } from '../components/common/ExportExcelButton';
 import { EmptyBlock, ErrorBlock, LoadingBlock } from '../components/common/DataState';
 import {
   fetchDashboard,
   fetchDashboardFilterOptions,
+  fetchImportHistory,
   fetchClienteFabricantes,
   fetchFabricanteDetalhe,
   DashboardResponse,
@@ -50,6 +50,25 @@ export const DashboardPage: React.FC = () => {
   const [filterOptions, setFilterOptions] = useState<DashboardFilterOptions | null>(null);
   const [selectedEquipe, setSelectedEquipe] = useState<string>('');
   const [selectedVendedor, setSelectedVendedor] = useState<string>('');
+
+  // Linha minimalista "atualizado em" — data/hora da última importação feita
+  // no site (qualquer tipo), para o usuário saber se os números na tela
+  // refletem uma carga recente.
+  const [lastUpdate, setLastUpdate] = useState<{ data: string; tipoLabel: string } | null>(null);
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const [entry] = await fetchImportHistory(1);
+        if (mounted && entry) setLastUpdate({ data: entry.data_importacao, tipoLabel: entry.tipo });
+      } catch {
+        // Não crítico — se falhar, a linha simplesmente não aparece.
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!canFilterEquipe && !canFilterVendedor) return;
@@ -400,7 +419,6 @@ export const DashboardPage: React.FC = () => {
           </p>
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-          <PeriodSelector />
           {canFilterEquipe && (
             <div style={{ position: 'relative' }}>
               <select
@@ -446,6 +464,27 @@ export const DashboardPage: React.FC = () => {
           <ExportExcelButton getSheets={handleExport} fileName={`dashboard-${selectedPeriod}`} />
         </div>
       </div>
+
+      {lastUpdate && (
+        <div
+          style={{
+            fontSize: 11,
+            color: t.textMuted,
+            marginBottom: 14,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+          }}
+        >
+          <span
+            style={{ width: 6, height: 6, borderRadius: '50%', background: t.primary, display: 'inline-block' }}
+          />
+          Última atualização: {new Date(lastUpdate.data).toLocaleString('pt-BR', {
+            dateStyle: 'short',
+            timeStyle: 'short',
+          })}
+        </div>
+      )}
 
       {loading && <LoadingBlock />}
       {error && <ErrorBlock message={error} />}

@@ -42,7 +42,7 @@ export const TopClientesPage: React.FC = () => {
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
         <div>
           <h1 className="num" style={{ margin: '0 0 4px', fontSize: 24, fontWeight: 700, color: t.text }}>Top Clientes</h1>
-          <p style={{ margin: 0, fontSize: 13, color: t.textSecondary }}>Ranking a partir da tabela vendas.</p>
+          <p style={{ margin: 0, fontSize: 13, color: t.textSecondary }}>Ranking a partir da planilha Top Clientes (venda total no mês).</p>
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
           <select value={topN} onChange={(e) => setTopN(Number(e.target.value))} style={{ padding: '8px 10px', borderRadius: 8, border: `1px solid ${t.border}`, background: t.surface, color: t.text }}>
