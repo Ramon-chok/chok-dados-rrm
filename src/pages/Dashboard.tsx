@@ -9,9 +9,11 @@ import {
   fetchDashboard,
   fetchDashboardFilterOptions,
   fetchClienteFabricantes,
+  fetchFabricanteDetalhe,
   DashboardResponse,
   DashboardFilterOptions,
   ClienteFabricantesResponse,
+  FabricanteDetalheResponse,
 } from '../lib/api';
 import {
   ComposedChart,
@@ -29,7 +31,6 @@ import { ChevronDown, ChevronRight } from 'lucide-react';
 const fmt = (v: number) => `R$ ${v.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}`;
 const fmtInt = (v: number) => v.toLocaleString('pt-BR', { maximumFractionDigits: 0 });
 const fmtPct = (v: number) => `${v.toFixed(1)}%`;
-const MES = ['', 'Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
 
 export const DashboardPage: React.FC = () => {
   const { t } = useTheme();
@@ -107,13 +108,16 @@ export const DashboardPage: React.FC = () => {
     };
   }, [ano, mes, startDate, endDate, periodType, canFilterEquipe, canFilterVendedor, selectedEquipe, selectedVendedor]);
 
+  // Gráfico mostra Meta x Realizado x Margem por FABRICANTE (não mais por
+  // mês) — usa a mesma lista já filtrada por equipe/vendedor que alimenta a
+  // tabela de fabricantes abaixo, então reflete o mesmo escopo do usuário.
   const chartData = useMemo(
     () =>
-      (data?.serieMensal || []).map((d) => ({
-        mes: `${MES[d.mes] || d.mes}/${String(d.ano).slice(2)}`,
-        meta: d.meta / 1_000_000,
-        realizado: d.realizado / 1_000_000,
-        margem: d.margem,
+      (data?.fabricantes || []).map((f) => ({
+        fabricante: f.fabricante,
+        meta: f.meta / 1_000_000,
+        realizado: f.realizado / 1_000_000,
+        margem: f.pctMargem,
       })),
     [data]
   );
@@ -269,6 +273,7 @@ export const DashboardPage: React.FC = () => {
   };
 
   const posColor = (v: number) => (v >= 0 ? '#3DD68C' : t.primaryHover);
+  const pctColor = (v: number) => (v >= 100 ? '#3DD68C' : v >= 80 ? '#F59E0B' : t.primaryHover);
 
   const filterSelectStyle: React.CSSProperties = {
     fontSize: '13px',
@@ -284,8 +289,42 @@ export const DashboardPage: React.FC = () => {
     WebkitAppearance: 'none',
   };
 
-  // ─── Fabricantes: expandir para ver a quebra por vendedor ───
+  // ─── Fabricantes: expandir para ver a quebra por equipe/vendedor ───
+  // Vendedor não tem o que abrir — já vê só o próprio número.
+  const canDrilldownFabricante = role !== 'VENDEDOR';
   const [expandedFabricante, setExpandedFabricante] = useState<string | null>(null);
+  const [fabricanteDetalhe, setFabricanteDetalhe] = useState<Record<string, FabricanteDetalheResponse | 'loading' | 'error'>>({});
+
+  // Filtros/período mudaram → os números do dashboard mudaram, então qualquer
+  // detalhe de fabricante já buscado fica desatualizado.
+  useEffect(() => {
+    setExpandedFabricante(null);
+    setFabricanteDetalhe({});
+  }, [data]);
+
+  const handleToggleFabricante = async (fabricante: string) => {
+    if (expandedFabricante === fabricante) {
+      setExpandedFabricante(null);
+      return;
+    }
+    setExpandedFabricante(fabricante);
+    if (fabricanteDetalhe[fabricante]) return;
+    setFabricanteDetalhe((prev) => ({ ...prev, [fabricante]: 'loading' }));
+    try {
+      const res = await fetchFabricanteDetalhe({
+        fabricante,
+        ano: periodType === 'personalizado' ? undefined : ano,
+        mes: periodType === 'mensal' ? mes : undefined,
+        start: startDate || undefined,
+        end: endDate || undefined,
+        equipe: canFilterEquipe && selectedEquipe ? selectedEquipe : undefined,
+        vendedor: canFilterVendedor && selectedVendedor ? selectedVendedor : undefined,
+      });
+      setFabricanteDetalhe((prev) => ({ ...prev, [fabricante]: res }));
+    } catch {
+      setFabricanteDetalhe((prev) => ({ ...prev, [fabricante]: 'error' }));
+    }
+  };
 
   // ─── Top Clientes: expandir para ver a quebra por fabricante ───
   const [expandedCliente, setExpandedCliente] = useState<string | null>(null);
@@ -500,10 +539,10 @@ export const DashboardPage: React.FC = () => {
           </div>
 
           {/* ═══════════════════════════════════════════
-              SEÇÃO 2: GRÁFICO DE EVOLUÇÃO
+              SEÇÃO 2: GRÁFICO POR FABRICANTE
           ═══════════════════════════════════════════ */}
           <div style={{ marginBottom: 24 }}>
-            <div style={sectionTitleStyle}>Evolução Mensal</div>
+            <div style={sectionTitleStyle}>Meta x Realizado por Fabricante</div>
             <div
               style={{
                 background: t.surface,
@@ -526,7 +565,7 @@ export const DashboardPage: React.FC = () => {
                     Meta x Realizado
                   </div>
                   <div style={{ fontSize: 11.5, color: t.textMuted, marginTop: 2 }}>
-                    Valores em milhões (R$) · Margem em percentual
+                    Valores em milhões (R$) por fabricante · Margem em percentual
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -538,19 +577,23 @@ export const DashboardPage: React.FC = () => {
 
               {chartData.length === 0 ? (
                 <EmptyBlock
-                  title="Sem série mensal"
-                  description="Importe indicadores de vendedor para ver o gráfico."
+                  title="Sem fabricantes"
+                  description="Importe indicadores por fabricante para ver o gráfico."
                 />
               ) : (
                 <ResponsiveContainer width="100%" height="82%">
-                  <ComposedChart data={chartData} margin={{ top: 8, right: 8, left: -8, bottom: 0 }}>
+                  <ComposedChart data={chartData} margin={{ top: 8, right: 8, left: -8, bottom: 24 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke={t.border} vertical={false} />
                     <XAxis
-                      dataKey="mes"
+                      dataKey="fabricante"
                       stroke={t.textMuted}
                       fontSize={11}
                       tickLine={false}
                       axisLine={{ stroke: t.border }}
+                      angle={-20}
+                      textAnchor="end"
+                      interval={0}
+                      height={50}
                     />
                     <YAxis
                       yAxisId="left"
@@ -802,18 +845,18 @@ export const DashboardPage: React.FC = () => {
                     </thead>
                     <tbody>
                       {data.fabricantes.map((f) => {
-                        const hasVendedores = !!f.vendedores && f.vendedores.length > 0;
                         const isOpen = expandedFabricante === f.fabricante;
+                        const detail = fabricanteDetalhe[f.fabricante];
                         return (
                           <React.Fragment key={f.fabricante}>
                             <tr
-                              style={{ transition: 'background 0.15s', cursor: hasVendedores ? 'pointer' : 'default' }}
-                              onClick={() => hasVendedores && setExpandedFabricante(isOpen ? null : f.fabricante)}
+                              style={{ transition: 'background 0.15s', cursor: canDrilldownFabricante ? 'pointer' : 'default' }}
+                              onClick={() => canDrilldownFabricante && handleToggleFabricante(f.fabricante)}
                               onMouseEnter={(e) => (e.currentTarget.style.background = t.surfaceElevated)}
                               onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                             >
                               <td style={{ ...tdStyle, textAlign: 'center', color: t.textMuted }}>
-                                {hasVendedores && (isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />)}
+                                {canDrilldownFabricante && (isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />)}
                               </td>
                               <td style={{ ...tdStyle, fontWeight: 600 }}>{f.fabricante}</td>
                               <td className="num" style={{ ...tdStyle, textAlign: 'right' }}>
@@ -825,16 +868,8 @@ export const DashboardPage: React.FC = () => {
                               >
                                 {fmt(f.realizado)}
                               </td>
-                              <td
-                                className="num"
-                                style={{
-                                  ...tdStyle,
-                                  textAlign: 'right',
-                                  fontWeight: 700,
-                                  color: f.pctR >= 100 ? '#3DD68C' : f.pctR >= 80 ? '#F59E0B' : t.primaryHover,
-                                }}
-                              >
-                                {fmtPct(f.pctR)}
+                              <td style={{ ...tdStyle, textAlign: 'right' }}>
+                                <PctWithBar value={f.pctR} color={pctColor(f.pctR)} theme={t} />
                               </td>
                               <td className="num" style={{ ...tdStyle, textAlign: 'right', color: t.textSecondary }}>
                                 {fmtInt(f.metaCobertura)}
@@ -842,16 +877,8 @@ export const DashboardPage: React.FC = () => {
                               <td className="num" style={{ ...tdStyle, textAlign: 'right' }}>
                                 {fmtInt(f.realizadoCobertura)}
                               </td>
-                              <td
-                                className="num"
-                                style={{
-                                  ...tdStyle,
-                                  textAlign: 'right',
-                                  fontWeight: 700,
-                                  color: f.pctCob >= 100 ? '#3DD68C' : f.pctCob >= 80 ? '#F59E0B' : t.primaryHover,
-                                }}
-                              >
-                                {fmtPct(f.pctCob)}
+                              <td style={{ ...tdStyle, textAlign: 'right' }}>
+                                <PctWithBar value={f.pctCob} color={pctColor(f.pctCob)} theme={t} />
                               </td>
                               <td
                                 className="num"
@@ -865,36 +892,21 @@ export const DashboardPage: React.FC = () => {
                                 {fmtPct(f.pctMargem)}
                               </td>
                             </tr>
-                            {isOpen && hasVendedores && (
+                            {isOpen && (
                               <tr>
-                                <td colSpan={8} style={{ padding: 0, background: t.surfaceElevated, borderBottom: `1px solid ${t.border}` }}>
+                                <td colSpan={9} style={{ padding: 0, background: t.surfaceElevated, borderBottom: `1px solid ${t.border}` }}>
                                   <div style={{ padding: '10px 16px 14px 44px' }}>
-                                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                                      <thead>
-                                        <tr>
-                                          <th style={{ ...thStyle, background: 'transparent', position: 'static' }}>Vendedor</th>
-                                          <th style={{ ...thStyle, background: 'transparent', position: 'static', textAlign: 'right' }}>Meta</th>
-                                          <th style={{ ...thStyle, background: 'transparent', position: 'static', textAlign: 'right' }}>Realizado</th>
-                                          <th style={{ ...thStyle, background: 'transparent', position: 'static', textAlign: 'right' }}>% Ating.</th>
-                                          <th style={{ ...thStyle, background: 'transparent', position: 'static', textAlign: 'right' }}>Meta Cob.</th>
-                                          <th style={{ ...thStyle, background: 'transparent', position: 'static', textAlign: 'right' }}>Real. Cob.</th>
-                                          <th style={{ ...thStyle, background: 'transparent', position: 'static', textAlign: 'right' }}>% Cob.</th>
-                                        </tr>
-                                      </thead>
-                                      <tbody>
-                                        {f.vendedores!.map((v) => (
-                                          <tr key={v.codVendedor}>
-                                            <td style={{ ...tdStyle, fontWeight: 600 }}>{v.nome}</td>
-                                            <td className="num" style={{ ...tdStyle, textAlign: 'right' }}>{fmt(v.meta)}</td>
-                                            <td className="num" style={{ ...tdStyle, textAlign: 'right', fontWeight: 600 }}>{fmt(v.realizado)}</td>
-                                            <td className="num" style={{ ...tdStyle, textAlign: 'right' }}>{fmtPct(v.pctR)}</td>
-                                            <td className="num" style={{ ...tdStyle, textAlign: 'right', color: t.textSecondary }}>{fmtInt(v.metaCobertura)}</td>
-                                            <td className="num" style={{ ...tdStyle, textAlign: 'right' }}>{fmtInt(v.realizadoCobertura)}</td>
-                                            <td className="num" style={{ ...tdStyle, textAlign: 'right' }}>{fmtPct(v.pctCob)}</td>
-                                          </tr>
-                                        ))}
-                                      </tbody>
-                                    </table>
+                                    {detail === 'loading' && (
+                                      <div style={{ fontSize: 12, color: t.textMuted }}>Carregando detalhamento…</div>
+                                    )}
+                                    {detail === 'error' && (
+                                      <div style={{ fontSize: 12, color: t.primaryHover }}>
+                                        Não foi possível carregar o detalhamento deste fabricante.
+                                      </div>
+                                    )}
+                                    {detail && detail !== 'loading' && detail !== 'error' && (
+                                      <FabricanteDrilldown detail={detail} theme={t} pctColor={pctColor} />
+                                    )}
                                   </div>
                                 </td>
                               </tr>
@@ -932,3 +944,113 @@ const LegendItem: React.FC<{ color: string; label: string; theme: any; line?: bo
     <span style={{ fontSize: 11.5, color: t.textSecondary, fontWeight: 500 }}>{label}</span>
   </div>
 );
+
+// ═══════════════════════════════════════════
+// COMPONENTE AUXILIAR - Percentual + barra de progresso
+// ═══════════════════════════════════════════
+const PctWithBar: React.FC<{ value: number; color: string; theme: any }> = ({ value, color, theme: t }) => (
+  <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
+    <span className="num" style={{ fontSize: 12.5, fontWeight: 700, color }}>
+      {`${value.toFixed(1)}%`}
+    </span>
+    <div style={{ width: 64, height: 5, borderRadius: 3, background: t.border, overflow: 'hidden' }}>
+      <div
+        style={{
+          width: `${Math.max(0, Math.min(100, value))}%`,
+          height: '100%',
+          background: color,
+          borderRadius: 3,
+        }}
+      />
+    </div>
+  </div>
+);
+
+// ═══════════════════════════════════════════
+// COMPONENTE AUXILIAR - Detalhamento de fabricante por equipe/vendedor
+// Admin/Gerência sem filtro de equipe veem várias equipes (cada uma com seus
+// vendedores); Supervisor — ou Admin/Gerência já filtrando por equipe — cai
+// no caso de uma única equipe, e mostra só os vendedores dela.
+// ═══════════════════════════════════════════
+const FabricanteDrilldown: React.FC<{
+  detail: import('../lib/api').FabricanteDetalheResponse;
+  theme: any;
+  pctColor: (v: number) => string;
+}> = ({ detail, theme: t, pctColor }) => {
+  const thStyle: React.CSSProperties = {
+    padding: '8px 10px',
+    fontSize: 10.5,
+    fontWeight: 700,
+    color: t.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: '0.04em',
+    textAlign: 'left',
+  };
+  const tdStyle: React.CSSProperties = {
+    padding: '8px 10px',
+    fontSize: 12,
+    color: t.text,
+    borderBottom: `1px solid ${t.border}`,
+  };
+
+  if (detail.equipes.length === 0) {
+    return <div style={{ fontSize: 12, color: t.textMuted }}>Sem dados para este fabricante.</div>;
+  }
+
+  const renderVendedorRows = (vendedores: typeof detail.equipes[0]['vendedores']) =>
+    vendedores.map((v) => (
+      <tr key={v.codVendedor}>
+        <td style={{ ...tdStyle, paddingLeft: 24 }}>{v.nome}</td>
+        <td className="num" style={{ ...tdStyle, textAlign: 'right' }}>{fmt(v.meta)}</td>
+        <td className="num" style={{ ...tdStyle, textAlign: 'right', fontWeight: 600 }}>{fmt(v.realizado)}</td>
+        <td style={{ ...tdStyle, textAlign: 'right' }}>
+          <PctWithBar value={v.pctR} color={pctColor(v.pctR)} theme={t} />
+        </td>
+        <td className="num" style={{ ...tdStyle, textAlign: 'right', color: t.textSecondary }}>{fmtInt(v.metaCobertura)}</td>
+        <td className="num" style={{ ...tdStyle, textAlign: 'right' }}>{fmtInt(v.realizadoCobertura)}</td>
+        <td style={{ ...tdStyle, textAlign: 'right' }}>
+          <PctWithBar value={v.pctCob} color={pctColor(v.pctCob)} theme={t} />
+        </td>
+      </tr>
+    ));
+
+  const single = detail.equipes.length === 1;
+
+  return (
+    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+      <thead>
+        <tr>
+          <th style={thStyle}>{single ? 'Vendedor' : 'Equipe / Vendedor'}</th>
+          <th style={{ ...thStyle, textAlign: 'right' }}>Meta</th>
+          <th style={{ ...thStyle, textAlign: 'right' }}>Realizado</th>
+          <th style={{ ...thStyle, textAlign: 'right' }}>% Ating.</th>
+          <th style={{ ...thStyle, textAlign: 'right' }}>Meta Cob.</th>
+          <th style={{ ...thStyle, textAlign: 'right' }}>Real. Cob.</th>
+          <th style={{ ...thStyle, textAlign: 'right' }}>% Cob.</th>
+        </tr>
+      </thead>
+      <tbody>
+        {single
+          ? renderVendedorRows(detail.equipes[0].vendedores)
+          : detail.equipes.map((eq) => (
+              <React.Fragment key={eq.equipe}>
+                <tr>
+                  <td style={{ ...tdStyle, fontWeight: 700 }}>{eq.equipe}</td>
+                  <td className="num" style={{ ...tdStyle, textAlign: 'right', fontWeight: 700 }}>{fmt(eq.meta)}</td>
+                  <td className="num" style={{ ...tdStyle, textAlign: 'right', fontWeight: 700 }}>{fmt(eq.realizado)}</td>
+                  <td style={{ ...tdStyle, textAlign: 'right' }}>
+                    <PctWithBar value={eq.pctR} color={pctColor(eq.pctR)} theme={t} />
+                  </td>
+                  <td className="num" style={{ ...tdStyle, textAlign: 'right', fontWeight: 700, color: t.textSecondary }}>{fmtInt(eq.metaCobertura)}</td>
+                  <td className="num" style={{ ...tdStyle, textAlign: 'right', fontWeight: 700 }}>{fmtInt(eq.realizadoCobertura)}</td>
+                  <td style={{ ...tdStyle, textAlign: 'right' }}>
+                    <PctWithBar value={eq.pctCob} color={pctColor(eq.pctCob)} theme={t} />
+                  </td>
+                </tr>
+                {renderVendedorRows(eq.vendedores)}
+              </React.Fragment>
+            ))}
+      </tbody>
+    </table>
+  );
+};

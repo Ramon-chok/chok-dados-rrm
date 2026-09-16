@@ -127,6 +127,13 @@ def dashboard(
             serie_params,
         ).fetchall()
 
+        # indicadores_fabricante tem uma coluna "equipe" própria, mas ela vem
+        # da planilha de Categorias com valores que não são o nome real da
+        # equipe (ex.: códigos numéricos) — não dá pra confiar nela para
+        # restringir por equipe. Assim como em indicadores_vendedor, resolve
+        # equipe via JOIN com vendedores (fonte confiável, mesma tabela usada
+        # nos filtros de Equipe/Vendedor da tela).
+        fab_join_scope = " JOIN vendedores vf ON vf.cod_vendedor = f.cod_vendedor" if eff_equipe else ""
         fab_params: list[Any] = []
         fab_parts = ["1=1"]
         fab_period = _period_clause("f", ano, mes, start, end, fab_params)
@@ -136,7 +143,7 @@ def dashboard(
             fab_parts.append("f.cod_vendedor = %s")
             fab_params.append(eff_vendedor)
         if eff_equipe:
-            fab_parts.append("f.equipe = %s")
+            fab_parts.append("vf.equipe = %s")
             fab_params.append(eff_equipe)
         fabricantes = conn.execute(
             f"""
@@ -147,36 +154,18 @@ def dashboard(
                    COALESCE(SUM(f.realizado_cobertura), 0) AS realizado_cobertura,
                    COALESCE(AVG(f.pct_margem), 0) AS pct_margem
             FROM indicadores_fabricante f
+            {fab_join_scope}
             WHERE {" AND ".join(fab_parts)}
             GROUP BY f.fabricante
+            -- Só faz sentido analisar fabricante com meta definida — sem
+            -- meta não há o que comparar, e some da listagem/gráfico. Mas se
+            -- houve venda (realizado > 0) mesmo sem meta cadastrada, mantém
+            -- visível — é dado real que não pode ficar escondido.
+            HAVING COALESCE(SUM(f.meta), 0) > 0 OR COALESCE(SUM(f.realizado), 0) > 0
             ORDER BY SUM(f.realizado) DESC
             """,
             fab_params,
         ).fetchall()
-
-        # Quebra por vendedor dentro de cada fabricante — só faz sentido (e só
-        # é enviada) quando o resultado já está restrito a uma única equipe
-        # (Supervisor, ou Admin/Gerência filtrando por equipe) e ainda não a
-        # um único vendedor específico (nesse caso a linha do fabricante já É
-        # a do vendedor).
-        fab_vendedores_rows: list[Any] = []
-        if eff_equipe and not eff_vendedor:
-            fab_vendedores_rows = conn.execute(
-                f"""
-                SELECT f.fabricante, f.cod_vendedor,
-                       COALESCE(MAX(v.nome), f.cod_vendedor) AS nome_vendedor,
-                       COALESCE(SUM(f.meta), 0) AS meta,
-                       COALESCE(SUM(f.realizado), 0) AS realizado,
-                       COALESCE(SUM(f.cobertura), 0) AS meta_cobertura,
-                       COALESCE(SUM(f.realizado_cobertura), 0) AS realizado_cobertura
-                FROM indicadores_fabricante f
-                LEFT JOIN vendedores v ON v.cod_vendedor = f.cod_vendedor
-                WHERE {" AND ".join(fab_parts)}
-                GROUP BY f.fabricante, f.cod_vendedor
-                ORDER BY f.fabricante, SUM(f.realizado) DESC
-                """,
-                fab_params,
-            ).fetchall()
 
         top_params: list[Any] = []
         top_parts = ["1=1"]
@@ -232,25 +221,6 @@ def dashboard(
     meta_sortimento = num(kpis["meta_sortimento"])
     realizado_sortimento = num(kpis["realizado_sortimento"])
 
-    fab_vendedores_by_fabricante: dict[str, list[dict[str, Any]]] = {}
-    for r in fab_vendedores_rows:
-        meta_v = num(r["meta"])
-        real_v = num(r["realizado"])
-        meta_cob_v = num(r["meta_cobertura"])
-        real_cob_v = num(r["realizado_cobertura"])
-        fab_vendedores_by_fabricante.setdefault(r["fabricante"], []).append(
-            {
-                "codVendedor": r["cod_vendedor"],
-                "nome": r["nome_vendedor"],
-                "meta": meta_v,
-                "realizado": real_v,
-                "pctR": round((real_v / meta_v * 100) if meta_v else 0, 1),
-                "metaCobertura": meta_cob_v,
-                "realizadoCobertura": real_cob_v,
-                "pctCob": round((real_cob_v / meta_cob_v * 100) if meta_cob_v else 0, 1),
-            }
-        )
-
     return {
         "kpis": {
             "meta": meta,
@@ -293,11 +263,6 @@ def dashboard(
                     1,
                 ),
                 "pctMargem": round(num(r["pct_margem"]), 1),
-                **(
-                    {"vendedores": fab_vendedores_by_fabricante[r["fabricante"]]}
-                    if r["fabricante"] in fab_vendedores_by_fabricante
-                    else {}
-                ),
             }
             for r in fabricantes
         ],
@@ -312,6 +277,112 @@ def dashboard(
             for r in top_clientes
         ],
     }
+
+
+@router.get("/analytics/fabricante-detalhe")
+def fabricante_detalhe(
+    fabricante: str,
+    ano: int | None = None,
+    mes: int | None = None,
+    start: str | None = None,
+    end: str | None = None,
+    equipe: str | None = None,
+    vendedor: str | None = None,
+    user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Quebra de um fabricante ao clicar na listagem do Dashboard.
+
+    Sempre agrupa por equipe e, dentro dela, por vendedor. Para
+    Admin/Gerência sem filtro de equipe ativo, isso devolve todas as equipes
+    (visão completa); para Supervisor — ou Admin/Gerência já filtrando por
+    uma equipe — o escopo já resolve para uma única equipe (visão
+    delimitada), e o frontend mostra só os vendedores dela.
+    """
+    scope = _resolve_filters(user, equipe, vendedor)
+    eff_equipe = scope.get("equipe")
+    eff_vendedor = scope.get("vendedor")
+
+    params: list[Any] = [fabricante]
+    parts = ["f.fabricante = %s"]
+    period = _period_clause("f", ano, mes, start, end, params)
+    if period:
+        parts.append(period.replace(" AND ", "", 1))
+    if eff_vendedor:
+        parts.append("f.cod_vendedor = %s")
+        params.append(eff_vendedor)
+    if eff_equipe:
+        # f.equipe não é confiável (ver nota em /dashboard) — filtra pela
+        # equipe resolvida via vendedores (join abaixo).
+        parts.append("v.equipe = %s")
+        params.append(eff_equipe)
+
+    with get_connection() as conn:
+        rows = conn.execute(
+            f"""
+            SELECT COALESCE(v.equipe, f.equipe) AS equipe, f.cod_vendedor,
+                   COALESCE(MAX(v.nome), f.cod_vendedor) AS nome_vendedor,
+                   COALESCE(SUM(f.meta), 0) AS meta,
+                   COALESCE(SUM(f.realizado), 0) AS realizado,
+                   COALESCE(SUM(f.cobertura), 0) AS meta_cobertura,
+                   COALESCE(SUM(f.realizado_cobertura), 0) AS realizado_cobertura
+            FROM indicadores_fabricante f
+            LEFT JOIN vendedores v ON v.cod_vendedor = f.cod_vendedor
+            WHERE {" AND ".join(parts)}
+            GROUP BY COALESCE(v.equipe, f.equipe), f.cod_vendedor
+            ORDER BY COALESCE(v.equipe, f.equipe), SUM(f.realizado) DESC
+            """,
+            params,
+        ).fetchall()
+
+    grouped: dict[str, dict[str, Any]] = {}
+    for r in rows:
+        eq_name = r["equipe"] or "—"
+        eq = grouped.setdefault(
+            eq_name,
+            {
+                "equipe": eq_name,
+                "meta": 0.0,
+                "realizado": 0.0,
+                "metaCobertura": 0.0,
+                "realizadoCobertura": 0.0,
+                "vendedores": [],
+            },
+        )
+        meta_v = num(r["meta"])
+        real_v = num(r["realizado"])
+        meta_cob_v = num(r["meta_cobertura"])
+        real_cob_v = num(r["realizado_cobertura"])
+        eq["meta"] += meta_v
+        eq["realizado"] += real_v
+        eq["metaCobertura"] += meta_cob_v
+        eq["realizadoCobertura"] += real_cob_v
+        eq["vendedores"].append(
+            {
+                "codVendedor": r["cod_vendedor"],
+                "nome": r["nome_vendedor"],
+                "meta": meta_v,
+                "realizado": real_v,
+                "pctR": round((real_v / meta_v * 100) if meta_v else 0, 1),
+                "metaCobertura": meta_cob_v,
+                "realizadoCobertura": real_cob_v,
+                "pctCob": round((real_cob_v / meta_cob_v * 100) if meta_cob_v else 0, 1),
+            }
+        )
+
+    equipes_out = []
+    for eq in grouped.values():
+        equipes_out.append(
+            {
+                **eq,
+                "pctR": round((eq["realizado"] / eq["meta"] * 100) if eq["meta"] else 0, 1),
+                "pctCob": round(
+                    (eq["realizadoCobertura"] / eq["metaCobertura"] * 100) if eq["metaCobertura"] else 0, 1
+                ),
+            }
+        )
+    equipes_out.sort(key=lambda e: e["realizado"], reverse=True)
+
+    return {"fabricante": fabricante, "equipes": equipes_out}
 
 
 @router.get("/analytics/filter-options")

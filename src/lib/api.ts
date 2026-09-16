@@ -69,10 +69,6 @@ export interface DashboardResponse {
     realizadoCobertura: number;
     pctCob: number;
     pctMargem: number;
-    // Quebra por vendedor — só vem preenchida quando o resultado já está
-    // restrito a uma única equipe (Supervisor, ou Admin/Gerência filtrando
-    // por equipe) e ainda não a um vendedor específico.
-    vendedores?: FabricanteVendedorRow[];
   }>;
   topClientes: Array<{ nome: string; equipe: string | null; valor: number; eRede: boolean; codigo: string | null }>;
 }
@@ -91,6 +87,20 @@ export interface FabricanteVendedorRow {
 export interface DashboardFilterOptions {
   equipes: string[];
   vendedores: Array<{ codVendedor: string; nome: string; equipe: string | null }>;
+}
+
+export interface FabricanteDetalheResponse {
+  fabricante: string;
+  equipes: Array<{
+    equipe: string;
+    meta: number;
+    realizado: number;
+    pctR: number;
+    metaCobertura: number;
+    realizadoCobertura: number;
+    pctCob: number;
+    vendedores: FabricanteVendedorRow[];
+  }>;
 }
 
 export interface ClienteFabricantesResponse {
@@ -478,6 +488,18 @@ export function fetchDashboard(params?: {
 
 export function fetchDashboardFilterOptions(): Promise<DashboardFilterOptions> {
   return request<DashboardFilterOptions>('/analytics/filter-options');
+}
+
+export function fetchFabricanteDetalhe(params: {
+  fabricante: string;
+  ano?: number;
+  mes?: number;
+  start?: string;
+  end?: string;
+  equipe?: string;
+  vendedor?: string;
+}): Promise<FabricanteDetalheResponse> {
+  return request<FabricanteDetalheResponse>(`/analytics/fabricante-detalhe${qs(params)}`);
 }
 
 export function fetchClienteFabricantes(params: {
