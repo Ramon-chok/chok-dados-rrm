@@ -69,8 +69,42 @@ export interface DashboardResponse {
     realizadoCobertura: number;
     pctCob: number;
     pctMargem: number;
+    // Quebra por vendedor — só vem preenchida quando o resultado já está
+    // restrito a uma única equipe (Supervisor, ou Admin/Gerência filtrando
+    // por equipe) e ainda não a um vendedor específico.
+    vendedores?: FabricanteVendedorRow[];
   }>;
   topClientes: Array<{ nome: string; equipe: string | null; valor: number; eRede: boolean; codigo: string | null }>;
+}
+
+export interface FabricanteVendedorRow {
+  codVendedor: string;
+  nome: string;
+  meta: number;
+  realizado: number;
+  pctR: number;
+  metaCobertura: number;
+  realizadoCobertura: number;
+  pctCob: number;
+}
+
+export interface DashboardFilterOptions {
+  equipes: string[];
+  vendedores: Array<{ codVendedor: string; nome: string; equipe: string | null }>;
+}
+
+export interface ClienteFabricantesResponse {
+  vendedoresConsiderados: string[];
+  fabricantes: Array<{
+    fabricante: string;
+    meta: number;
+    realizado: number;
+    pctR: number;
+    metaCobertura: number;
+    realizadoCobertura: number;
+    pctCob: number;
+    vendedores: FabricanteVendedorRow[];
+  }>;
 }
 
 export interface AnalyticsTreeNode {
@@ -436,8 +470,27 @@ export function fetchDashboard(params?: {
   mes?: number;
   start?: string;
   end?: string;
+  equipe?: string;
+  vendedor?: string;
 }): Promise<DashboardResponse> {
   return request<DashboardResponse>(`/dashboard${qs(params)}`);
+}
+
+export function fetchDashboardFilterOptions(): Promise<DashboardFilterOptions> {
+  return request<DashboardFilterOptions>('/analytics/filter-options');
+}
+
+export function fetchClienteFabricantes(params: {
+  codigo?: string | null;
+  nome?: string;
+  ano?: number;
+  mes?: number;
+  start?: string;
+  end?: string;
+  equipe?: string;
+  vendedor?: string;
+}): Promise<ClienteFabricantesResponse> {
+  return request<ClienteFabricantesResponse>(`/analytics/cliente-fabricantes${qs(params)}`);
 }
 
 export function fetchAnalyticsTree(params?: {
