@@ -236,10 +236,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, c
         >
           {!isNavbarCollapsed ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <svg width="26" height="26" viewBox="0 0 26 26">
-                <path d="M13 1 L25 7 L25 19 L13 25 L1 19 L1 7 Z" fill="none" stroke={t.primary} strokeWidth="1.8" />
-                <path d="M13 1 V25 M1 7 L25 19 M25 7 L1 19" stroke={t.primary} strokeWidth="1.1" opacity="0.4" />
-              </svg>
+              <img src="/img/Chok Logo.png" alt="Chok Logo" style={{ width: '26px', height: '26px' }} />
               <span className="num" style={{ fontSize: '19px', fontWeight: 700, color: t.text, letterSpacing: '-0.02em' }}>
                 Chok
               </span>

@@ -267,13 +267,20 @@ CREATE INDEX IF NOT EXISTS idx_ind_pos_vendedor ON indicadores_positivacao(cod_v
 -- ---------------------------------------------------------------------------
 
 -- Lista de Sortimento — cadastro de produtos do sortimento (upsert por código)
+-- Colunas alinhadas com Importacao.tsx: CÓDIGO, PRODUTO, FABRICANTE, CATEGORIA, LINHA
 CREATE TABLE IF NOT EXISTS sortimento (
-  cod_produto       TEXT PRIMARY KEY,
-  descricao_produto TEXT,
-  fornecedor        TEXT,
-  categoria         TEXT,
-  atualizado_em     TIMESTAMPTZ NOT NULL DEFAULT now()
+  cod_produto   TEXT PRIMARY KEY,
+  produto       TEXT,
+  fabricante    TEXT,
+  categoria     TEXT,
+  linha         TEXT,
+  atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+ALTER TABLE sortimento ADD COLUMN IF NOT EXISTS produto TEXT;
+ALTER TABLE sortimento ADD COLUMN IF NOT EXISTS fabricante TEXT;
+ALTER TABLE sortimento ADD COLUMN IF NOT EXISTS categoria TEXT;
+ALTER TABLE sortimento ADD COLUMN IF NOT EXISTS linha TEXT;
+ALTER TABLE sortimento ADD COLUMN IF NOT EXISTS atualizado_em TIMESTAMPTZ DEFAULT now();
 
 -- Top Clientes — aba "top_20_clientes": ranking de clientes por vendedor
 CREATE TABLE IF NOT EXISTS top_20_clientes (

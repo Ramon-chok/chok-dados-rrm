@@ -128,6 +128,15 @@ export interface ProductRow {
   status: string;
 }
 
+export interface SortimentoRow {
+  codigo: string;
+  produto: string | null;
+  fabricante: string | null;
+  categoria: string | null;
+  linha: string | null;
+  atualizadoEm: string | null;
+}
+
 export interface TopCustomerRow {
   pos: number;
   codigo: string | null;
@@ -473,6 +482,15 @@ export function fetchProducts(params?: {
   categoria?: string;
 }): Promise<ProductRow[]> {
   return request<ProductRow[]>(`/catalog/products${qs(params)}`);
+}
+
+export function fetchSortimento(params?: {
+  q?: string;
+  fabricante?: string;
+  categoria?: string;
+  linha?: string;
+}): Promise<SortimentoRow[]> {
+  return request<SortimentoRow[]>(`/catalog/sortimento${qs(params)}`);
 }
 
 export function fetchCustomers(params?: { q?: string; status?: string }): Promise<Record<string, unknown>[]> {
