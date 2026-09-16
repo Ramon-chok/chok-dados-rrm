@@ -20,7 +20,7 @@ export interface TeamMember {
   displayOrder: number;
   status: 'Ativo' | 'Inativo';
   category: 'origin' | 'rrmind' | 'team';
-  email?: string;
+  instagram?: string;
   linkedin?: string;
   github?: string;
   skills?: string[];
@@ -199,7 +199,7 @@ export const CreditosPage: React.FC = () => {
   const [formDepartment, setFormDepartment] = useState('');
   const [formDesc, setFormDesc] = useState('');
   const [formCategory, setFormCategory] = useState<'origin' | 'rrmind' | 'team'>('team');
-  const [formEmail, setFormEmail] = useState('');
+  const [formInstagram, setFormInstagram] = useState('');
   const [formLinkedin, setFormLinkedin] = useState('');
   const [formSkills, setFormSkills] = useState('');
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
@@ -318,7 +318,7 @@ export const CreditosPage: React.FC = () => {
     setFormDepartment('');
     setFormDesc('');
     setFormCategory('team');
-    setFormEmail('');
+    setFormInstagram('');
     setFormLinkedin('');
     setFormSkills('');
     setFormErrors({});
@@ -337,7 +337,7 @@ export const CreditosPage: React.FC = () => {
     setFormDepartment(member.department);
     setFormDesc(member.description);
     setFormCategory(member.category);
-    setFormEmail(member.email || '');
+    setFormInstagram(member.instagram || '');
     setFormLinkedin(member.linkedin || '');
     setFormSkills((member.skills || []).join(', '));
     setFormErrors({});
@@ -349,8 +349,8 @@ export const CreditosPage: React.FC = () => {
     if (!formName.trim()) errors.name = 'Nome é obrigatório';
     if (!formRole.trim()) errors.role = 'Cargo é obrigatório';
     if (!formDepartment.trim()) errors.department = 'Departamento é obrigatório';
-    if (formEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formEmail)) {
-      errors.email = 'Email inválido';
+    if (formInstagram && /\s/.test(formInstagram)) {
+      errors.instagram = 'Instagram inválido';
     }
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
@@ -376,7 +376,7 @@ export const CreditosPage: React.FC = () => {
                 department: formDepartment.trim(),
                 description: formDesc.trim(),
                 category: formCategory,
-                email: formEmail.trim() || undefined,
+                instagram: formInstagram.trim() || undefined,
                 linkedin: formLinkedin.trim() || undefined,
                 skills: skillsArr.length ? skillsArr : undefined,
               }
@@ -402,7 +402,7 @@ export const CreditosPage: React.FC = () => {
         displayOrder: members.length + 1,
         status: 'Ativo',
         category: formCategory,
-        email: formEmail.trim() || undefined,
+        instagram: formInstagram.trim() || undefined,
         linkedin: formLinkedin.trim() || undefined,
         skills: skillsArr.length ? skillsArr : undefined,
         joinDate: new Date().toISOString().split('T')[0],
@@ -486,10 +486,25 @@ export const CreditosPage: React.FC = () => {
     onClickAvatar?: () => void;
   }) => {
     const image = images[memberId];
+    const stopCardClick = (e: React.MouseEvent | React.SyntheticEvent) => {
+      e.stopPropagation();
+    };
+
     return (
-      <div style={{ position: 'relative', width: size, height: size, flexShrink: 0 }}>
+      <div
+        style={{ position: 'relative', width: size, height: size, flexShrink: 0, zIndex: 3 }}
+        onClick={stopCardClick}
+        onMouseDown={stopCardClick}
+      >
         <div
-          onClick={onClickAvatar}
+          onClick={(e) => {
+            // evita abrir o modal do card ao clicar no avatar quando o upload está ativo
+            if (isAdmin && editable) {
+              e.stopPropagation();
+              return;
+            }
+            onClickAvatar?.();
+          }}
           style={{
             width: size,
             height: size,
@@ -504,7 +519,7 @@ export const CreditosPage: React.FC = () => {
             boxShadow: `0 8px 28px rgba(227, 6, 19, 0.3)`,
             border: `3px solid rgba(255,255,255,0.15)`,
             transition: 'all 0.4s cubic-bezier(0.16, 1, 0.3, 1)',
-            cursor: onClickAvatar ? 'pointer' : 'default',
+            cursor: onClickAvatar && !(isAdmin && editable) ? 'pointer' : 'default',
           }}
         >
           {!image && initials}
@@ -528,9 +543,12 @@ export const CreditosPage: React.FC = () => {
                 boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
                 border: `2px solid ${t.surface}`,
                 transition: 'transform 0.2s',
-                zIndex: 2,
+                zIndex: 5,
+                pointerEvents: 'auto',
               }}
               title="Alterar foto"
+              onClick={stopCardClick}
+              onMouseDown={stopCardClick}
               onMouseEnter={(e) => (e.currentTarget.style.transform = 'scale(1.1)')}
               onMouseLeave={(e) => (e.currentTarget.style.transform = 'scale(1)')}
             >
@@ -539,7 +557,9 @@ export const CreditosPage: React.FC = () => {
                 type="file"
                 accept="image/*"
                 style={{ display: 'none' }}
+                onClick={stopCardClick}
                 onChange={(e) => {
+                  e.stopPropagation();
                   const file = e.target.files?.[0];
                   if (file) handleImageUpload(memberId, file);
                   e.target.value = '';
@@ -548,10 +568,13 @@ export const CreditosPage: React.FC = () => {
             </label>
             {image && (
               <button
+                type="button"
                 onClick={(e) => {
+                  e.preventDefault();
                   e.stopPropagation();
                   removeImage(memberId);
                 }}
+                onMouseDown={stopCardClick}
                 style={{
                   position: 'absolute',
                   top: 2,
@@ -566,7 +589,8 @@ export const CreditosPage: React.FC = () => {
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  zIndex: 2,
+                  zIndex: 5,
+                  pointerEvents: 'auto',
                 }}
                 title="Remover foto"
               >
@@ -1187,6 +1211,7 @@ export const CreditosPage: React.FC = () => {
                     gradient={`linear-gradient(135deg, ${t.primary}, #6366f1)`}
                     fontSize={26}
                     editable
+                    onClickAvatar={() => setDetailMember(member)}
                   />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <h3 style={{ margin: '0 0 4px', fontSize: '18px', fontWeight: 700, color: t.text }}>
@@ -1329,725 +1354,6 @@ export const CreditosPage: React.FC = () => {
           })}
         </div>
       </div>
-
-      {/* ═══════════════════════════════════════════════════
-          EQUIPE COMPLEMENTAR — COM BUSCA
-      ═══════════════════════════════════════════════════ */}
-      <div style={{ marginBottom: '28px' }}>
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginBottom: '16px',
-            flexWrap: 'wrap',
-            gap: '12px',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Users size={17} color={t.primary} />
-            <h2 style={{ margin: 0, fontSize: '17px', fontWeight: 700, color: t.text }}>
-              Equipe de Reestruturação & Engenharia
-            </h2>
-            <span
-              style={{
-                fontSize: '11px',
-                fontWeight: 600,
-                color: t.textMuted,
-                background: t.surfaceElevated,
-                padding: '2px 8px',
-                borderRadius: '10px',
-                border: `1px solid ${t.border}`,
-              }}
-            >
-              {filteredTeamMembers.length}
-            </span>
-          </div>
-
-          <div style={{ position: 'relative', minWidth: 240 }}>
-            <Search
-              size={14}
-              style={{
-                position: 'absolute',
-                left: 12,
-                top: '50%',
-                transform: 'translateY(-50%)',
-                color: t.textMuted,
-                pointerEvents: 'none',
-              }}
-            />
-            <input
-              type="text"
-              placeholder="Buscar por nome, cargo, área..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              style={{
-                width: '100%',
-                boxSizing: 'border-box',
-                padding: '8px 12px 8px 34px',
-                borderRadius: '8px',
-                border: `1px solid ${t.border}`,
-                background: t.surface,
-                color: t.text,
-                fontSize: '12.5px',
-                outline: 'none',
-                transition: 'border-color 0.2s',
-              }}
-              onFocus={(e) => (e.currentTarget.style.borderColor = t.primary + '60')}
-              onBlur={(e) => (e.currentTarget.style.borderColor = t.border)}
-            />
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery('')}
-                style={{
-                  position: 'absolute',
-                  right: 8,
-                  top: '50%',
-                  transform: 'translateY(-50%)',
-                  background: 'none',
-                  border: 'none',
-                  color: t.textMuted,
-                  cursor: 'pointer',
-                  padding: '4px',
-                }}
-              >
-                <X size={14} />
-              </button>
-            )}
-          </div>
-        </div>
-
-        {filteredTeamMembers.length === 0 ? (
-          <div
-            style={{
-              background: t.surface,
-              border: `1px dashed ${t.border}`,
-              borderRadius: '12px',
-              padding: '40px 20px',
-              textAlign: 'center',
-              color: t.textMuted,
-            }}
-          >
-            <Search size={28} style={{ opacity: 0.4, marginBottom: 10 }} />
-            <div style={{ fontSize: '13.5px', fontWeight: 600, color: t.textSecondary }}>
-              Nenhum membro encontrado
-            </div>
-            <div style={{ fontSize: '12px', marginTop: 4 }}>
-              Tente ajustar sua busca ou remover os filtros
-            </div>
-          </div>
-        ) : (
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
-              gap: '16px',
-            }}
-          >
-            {filteredTeamMembers.map((member) => (
-              <div
-                key={member.id}
-                onMouseEnter={() => setHoveredCard(member.id)}
-                onMouseLeave={() => setHoveredCard(null)}
-                onClick={() => setDetailMember(member)}
-                style={{
-                  background: t.surface,
-                  border: `1px solid ${hoveredCard === member.id ? t.primary + '30' : t.border}`,
-                  borderRadius: '12px',
-                  padding: '20px',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  position: 'relative',
-                  transition: 'all 0.25s ease',
-                  transform: hoveredCard === member.id ? 'translateY(-2px)' : 'none',
-                  boxShadow: hoveredCard === member.id ? '0 4px 16px rgba(0,0,0,0.06)' : 'none',
-                  cursor: 'pointer',
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '14px' }}>
-                  <div
-                    style={{
-                      width: '46px',
-                      height: '46px',
-                      borderRadius: '50%',
-                      background:
-                        hoveredCard === member.id
-                          ? `linear-gradient(135deg, ${t.primary}20, ${t.primary}10)`
-                          : t.surfaceElevated,
-                      border: `1.5px solid ${hoveredCard === member.id ? t.primary + '40' : t.border}`,
-                      color: t.primary,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: '15px',
-                      fontWeight: 700,
-                      flexShrink: 0,
-                      transition: 'all 0.25s ease',
-                    }}
-                  >
-                    {member.avatarInitials}
-                  </div>
-
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div
-                      style={{
-                        fontSize: '14.5px',
-                        fontWeight: 600,
-                        color: t.text,
-                        whiteSpace: 'nowrap',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                      }}
-                    >
-                      {member.name}
-                    </div>
-                    <div style={{ fontSize: '12px', color: t.primary, fontWeight: 500 }}>
-                      {member.role}
-                    </div>
-                  </div>
-
-                  {isAdmin && (
-                    <div
-                      style={{
-                        display: 'flex',
-                        gap: '2px',
-                        opacity: hoveredCard === member.id ? 1 : 0,
-                        transition: 'opacity 0.2s',
-                      }}
-                    >
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          openEditModal(member);
-                        }}
-                        style={{
-                          padding: '5px',
-                          background: 'none',
-                          border: 'none',
-                          color: t.textMuted,
-                          cursor: 'pointer',
-                        }}
-                        title="Editar"
-                      >
-                        <Edit2 size={14} />
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setConfirmDelete(member.id);
-                        }}
-                        style={{
-                          padding: '5px',
-                          background: 'none',
-                          border: 'none',
-                          color: t.primaryHover || '#cc0000',
-                          cursor: 'pointer',
-                        }}
-                        title="Remover"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  )}
-                </div>
-
-                <div
-                  style={{
-                    fontSize: '10.5px',
-                    fontWeight: 600,
-                    color: t.textMuted,
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.05em',
-                    marginBottom: '8px',
-                  }}
-                >
-                  {member.department}
-                </div>
-
-                <p
-                  style={{
-                    margin: 0,
-                    fontSize: '12.5px',
-                    color: t.textSecondary,
-                    lineHeight: 1.55,
-                    flex: 1,
-                  }}
-                >
-                  {member.description}
-                </p>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* ═══════════════════════════════════════════════════
-          FOOTER INFO
-      ═══════════════════════════════════════════════════ */}
-      <div
-        style={{
-          background: t.surfaceElevated,
-          border: `1px solid ${t.border}`,
-          borderRadius: '12px',
-          padding: '20px 24px',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          flexWrap: 'wrap',
-          gap: '12px',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div
-            style={{
-              width: 32,
-              height: 32,
-              borderRadius: '8px',
-              background: `linear-gradient(135deg, ${t.primary}, #cc0011)`,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <Globe size={16} color="#fff" />
-          </div>
-          <div>
-            <div style={{ fontSize: '13px', fontWeight: 600, color: t.text }}>
-              Plataforma de Inteligência Comercial Chok
-            </div>
-            <div style={{ fontSize: '11.5px', color: t.textMuted }}>
-              v2.4.0 · Arquitetura RBAC · Isolamento Hierárquico · Recriado por RR Mind
-            </div>
-          </div>
-        </div>
-
-        <div style={{ fontSize: '11.5px', color: t.textSecondary }}>
-          © 2026 Chok Distribuidora. Todos os direitos reservados.
-        </div>
-      </div>
-
-      {/* ═══════════════════════════════════════════════════
-          MODAL — ADD/EDIT
-      ═══════════════════════════════════════════════════ */}
-      {isModalOpen && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0,0,0,0.6)',
-            backdropFilter: 'blur(4px)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 9999,
-            padding: '20px',
-            animation: 'fadeIn 0.2s ease',
-          }}
-          onClick={(e) => e.target === e.currentTarget && setIsModalOpen(false)}
-        >
-          <div
-            style={{
-              background: t.surface,
-              border: `1px solid ${t.border}`,
-              borderRadius: '16px',
-              width: '100%',
-              maxWidth: '560px',
-              maxHeight: '90vh',
-              overflowY: 'auto',
-              boxShadow: '0 24px 48px rgba(0,0,0,0.4)',
-              animation: 'slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
-            }}
-          >
-            <div
-              style={{
-                padding: '20px 24px',
-                borderBottom: `1px solid ${t.border}`,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                position: 'sticky',
-                top: 0,
-                background: t.surface,
-                zIndex: 2,
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <div
-                  style={{
-                    width: 32,
-                    height: 32,
-                    borderRadius: '8px',
-                    background: `linear-gradient(135deg, ${t.primary}, #cc0011)`,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                >
-                  {editingMember ? <Edit2 size={15} color="#fff" /> : <Plus size={15} color="#fff" />}
-                </div>
-                <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700, color: t.text }}>
-                  {editingMember ? 'Editar Membro' : 'Adicionar Novo Membro'}
-                </h3>
-              </div>
-              <button
-                onClick={() => setIsModalOpen(false)}
-                style={{
-                  padding: '6px',
-                  background: 'none',
-                  border: 'none',
-                  color: t.textMuted,
-                  cursor: 'pointer',
-                  borderRadius: '6px',
-                }}
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <form onSubmit={handleSaveMember} style={{ padding: '24px' }}>
-              <FormField
-                label="Nome Completo *"
-                error={formErrors.name}
-                theme={t}
-              >
-                <input
-                  ref={firstInputRef}
-                  type="text"
-                  value={formName}
-                  onChange={(e) => setFormName(e.target.value)}
-                  placeholder="Ex: Ana Paula Silva"
-                  style={inputStyle(t, !!formErrors.name)}
-                />
-              </FormField>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
-                <FormField label="Cargo / Função *" error={formErrors.role} theme={t}>
-                  <input
-                    type="text"
-                    value={formRole}
-                    onChange={(e) => setFormRole(e.target.value)}
-                    style={inputStyle(t, !!formErrors.role)}
-                  />
-                </FormField>
-
-                <FormField label="Categoria" theme={t}>
-                  <select
-                    value={formCategory}
-                    onChange={(e) => setFormCategory(e.target.value as any)}
-                    style={inputStyle(t)}
-                  >
-                    <option value="origin">Origem / Criador</option>
-                    <option value="rrmind">RR Mind</option>
-                    <option value="team">Equipe Complementar</option>
-                  </select>
-                </FormField>
-              </div>
-
-              <FormField
-                label="Área / Departamento *"
-                error={formErrors.department}
-                theme={t}
-              >
-                <input
-                  type="text"
-                  value={formDepartment}
-                  onChange={(e) => setFormDepartment(e.target.value)}
-                  style={inputStyle(t, !!formErrors.department)}
-                />
-              </FormField>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
-                <FormField label="Email (opcional)" error={formErrors.email} theme={t}>
-                  <input
-                    type="email"
-                    value={formEmail}
-                    onChange={(e) => setFormEmail(e.target.value)}
-                    placeholder="nome@chok.com.br"
-                    style={inputStyle(t, !!formErrors.email)}
-                  />
-                </FormField>
-                <FormField label="LinkedIn (opcional)" theme={t}>
-                  <input
-                    type="url"
-                    value={formLinkedin}
-                    onChange={(e) => setFormLinkedin(e.target.value)}
-                    placeholder="linkedin.com/in/..."
-                    style={inputStyle(t)}
-                  />
-                </FormField>
-              </div>
-
-              <FormField label="Habilidades (separadas por vírgula)" theme={t}>
-                <input
-                  type="text"
-                  value={formSkills}
-                  onChange={(e) => setFormSkills(e.target.value)}
-                  placeholder="React, TypeScript, Design"
-                  style={inputStyle(t)}
-                />
-              </FormField>
-
-              <FormField label="Descrição das Responsabilidades" theme={t}>
-                <textarea
-                  rows={3}
-                  value={formDesc}
-                  onChange={(e) => setFormDesc(e.target.value)}
-                  style={{
-                    ...inputStyle(t),
-                    fontFamily: 'inherit',
-                    resize: 'vertical',
-                    minHeight: '80px',
-                  }}
-                />
-                <div
-                  style={{
-                    fontSize: '10.5px',
-                    color: t.textMuted,
-                    marginTop: '4px',
-                    textAlign: 'right',
-                  }}
-                >
-                  {formDesc.length} caracteres
-                </div>
-              </FormField>
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '8px' }}>
-                <button
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  style={{
-                    padding: '10px 18px',
-                    borderRadius: '8px',
-                    border: `1px solid ${t.border}`,
-                    background: t.surfaceElevated,
-                    color: t.textSecondary,
-                    cursor: 'pointer',
-                    fontSize: '13px',
-                    fontWeight: 500,
-                  }}
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  style={{
-                    padding: '10px 24px',
-                    borderRadius: '8px',
-                    border: 'none',
-                    background: `linear-gradient(135deg, ${t.primary}, #cc0011)`,
-                    color: '#fff',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    fontSize: '13px',
-                    boxShadow: '0 2px 10px rgba(227, 6, 19, 0.3)',
-                  }}
-                >
-                  {editingMember ? 'Salvar Alterações' : 'Adicionar Membro'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ═══════════════════════════════════════════════════
-          MODAL — DETALHE DO MEMBRO
-      ═══════════════════════════════════════════════════ */}
-      {detailMember && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0,0,0,0.6)',
-            backdropFilter: 'blur(4px)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 9999,
-            padding: '20px',
-            animation: 'fadeIn 0.2s ease',
-          }}
-          onClick={(e) => e.target === e.currentTarget && setDetailMember(null)}
-        >
-          <div
-            style={{
-              background: t.surface,
-              border: `1px solid ${t.border}`,
-              borderRadius: '16px',
-              width: '100%',
-              maxWidth: '480px',
-              overflow: 'hidden',
-              boxShadow: '0 24px 48px rgba(0,0,0,0.4)',
-              animation: 'slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
-            }}
-          >
-            <div
-              style={{
-                height: '80px',
-                background: `linear-gradient(135deg, ${t.primary}, #6366f1)`,
-                position: 'relative',
-              }}
-            >
-              <button
-                onClick={() => setDetailMember(null)}
-                style={{
-                  position: 'absolute',
-                  top: 12,
-                  right: 12,
-                  padding: '6px',
-                  background: 'rgba(0,0,0,0.3)',
-                  border: 'none',
-                  borderRadius: '6px',
-                  color: '#fff',
-                  cursor: 'pointer',
-                }}
-              >
-                <X size={16} />
-              </button>
-            </div>
-
-            <div style={{ padding: '0 24px 24px', marginTop: -50 }}>
-              <div style={{ display: 'flex', justifyContent: 'center' }}>
-                <PhotoAvatar
-                  memberId={detailMember.id}
-                  initials={detailMember.avatarInitials}
-                  size={100}
-                  gradient={`linear-gradient(135deg, ${t.primary}, #6366f1)`}
-                  fontSize={32}
-                />
-              </div>
-
-              <div style={{ textAlign: 'center', marginTop: 16 }}>
-                <h2 style={{ margin: 0, fontSize: '20px', fontWeight: 700, color: t.text }}>
-                  {detailMember.name}
-                </h2>
-                <div
-                  style={{
-                    fontSize: '13px',
-                    color: t.primary,
-                    fontWeight: 600,
-                    marginTop: 4,
-                  }}
-                >
-                  {detailMember.role}
-                </div>
-                <div
-                  style={{
-                    fontSize: '11.5px',
-                    color: t.textMuted,
-                    marginTop: 2,
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.05em',
-                    fontWeight: 600,
-                  }}
-                >
-                  {detailMember.department}
-                </div>
-              </div>
-
-              <p
-                style={{
-                  margin: '20px 0',
-                  fontSize: '13.5px',
-                  color: t.textSecondary,
-                  lineHeight: 1.65,
-                  textAlign: 'center',
-                }}
-              >
-                {detailMember.description}
-              </p>
-
-              {detailMember.skills && detailMember.skills.length > 0 && (
-                <div
-                  style={{
-                    display: 'flex',
-                    flexWrap: 'wrap',
-                    gap: '6px',
-                    justifyContent: 'center',
-                    marginBottom: 16,
-                  }}
-                >
-                  {detailMember.skills.map((skill, i) => (
-                    <span
-                      key={i}
-                      style={{
-                        fontSize: '11px',
-                        fontWeight: 600,
-                        padding: '4px 10px',
-                        borderRadius: '12px',
-                        background: `${t.primary}12`,
-                        color: t.primary,
-                        border: `1px solid ${t.primary}25`,
-                      }}
-                    >
-                      {skill}
-                    </span>
-                  ))}
-                </div>
-              )}
-
-              {(detailMember.email || detailMember.linkedin) && (
-                <div
-                  style={{
-                    display: 'flex',
-                    gap: '8px',
-                    justifyContent: 'center',
-                    paddingTop: 16,
-                    borderTop: `1px solid ${t.border}`,
-                  }}
-                >
-                  {detailMember.email && (
-                    <button
-                      onClick={() => handleCopy(detailMember.email!, 'email')}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        padding: '8px 14px',
-                        borderRadius: '8px',
-                        border: `1px solid ${t.border}`,
-                        background: t.surfaceElevated,
-                        color: t.textSecondary,
-                        fontSize: '12px',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      {copiedField === 'email' ? (
-                        <CheckCircle2 size={13} color="#10b981" />
-                      ) : (
-                        <Mail size={13} />
-                      )}
-                      {copiedField === 'email' ? 'Copiado!' : 'Email'}
-                    </button>
-                  )}
-                  {detailMember.linkedin && (
-                    <a
-                      href={detailMember.linkedin.startsWith('http') ? detailMember.linkedin : `https://${detailMember.linkedin}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        padding: '8px 14px',
-                        borderRadius: '8px',
-                        border: `1px solid ${t.border}`,
-                        background: t.surfaceElevated,
-                        color: t.textSecondary,
-                        fontSize: '12px',
-                        textDecoration: 'none',
-                      }}
-                    >
-                      <Linkedin size={13} />
-                      LinkedIn
-                    </a>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ═══════════════════════════════════════════════════
           MODAL — CONFIRMAÇÃO DE EXCLUSÃO
