@@ -152,8 +152,8 @@ export const SortimentosPage: React.FC = () => {
               </tr>
             </thead>
             <tbody>
-              {rows.map((p) => (
-                <tr key={p.codigo} style={{ borderTop: `1px solid ${t.border}`, color: t.text }}>
+              {rows.map((p, idx) => (
+                <tr key={p.id ?? `${p.codigo}-${idx}`} style={{ borderTop: `1px solid ${t.border}`, color: t.text }}>
                   <td style={{ padding: 12, fontWeight: 600 }}>{p.codigo}</td>
                   <td>{p.produto || '—'}</td>
                   <td>{p.fabricante || '—'}</td>

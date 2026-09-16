@@ -322,18 +322,50 @@ CREATE INDEX IF NOT EXISTS idx_importacoes_erros_importacao ON importacoes_erros
 -- TELA DE IMPORTAÇÃO — Lista de Sortimento
 -- Colunas alinhadas com a UI (Importacao.tsx): CÓDIGO, PRODUTO, FABRICANTE,
 -- CATEGORIA, LINHA.
+-- PK própria (id): a planilha pode repetir o mesmo cod_produto e NENHUMA
+-- linha pode ser descartada. Cada importação apaga e regrava a tabela
+-- inteira (replace_all_rows em app.import_types / app.upsert).
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS sortimento (
-  cod_produto   TEXT PRIMARY KEY,
+  id            BIGSERIAL PRIMARY KEY,
+  cod_produto   TEXT NOT NULL,
   produto       TEXT,
   fabricante    TEXT,
   categoria     TEXT,
   linha         TEXT,
   atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now()
 );
--- Bancos já existentes com layout antigo (descricao_produto/fornecedor):
+-- Bancos já existentes com layout antigo (PK = cod_produto):
+ALTER TABLE sortimento ADD COLUMN IF NOT EXISTS id BIGSERIAL;
 ALTER TABLE sortimento ADD COLUMN IF NOT EXISTS produto TEXT;
 ALTER TABLE sortimento ADD COLUMN IF NOT EXISTS fabricante TEXT;
 ALTER TABLE sortimento ADD COLUMN IF NOT EXISTS categoria TEXT;
 ALTER TABLE sortimento ADD COLUMN IF NOT EXISTS linha TEXT;
 ALTER TABLE sortimento ADD COLUMN IF NOT EXISTS atualizado_em TIMESTAMPTZ DEFAULT now();
+-- Se a PK antiga ainda for cod_produto, troca para id e libera duplicatas.
+DO $sortimento_pk$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.key_column_usage
+    WHERE table_schema = 'public'
+      AND table_name = 'sortimento'
+      AND constraint_name = 'sortimento_pkey'
+      AND column_name = 'cod_produto'
+  ) THEN
+    ALTER TABLE sortimento DROP CONSTRAINT sortimento_pkey;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM information_schema.table_constraints
+    WHERE table_schema = 'public'
+      AND table_name = 'sortimento'
+      AND constraint_type = 'PRIMARY KEY'
+  ) THEN
+    ALTER TABLE sortimento ADD PRIMARY KEY (id);
+  END IF;
+END
+$sortimento_pk$;
+CREATE INDEX IF NOT EXISTS idx_sortimento_cod ON sortimento(cod_produto);
+CREATE INDEX IF NOT EXISTS idx_sortimento_fab ON sortimento(fabricante);

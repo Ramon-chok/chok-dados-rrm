@@ -1,4 +1,9 @@
-"""Motor genérico de UPSERT em lote (espelho de server/upsert.ts)."""
+"""Motor genérico de UPSERT em lote (espelho de server/upsert.ts).
+
+Regra de importação: NENHUMA linha válida da planilha é descartada por
+duplicidade de chave antes da gravação. Tudo o que passou na validação
+é processado.
+"""
 
 from __future__ import annotations
 
@@ -47,12 +52,26 @@ def map_and_validate_rows(
     valid: list[MappedRow] = []
     errors: list[RowError] = []
 
+    mapped_headers = {h for h in mapping.values() if h}
+
     for idx, raw in enumerate(raw_rows):
         linha = idx + 1
         values: dict[str, Any] = {}
         row_error: str | None = None
 
         for col in cfg.columns:
+            if col.kind == "jsonb" and cfg.dynamic_json_column and col.name == cfg.dynamic_json_column:
+                json_value: dict[str, Any] = {}
+                for header, cell_value in raw.items():
+                    if header in mapped_headers:
+                        continue
+                    if cell_value is None or cell_value == "":
+                        continue
+                    ok_num, num_val = parse_numeric(cell_value)
+                    json_value[header] = num_val if ok_num and num_val is not None else cell_value
+                values[col.name] = json_value
+                continue
+
             source_header = mapping.get(col.name)
             raw_value = raw.get(source_header) if source_header else None
 
@@ -71,6 +90,8 @@ def map_and_validate_rows(
                     parsed_ok, parsed_val = True, None
             elif col.kind == "boolean":
                 parsed_ok, parsed_val = parse_boolean(raw_value)
+            elif col.kind == "jsonb":
+                parsed_ok, parsed_val = True, raw_value if isinstance(raw_value, dict) else {}
             else:
                 parsed_ok, parsed_val = parse_text(raw_value)
 
@@ -92,45 +113,49 @@ def map_and_validate_rows(
     return valid, errors
 
 
-def _dedupe_by_key(rows: list[MappedRow], key_columns: tuple[str, ...]) -> list[MappedRow]:
-    """Mantém só a última ocorrência de cada chave.
-
-    Uma mesma chave repetida dentro do MESMO comando INSERT ... ON CONFLICT
-    faz o Postgres estourar "ON CONFLICT DO UPDATE command cannot affect row
-    a second time" — planilhas reais frequentemente têm linhas duplicadas
-    (reenvio, correção manual etc.), então a última linha da planilha é
-    considerada a versão vigente.
-    """
-    deduped: dict[tuple[Any, ...], MappedRow] = {}
-    for row in rows:
-        key = tuple(row.values.get(k) for k in key_columns)
-        deduped[key] = row
-    return list(deduped.values())
-
-
-def _replace_snapshot_rows(
-    conn: Connection,
+def _row_params(
     cfg: ImportTypeConfig,
-    rows: list[MappedRow],
+    row: MappedRow,
+    value_columns: list[str],
     importacao_id: int,
     data_importacao: datetime,
-    snapshot: SnapshotContext,
-) -> UpsertOutcome:
-    """Para planilhas onde a mesma combinação de key_columns pode se repetir
-    legitimamente (ex.: o mesmo cliente aparecendo mais de uma vez na mesma
-    aba) — em vez de UPSERT por chave (que exigiria descartar duplicatas),
-    apaga o snapshot inteiro da data_referencia e regrava TODAS as linhas do
-    arquivo, uma a uma, exatamente como constam nele.
-    """
+    snapshot: SnapshotContext | None,
+) -> list[Any]:
+    params: list[Any] = []
+    for c in value_columns:
+        val = row.values.get(c)
+        col_cfg = next((cc for cc in cfg.columns if cc.name == c), None)
+        if col_cfg and col_cfg.kind == "jsonb" and val is None:
+            val = {}
+        params.append(val)
+    if cfg.snapshot and snapshot:
+        params.extend([snapshot.data_referencia, snapshot.mes_referencia, snapshot.ano_referencia])
+    if cfg.tracks_import:
+        params.extend([data_importacao, importacao_id])
+    return params
+
+
+def _insert_columns(cfg: ImportTypeConfig) -> list[str]:
     value_columns = [c.name for c in cfg.columns]
     extra_columns: list[str] = []
     if cfg.snapshot:
         extra_columns.extend(["data_referencia", "mes_referencia", "ano_referencia"])
     if cfg.tracks_import:
         extra_columns.extend(["data_importacao", "importacao_id"])
-    insert_columns = [*value_columns, *extra_columns]
+    return [*value_columns, *extra_columns]
 
-    conn.execute(f"DELETE FROM {cfg.table} WHERE data_referencia = %s", (snapshot.data_referencia,))
+
+def _bulk_insert_all(
+    conn: Connection,
+    cfg: ImportTypeConfig,
+    rows: list[MappedRow],
+    importacao_id: int,
+    data_importacao: datetime,
+    snapshot: SnapshotContext | None,
+) -> UpsertOutcome:
+    """Insere TODAS as linhas do arquivo, sem ON CONFLICT e sem dedupe."""
+    value_columns = [c.name for c in cfg.columns]
+    insert_columns = _insert_columns(cfg)
 
     novos = 0
     for i in range(0, len(rows), CHUNK_SIZE):
@@ -139,14 +164,9 @@ def _replace_snapshot_rows(
         tuples: list[str] = []
 
         for row in chunk:
-            row_params: list[Any] = [row.values.get(c) for c in value_columns]
-            if cfg.snapshot:
-                row_params.extend(
-                    [snapshot.data_referencia, snapshot.mes_referencia, snapshot.ano_referencia]
-                )
-            if cfg.tracks_import:
-                row_params.extend([data_importacao, importacao_id])
-
+            row_params = _row_params(
+                cfg, row, value_columns, importacao_id, data_importacao, snapshot
+            )
             placeholders = ", ".join(["%s"] * len(row_params))
             tuples.append(f"({placeholders})")
             params.extend(row_params)
@@ -159,6 +179,32 @@ def _replace_snapshot_rows(
     return UpsertOutcome(novos=novos, atualizados=0)
 
 
+def _replace_snapshot_rows(
+    conn: Connection,
+    cfg: ImportTypeConfig,
+    rows: list[MappedRow],
+    importacao_id: int,
+    data_importacao: datetime,
+    snapshot: SnapshotContext,
+) -> UpsertOutcome:
+    """Apaga o snapshot da data_referencia e regrava TODAS as linhas do arquivo."""
+    conn.execute(f"DELETE FROM {cfg.table} WHERE data_referencia = %s", (snapshot.data_referencia,))
+    return _bulk_insert_all(conn, cfg, rows, importacao_id, data_importacao, snapshot)
+
+
+def _replace_all_rows(
+    conn: Connection,
+    cfg: ImportTypeConfig,
+    rows: list[MappedRow],
+    importacao_id: int,
+    data_importacao: datetime,
+    snapshot: SnapshotContext | None,
+) -> UpsertOutcome:
+    """Apaga a tabela inteira e regrava TODAS as linhas do arquivo (ex.: sortimento)."""
+    conn.execute(f"DELETE FROM {cfg.table}")
+    return _bulk_insert_all(conn, cfg, rows, importacao_id, data_importacao, snapshot)
+
+
 def upsert_rows(
     conn: Connection,
     cfg: ImportTypeConfig,
@@ -167,69 +213,70 @@ def upsert_rows(
     data_importacao: datetime,
     snapshot: SnapshotContext | None,
 ) -> UpsertOutcome:
+    """Grava todas as linhas válidas da planilha.
+
+    Nenhuma linha é descartada por duplicidade de chave antes da gravação.
+    - replace_all_rows: DELETE tabela + INSERT de todas as linhas
+    - replace_snapshot_rows: DELETE do dia + INSERT de todas as linhas
+    - demais tipos: UPSERT linha a linha (cada ocorrência do arquivo é aplicada;
+      evita erro do Postgres com a mesma chave repetida no mesmo statement)
+    """
     if not rows:
         return UpsertOutcome(0, 0)
+
+    if getattr(cfg, "replace_all_rows", False):
+        return _replace_all_rows(conn, cfg, rows, importacao_id, data_importacao, snapshot)
 
     if cfg.replace_snapshot_rows:
         assert snapshot is not None, "replace_snapshot_rows requer snapshot=True"
         return _replace_snapshot_rows(conn, cfg, rows, importacao_id, data_importacao, snapshot)
 
-    rows = _dedupe_by_key(rows, cfg.key_columns)
-
     value_columns = [c.name for c in cfg.columns]
-    extra_columns: list[str] = []
-    if cfg.snapshot:
-        extra_columns.extend(["data_referencia", "mes_referencia", "ano_referencia"])
-    if cfg.tracks_import:
-        extra_columns.extend(["data_importacao", "importacao_id"])
-    insert_columns = [*value_columns, *extra_columns]
+    insert_columns = _insert_columns(cfg)
     update_parts = [f"{c} = EXCLUDED.{c}" for c in insert_columns if c not in cfg.key_columns]
     if not cfg.tracks_import:
         # Tabelas de cadastro não recebem data_importacao/importacao_id (não
         # têm essas colunas) — em vez disso, tocam atualizado_em no UPDATE.
         # No INSERT, o DEFAULT now() da coluna já cobre a linha nova.
         update_parts.append("atualizado_em = now()")
-    update_set = ", ".join(update_parts)
+    update_set = ", ".join(update_parts) if update_parts else None
 
     novos = 0
     atualizados = 0
 
-    for i in range(0, len(rows), CHUNK_SIZE):
-        chunk = rows[i : i + CHUNK_SIZE]
-        params: list[Any] = []
-        tuples: list[str] = []
+    # Uma linha por statement: cada ocorrência da planilha é processada.
+    # Evita "ON CONFLICT DO UPDATE cannot affect row a second time" e
+    # NÃO remove linhas do arquivo antes de gravar.
+    for idx, row in enumerate(rows, start=1):
+        row_params = _row_params(cfg, row, value_columns, importacao_id, data_importacao, snapshot)
+        placeholders = ", ".join(["%s"] * len(row_params))
+        if update_set:
+            sql = f"""
+                INSERT INTO {cfg.table} ({", ".join(insert_columns)})
+                VALUES ({placeholders})
+                ON CONFLICT ({", ".join(cfg.key_columns)})
+                DO UPDATE SET {update_set}
+                RETURNING (xmax = 0) AS inserted
+            """
+        else:
+            sql = f"""
+                INSERT INTO {cfg.table} ({", ".join(insert_columns)})
+                VALUES ({placeholders})
+                ON CONFLICT ({", ".join(cfg.key_columns)})
+                DO NOTHING
+                RETURNING (xmax = 0) AS inserted
+            """
+        result = conn.execute(sql, row_params)
+        rec = result.fetchone()
+        if rec is None:
+            atualizados += 1
+        elif rec["inserted"]:
+            novos += 1
+        else:
+            atualizados += 1
 
-        for row in chunk:
-            row_params: list[Any] = [row.values.get(c) for c in value_columns]
-            if cfg.snapshot and snapshot:
-                row_params.extend(
-                    [snapshot.data_referencia, snapshot.mes_referencia, snapshot.ano_referencia]
-                )
-            if cfg.tracks_import:
-                row_params.extend([data_importacao, importacao_id])
-
-            placeholders = ", ".join(["%s"] * len(row_params))
-            tuples.append(f"({placeholders})")
-            params.extend(row_params)
-
-        sql = f"""
-            INSERT INTO {cfg.table} ({", ".join(insert_columns)})
-            VALUES {", ".join(tuples)}
-            ON CONFLICT ({", ".join(cfg.key_columns)})
-            DO UPDATE SET {update_set}
-            RETURNING (xmax = 0) AS inserted
-        """
-        result = conn.execute(sql, params)
-        for rec in result.fetchall():
-            if rec["inserted"]:
-                novos += 1
-            else:
-                atualizados += 1
-        # commit after each chunk so partial progress is persisted
-        try:
+        if idx % CHUNK_SIZE == 0:
             conn.commit()
-        except Exception:
-            # propagate commit errors to caller
-            raise
 
+    conn.commit()
     return UpsertOutcome(novos=novos, atualizados=atualizados)

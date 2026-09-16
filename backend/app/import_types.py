@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-ColumnKind = Literal["text", "numeric", "integer", "date", "boolean"]
+ColumnKind = Literal["text", "numeric", "integer", "date", "boolean", "jsonb"]
 
 
 @dataclass(frozen=True)
@@ -35,6 +35,14 @@ class ImportTypeConfig:
     # exatamente como constam nele. Requer snapshot=True e uma PK própria
     # (id) na tabela, já que key_columns deixa de servir de chave única.
     replace_snapshot_rows: bool = False
+    # Quando True, cada importação apaga a tabela inteira e regrava TODAS as
+    # linhas do arquivo (sem dedupe). Usado em cadastros/listas onde a planilha
+    # é a fonte completa e códigos podem se repetir (ex.: sortimento).
+    # Requer PK própria (id), não a chave de negócio.
+    replace_all_rows: bool = False
+    # Nome da coluna jsonb que recebe o restante das colunas não mapeadas
+    # do cabeçalho (ex.: fabricantes em não positivados).
+    dynamic_json_column: str | None = None
 
 
 IMPORT_TYPE_CONFIGS: dict[str, ImportTypeConfig] = {
@@ -179,9 +187,12 @@ IMPORT_TYPE_CONFIGS: dict[str, ImportTypeConfig] = {
         id="sortimento",
         label="Lista de Sortimento",
         table="sortimento",
+        # key_columns só para validação de obrigatoriedade — a PK real é `id`
+        # e a importação regrava a tabela inteira (replace_all_rows).
         key_columns=("cod_produto",),
         snapshot=False,
         tracks_import=False,
+        replace_all_rows=True,
         columns=(
             # Nomes alinhados com src/pages/admin/Importacao.tsx
             ImportColumn("cod_produto", "text"),

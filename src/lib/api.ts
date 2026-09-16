@@ -173,6 +173,7 @@ export interface ProductRow {
 }
 
 export interface SortimentoRow {
+  id?: number;
   codigo: string;
   produto: string | null;
   fabricante: string | null;

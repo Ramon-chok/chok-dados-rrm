@@ -1,13 +1,13 @@
-// Motor genérico de UPSERT em lote (regra 13 do PRD: INSERT se não existir,
-// UPDATE se já existir, nunca duplicar). Funciona para qualquer tipo
-// configurado em importTypes.ts — nenhum código novo é necessário para
-// adicionar um novo indicador no futuro (regra 29).
+// Motor generico de UPSERT em lote (espelho de backend/app/upsert.py).
+//
+// Regra de importacao: NENHUMA linha valida da planilha e descartada por
+// duplicidade de chave antes da gravacao.
 import type { PoolClient } from 'pg';
 import { ImportTypeConfig } from './importTypes.js';
 import { parseBoolean, parseDateOnly, parseInteger, parseNumeric, parseText } from './parse.js';
 
 export interface RowError {
-  linha: number; // 1-based, relativo aos dados enviados (sem contar cabeçalho)
+  linha: number;
   motivo: string;
 }
 
@@ -18,12 +18,6 @@ export interface MappedRow {
 
 const CHUNK_SIZE = 500;
 
-/**
- * Projeta as linhas brutas (chaveadas pelos cabeçalhos originais da planilha)
- * para os nomes de coluna do sistema, usando o mapeamento definido na tela de
- * importação, valida tipos/obrigatoriedade da chave e separa o que é válido
- * do que deve ser rejeitado.
- */
 export function mapAndValidateRows(
   cfg: ImportTypeConfig,
   mapping: Record<string, string>,
@@ -31,10 +25,6 @@ export function mapAndValidateRows(
 ): { valid: MappedRow[]; errors: RowError[] } {
   const valid: MappedRow[] = [];
   const errors: RowError[] = [];
-
-  // Colunas já "consumidas" por um campo mapeado normalmente — o que sobrar
-  // do cabeçalho original da planilha vai para a coluna dynamicJsonColumn
-  // (quando configurada). Calculado uma vez fora do loop de linhas.
   const mappedHeaders = new Set(Object.values(mapping).filter(Boolean));
 
   rawRows.forEach((raw, idx) => {
@@ -83,7 +73,7 @@ export function mapAndValidateRows(
 
       const isKeyColumn = cfg.keyColumns.includes(col.name);
       if (isKeyColumn && (parsed.value === null || parsed.value === '')) {
-        rowError = `coluna de chave "${col.name}" está vazia`;
+        rowError = `coluna de chave "${col.name}" esta vazia`;
         break;
       }
 
@@ -101,7 +91,7 @@ export function mapAndValidateRows(
 }
 
 export interface SnapshotContext {
-  dataReferencia: string; // 'YYYY-MM-DD'
+  dataReferencia: string;
   mesReferencia: number;
   anoReferencia: number;
 }
@@ -111,27 +101,93 @@ export interface UpsertOutcome {
   atualizados: number;
 }
 
-/**
- * Mantém só a última ocorrência de cada chave. Uma mesma chave repetida
- * dentro do MESMO comando INSERT ... ON CONFLICT faz o Postgres estourar
- * "ON CONFLICT DO UPDATE command cannot affect row a second time" —
- * planilhas reais frequentemente têm linhas duplicadas (reenvio, correção
- * manual etc.), então a última linha da planilha é a versão vigente.
- */
-function dedupeByKey(rows: MappedRow[], keyColumns: string[]): MappedRow[] {
-  const deduped = new Map<string, MappedRow>();
-  for (const row of rows) {
-    const key = JSON.stringify(keyColumns.map((k) => row.values[k] ?? null));
-    deduped.set(key, row);
-  }
-  return [...deduped.values()];
+function insertColumns(cfg: ImportTypeConfig): string[] {
+  const tracksImport = cfg.tracksImport ?? true;
+  const valueColumns = cfg.columns.map((c) => c.name);
+  const extraColumns: string[] = [];
+  if (cfg.snapshot) extraColumns.push('data_referencia', 'mes_referencia', 'ano_referencia');
+  if (tracksImport) extraColumns.push('data_importacao', 'importacao_id');
+  return [...valueColumns, ...extraColumns];
 }
 
-/**
- * Executa o upsert em lotes dentro de uma transação já aberta pelo chamador.
- * Usa `RETURNING (xmax = 0)` (truque padrão do Postgres) para contar, por
- * linha, se foi INSERT (novo) ou UPDATE (atualizado).
- */
+function rowParams(
+  cfg: ImportTypeConfig,
+  row: MappedRow,
+  importacaoId: number,
+  dataImportacao: Date,
+  snapshot: SnapshotContext | null
+): unknown[] {
+  const tracksImport = cfg.tracksImport ?? true;
+  const valueColumns = cfg.columns.map((c) => c.name);
+  const params: unknown[] = valueColumns.map((c) => {
+    const val = row.values[c] ?? null;
+    const colCfg = cfg.columns.find((cc) => cc.name === c);
+    return colCfg?.kind === 'jsonb' ? JSON.stringify(val ?? {}) : val;
+  });
+  if (cfg.snapshot && snapshot) {
+    params.push(snapshot.dataReferencia, snapshot.mesReferencia, snapshot.anoReferencia);
+  }
+  if (tracksImport) {
+    params.push(dataImportacao, importacaoId);
+  }
+  return params;
+}
+
+async function bulkInsertAll(
+  client: PoolClient,
+  cfg: ImportTypeConfig,
+  rows: MappedRow[],
+  importacaoId: number,
+  dataImportacao: Date,
+  snapshot: SnapshotContext | null
+): Promise<UpsertOutcome> {
+  const cols = insertColumns(cfg);
+  let novos = 0;
+
+  for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
+    const chunk = rows.slice(i, i + CHUNK_SIZE);
+    const params: unknown[] = [];
+    const tuples: string[] = [];
+
+    for (const row of chunk) {
+      const rp = rowParams(cfg, row, importacaoId, dataImportacao, snapshot);
+      const placeholders = rp.map((_, j) => `$${params.length + j + 1}`);
+      tuples.push(`(${placeholders.join(', ')})`);
+      params.push(...rp);
+    }
+
+    const sql = `INSERT INTO ${cfg.table} (${cols.join(', ')}) VALUES ${tuples.join(', ')}`;
+    await client.query(sql, params);
+    novos += chunk.length;
+  }
+
+  return { novos, atualizados: 0 };
+}
+
+async function replaceSnapshotRows(
+  client: PoolClient,
+  cfg: ImportTypeConfig,
+  rows: MappedRow[],
+  importacaoId: number,
+  dataImportacao: Date,
+  snapshot: SnapshotContext
+): Promise<UpsertOutcome> {
+  await client.query(`DELETE FROM ${cfg.table} WHERE data_referencia = $1`, [snapshot.dataReferencia]);
+  return bulkInsertAll(client, cfg, rows, importacaoId, dataImportacao, snapshot);
+}
+
+async function replaceAllRows(
+  client: PoolClient,
+  cfg: ImportTypeConfig,
+  rows: MappedRow[],
+  importacaoId: number,
+  dataImportacao: Date,
+  snapshot: SnapshotContext | null
+): Promise<UpsertOutcome> {
+  await client.query(`DELETE FROM ${cfg.table}`);
+  return bulkInsertAll(client, cfg, rows, importacaoId, dataImportacao, snapshot);
+}
+
 export async function upsertRows(
   client: PoolClient,
   cfg: ImportTypeConfig,
@@ -142,67 +198,51 @@ export async function upsertRows(
 ): Promise<UpsertOutcome> {
   if (rows.length === 0) return { novos: 0, atualizados: 0 };
 
-  rows = dedupeByKey(rows, cfg.keyColumns);
+  if (cfg.replaceAllRows) {
+    return replaceAllRows(client, cfg, rows, importacaoId, dataImportacao, snapshot);
+  }
+
+  if (cfg.replaceSnapshotRows) {
+    if (!snapshot) throw new Error('replaceSnapshotRows requer snapshot');
+    return replaceSnapshotRows(client, cfg, rows, importacaoId, dataImportacao, snapshot);
+  }
 
   const tracksImport = cfg.tracksImport ?? true;
-  const valueColumns = cfg.columns.map((c) => c.name);
-  const extraColumns: string[] = [];
-  if (cfg.snapshot) extraColumns.push('data_referencia', 'mes_referencia', 'ano_referencia');
-  if (tracksImport) extraColumns.push('data_importacao', 'importacao_id');
-  const insertColumns = [...valueColumns, ...extraColumns];
-
-  const updateParts = insertColumns
+  const cols = insertColumns(cfg);
+  const updateParts = cols
     .filter((c) => !cfg.keyColumns.includes(c))
     .map((c) => `${c} = EXCLUDED.${c}`);
   if (!tracksImport) {
-    // Tabelas de cadastro não recebem data_importacao/importacao_id (não têm
-    // essas colunas) — em vez disso, tocam atualizado_em no UPDATE. No
-    // INSERT, o DEFAULT now() da coluna já cobre a linha nova.
     updateParts.push('atualizado_em = now()');
   }
-  const updateSet = updateParts.join(', ');
+  const updateSet = updateParts.length > 0 ? updateParts.join(', ') : null;
 
   let novos = 0;
   let atualizados = 0;
 
-  for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
-    const chunk = rows.slice(i, i + CHUNK_SIZE);
-    const params: unknown[] = [];
-    const tuples: string[] = [];
-
-    for (const row of chunk) {
-      const rowParams: unknown[] = valueColumns.map((c) => {
-        const val = row.values[c] ?? null;
-        const colCfg = cfg.columns.find((cc) => cc.name === c);
-        // node-postgres não serializa objetos JS para jsonb automaticamente —
-        // precisa chegar como texto (o Postgres já faz o parse na coluna jsonb).
-        return colCfg?.kind === 'jsonb' ? JSON.stringify(val ?? {}) : val;
-      });
-      if (cfg.snapshot && snapshot) {
-        rowParams.push(snapshot.dataReferencia, snapshot.mesReferencia, snapshot.anoReferencia);
-      }
-      if (tracksImport) {
-        rowParams.push(dataImportacao, importacaoId);
-      }
-
-      const placeholders = rowParams.map((_, j) => `$${params.length + j + 1}`);
-      tuples.push(`(${placeholders.join(', ')})`);
-      params.push(...rowParams);
-    }
-
-    const sql = `
-      INSERT INTO ${cfg.table} (${insertColumns.join(', ')})
-      VALUES ${tuples.join(', ')}
-      ON CONFLICT (${cfg.keyColumns.join(', ')})
-      DO UPDATE SET ${updateSet}
-      RETURNING (xmax = 0) AS inserted
-    `;
-
-    const result = await client.query(sql, params);
-    for (const r of result.rows as { inserted: boolean }[]) {
-      if (r.inserted) novos += 1;
-      else atualizados += 1;
-    }
+  for (const row of rows) {
+    const rp = rowParams(cfg, row, importacaoId, dataImportacao, snapshot);
+    const placeholders = rp.map((_, j) => `$${j + 1}`).join(', ');
+    const sql = updateSet
+      ? `
+          INSERT INTO ${cfg.table} (${cols.join(', ')})
+          VALUES (${placeholders})
+          ON CONFLICT (${cfg.keyColumns.join(', ')})
+          DO UPDATE SET ${updateSet}
+          RETURNING (xmax = 0) AS inserted
+        `
+      : `
+          INSERT INTO ${cfg.table} (${cols.join(', ')})
+          VALUES (${placeholders})
+          ON CONFLICT (${cfg.keyColumns.join(', ')})
+          DO NOTHING
+          RETURNING (xmax = 0) AS inserted
+        `;
+    const result = await client.query(sql, rp);
+    const rec = result.rows[0] as { inserted: boolean } | undefined;
+    if (!rec) atualizados += 1;
+    else if (rec.inserted) novos += 1;
+    else atualizados += 1;
   }
 
   return { novos, atualizados };

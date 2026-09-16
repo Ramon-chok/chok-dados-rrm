@@ -9,7 +9,7 @@
 // chave, então o mesmo período é atualizado (UPDATE) e um novo período sempre
 // cria uma linha nova (INSERT) — nunca se sobrescreve o passado.
 
-export type ColumnKind = 'text' | 'numeric' | 'integer' | 'date' | 'boolean';
+export type ColumnKind = 'text' | 'numeric' | 'integer' | 'date' | 'boolean' | 'jsonb';
 
 export interface ImportColumn {
   name: string;
@@ -32,6 +32,18 @@ export interface ImportTypeConfig {
    * tem atualizado_em (DEFAULT now()) — ver server/upsert.ts. Padrão: true.
    */
   tracksImport?: boolean;
+  /**
+   * true = apaga o snapshot da data_referencia e regrava TODAS as linhas do
+   * arquivo (sem dedupe). Requer PK própria (id).
+   */
+  replaceSnapshotRows?: boolean;
+  /**
+   * true = apaga a tabela inteira e regrava TODAS as linhas do arquivo
+   * (sem dedupe). Usado em listas completas como sortimento.
+   */
+  replaceAllRows?: boolean;
+  /** Coluna jsonb que recebe o restante das colunas não mapeadas do cabeçalho. */
+  dynamicJsonColumn?: string;
 }
 
 export const IMPORT_TYPE_CONFIGS: Record<string, ImportTypeConfig> = {
@@ -254,9 +266,11 @@ export const IMPORT_TYPE_CONFIGS: Record<string, ImportTypeConfig> = {
     id: 'sortimento',
     label: 'Lista de Sortimento',
     table: 'sortimento',
+    // keyColumns só para validação — PK real é `id`; import regrava a tabela.
     keyColumns: ['cod_produto'],
     snapshot: false,
     tracksImport: false,
+    replaceAllRows: true,
     columns: [
       { name: 'cod_produto', kind: 'text' },
       { name: 'produto', kind: 'text' },
@@ -273,6 +287,7 @@ export const IMPORT_TYPE_CONFIGS: Record<string, ImportTypeConfig> = {
     table: 'top_20_clientes',
     keyColumns: ['data_referencia', 'cod_vendedor', 'cod_cliente'],
     snapshot: true,
+    replaceSnapshotRows: true,
     columns: [
       { name: 'nivel', kind: 'text' },
       { name: 'gerencia', kind: 'text' },
@@ -294,10 +309,11 @@ export const IMPORT_TYPE_CONFIGS: Record<string, ImportTypeConfig> = {
   // Top Clientes — aba "top_clientes": venda total no mês por cliente
   top_clientes__top_clientes: {
     id: 'top_clientes__top_clientes',
-    label: 'Top Clien-tes — Venda Total no Mês (aba "top_clientes")',
+    label: 'Top Clientes — Venda Total no Mês (aba "top_clientes")',
     table: 'top_clientes',
     keyColumns: ['data_referencia', 'cod_cliente'],
     snapshot: true,
+    replaceSnapshotRows: true,
     columns: [
       { name: 'cod_cliente', kind: 'text' },
       { name: 'cliente', kind: 'text' },

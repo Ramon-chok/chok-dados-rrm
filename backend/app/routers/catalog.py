@@ -86,6 +86,7 @@ def sortimento(
         rows = conn.execute(
             f"""
             SELECT
+              s.id,
               s.cod_produto,
               s.produto,
               s.fabricante,
@@ -94,12 +95,13 @@ def sortimento(
               s.atualizado_em
             FROM sortimento s
             WHERE {" AND ".join(parts)}
-            ORDER BY s.fabricante NULLS LAST, s.produto NULLS LAST, s.cod_produto
+            ORDER BY s.fabricante NULLS LAST, s.produto NULLS LAST, s.cod_produto, s.id
             """,
             params,
         ).fetchall()
     return [
         {
+            "id": r["id"],
             "codigo": r["cod_produto"],
             "produto": r["produto"],
             "fabricante": r["fabricante"],

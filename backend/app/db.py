@@ -61,18 +61,43 @@ def close_pool() -> None:
 
 
 def _sql_statements(sql_text: str) -> list[str]:
+    """Divide o SQL em statements por ';' respeitando dollar-quotes (DO $$ ... $$)."""
     statements: list[str] = []
     buf: list[str] = []
+    in_dollar = False
+    dollar_tag = ""
+
     for line in sql_text.splitlines():
         stripped = line.strip()
-        if stripped.startswith("--") or stripped == "":
+        if not in_dollar and (stripped.startswith("--") or stripped == ""):
             continue
+
+        # Detecta abertura/fechamento de $$tag$$ (inclui $$ simples).
+        i = 0
+        while i < len(line):
+            if not in_dollar and line[i] == "$":
+                j = i + 1
+                while j < len(line) and (line[j].isalnum() or line[j] == "_"):
+                    j += 1
+                if j < len(line) and line[j] == "$":
+                    dollar_tag = line[i : j + 1]
+                    in_dollar = True
+                    i = j + 1
+                    continue
+            elif in_dollar and line.startswith(dollar_tag, i):
+                in_dollar = False
+                i += len(dollar_tag)
+                dollar_tag = ""
+                continue
+            i += 1
+
         buf.append(line)
-        if stripped.endswith(";"):
+        if not in_dollar and stripped.endswith(";"):
             stmt = "\n".join(buf).strip()
             if stmt:
                 statements.append(stmt)
             buf = []
+
     rest = "\n".join(buf).strip()
     if rest:
         statements.append(rest)

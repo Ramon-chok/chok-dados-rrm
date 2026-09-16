@@ -266,21 +266,49 @@ CREATE INDEX IF NOT EXISTS idx_ind_pos_vendedor ON indicadores_positivacao(cod_v
 -- Não Positivados). "Dados App" reaproveita as tabelas indicadores_* acima.
 -- ---------------------------------------------------------------------------
 
--- Lista de Sortimento — cadastro de produtos do sortimento (upsert por código)
--- Colunas alinhadas com Importacao.tsx: CÓDIGO, PRODUTO, FABRICANTE, CATEGORIA, LINHA
+-- Lista de Sortimento — PK própria (id): a planilha pode repetir cod_produto
+-- e NENHUMA linha é descartada. Cada importação regrava a tabela inteira.
 CREATE TABLE IF NOT EXISTS sortimento (
-  cod_produto   TEXT PRIMARY KEY,
+  id            BIGSERIAL PRIMARY KEY,
+  cod_produto   TEXT NOT NULL,
   produto       TEXT,
   fabricante    TEXT,
   categoria     TEXT,
   linha         TEXT,
   atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+ALTER TABLE sortimento ADD COLUMN IF NOT EXISTS id BIGSERIAL;
 ALTER TABLE sortimento ADD COLUMN IF NOT EXISTS produto TEXT;
 ALTER TABLE sortimento ADD COLUMN IF NOT EXISTS fabricante TEXT;
 ALTER TABLE sortimento ADD COLUMN IF NOT EXISTS categoria TEXT;
 ALTER TABLE sortimento ADD COLUMN IF NOT EXISTS linha TEXT;
 ALTER TABLE sortimento ADD COLUMN IF NOT EXISTS atualizado_em TIMESTAMPTZ DEFAULT now();
+DO $sortimento_pk$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.key_column_usage
+    WHERE table_schema = 'public'
+      AND table_name = 'sortimento'
+      AND constraint_name = 'sortimento_pkey'
+      AND column_name = 'cod_produto'
+  ) THEN
+    ALTER TABLE sortimento DROP CONSTRAINT sortimento_pkey;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM information_schema.table_constraints
+    WHERE table_schema = 'public'
+      AND table_name = 'sortimento'
+      AND constraint_type = 'PRIMARY KEY'
+  ) THEN
+    ALTER TABLE sortimento ADD PRIMARY KEY (id);
+  END IF;
+END
+$sortimento_pk$;
+CREATE INDEX IF NOT EXISTS idx_sortimento_cod ON sortimento(cod_produto);
+CREATE INDEX IF NOT EXISTS idx_sortimento_fab ON sortimento(fabricante);
 
 -- Top Clientes — aba "top_20_clientes": ranking de clientes por vendedor
 CREATE TABLE IF NOT EXISTS top_20_clientes (
