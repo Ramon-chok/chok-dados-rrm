@@ -501,7 +501,7 @@ export const ImportacaoPage: React.FC = () => {
         setStep(3);
       } catch (err) {
         console.error('Erro ao ler arquivo:', err);
-        setFileError('Não foi possível ler o arquivo selecionado. Verifique se é um Excel (.xlsx/.xls) ou CSV válido.');
+        setFileError('Não foi possível ler o arquivo selecionado. Verifique se é um Excel (.xlsx/.xls/.xlsm) ou CSV válido.');
       }
     };
     reader.readAsBinaryString(file);
@@ -751,7 +751,7 @@ export const ImportacaoPage: React.FC = () => {
             Carregar arquivo para: <span style={{ color: t.primary }}>{currentTypeConfig.label}</span>
           </div>
           <div style={{ fontSize: '13px', color: t.textMuted, marginBottom: '14px' }}>
-            Formatos aceitos: Microsoft Excel (.xlsx, .xls) ou Comma-Separated Values (.csv).
+            Formatos aceitos: Microsoft Excel (.xlsx, .xls, .xlsm) ou Comma-Separated Values (.csv).
           </div>
 
           {currentTypeConfig.sheets.some((s) => s.sheetName) && (
@@ -875,7 +875,7 @@ export const ImportacaoPage: React.FC = () => {
             </div>
             <input
               type="file"
-              accept=".csv,.xlsx,.xls"
+              accept=".csv,.xlsx,.xls,.xlsm"
               onChange={handleFileChange}
               style={{ display: 'none' }}
             />
