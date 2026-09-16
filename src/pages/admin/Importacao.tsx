@@ -283,22 +283,49 @@ const IMPORT_TYPES: ImportTypeOption[] = [
     templateFile: '/templates/importacao/nao_positivados.xlsx',
     sheets: [
       {
+        // Na planilha real, cada fabricante vira uma coluna própria (matriz
+        // cliente x fabricante com o valor vendido no período) e a lista de
+        // fabricantes muda com o tempo — por isso `columns` só lista os
+        // campos de identificação do cliente. Todas as demais colunas do
+        // arquivo (uma por fabricante) são capturadas automaticamente pelo
+        // backend e viram a coluna `fabricantes` (ver dynamicJsonColumn em
+        // server/importTypes.ts) — não precisam ser mapeadas aqui.
         key: 'por_vendedor',
         sheetName: 'Por vendedor',
         label: 'Por Vendedor',
-        columns: ['cod_vendedor', 'vendedor', 'cod_cliente', 'cliente', 'ultima_compra', 'dias_sem_comprar'],
+        columns: ['cod_vendedor', 'cod_cliente', 'razao_social', 'nome_fantasia', 'municipio'],
+        headerHints: {
+          cod_vendedor: 'cd_vend',
+          cod_cliente: 'cd_clien',
+          razao_social: 'nome',
+          nome_fantasia: 'Nome Fantasia',
+          municipio: 'municipio',
+        },
       },
       {
         key: 'equipe',
         sheetName: 'Equipe',
         label: 'Equipe',
-        columns: ['equipe', 'cod_cliente', 'cliente', 'ultima_compra', 'dias_sem_comprar'],
+        columns: ['equipe', 'cod_cliente', 'razao_social', 'nome_fantasia', 'municipio'],
+        headerHints: {
+          equipe: 'Cd Equipe',
+          cod_cliente: 'cd_clien',
+          razao_social: 'nome',
+          nome_fantasia: 'Nome Fantasia',
+          municipio: 'municipio',
+        },
       },
       {
         key: 'chok_total',
         sheetName: 'Chok total',
         label: 'Chok Total',
-        columns: ['cod_cliente', 'cliente', 'ultima_compra', 'dias_sem_comprar'],
+        columns: ['cod_cliente', 'razao_social', 'nome_fantasia', 'municipio'],
+        headerHints: {
+          cod_cliente: 'cd_clien',
+          razao_social: 'nome',
+          nome_fantasia: 'Nome Fantasia',
+          municipio: 'municipio',
+        },
       },
     ],
   },
@@ -501,7 +528,7 @@ export const ImportacaoPage: React.FC = () => {
         setStep(3);
       } catch (err) {
         console.error('Erro ao ler arquivo:', err);
-        setFileError('Não foi possível ler o arquivo selecionado. Verifique se é um Excel (.xlsx/.xls) ou CSV válido.');
+        setFileError('Não foi possível ler o arquivo selecionado. Verifique se é um Excel (.xlsx/.xls/.xlsm) ou CSV válido.');
       }
     };
     reader.readAsBinaryString(file);
@@ -751,7 +778,7 @@ export const ImportacaoPage: React.FC = () => {
             Carregar arquivo para: <span style={{ color: t.primary }}>{currentTypeConfig.label}</span>
           </div>
           <div style={{ fontSize: '13px', color: t.textMuted, marginBottom: '14px' }}>
-            Formatos aceitos: Microsoft Excel (.xlsx, .xls) ou Comma-Separated Values (.csv).
+            Formatos aceitos: Microsoft Excel (.xlsx, .xls, .xlsm) ou Comma-Separated Values (.csv).
           </div>
 
           {currentTypeConfig.sheets.some((s) => s.sheetName) && (
@@ -875,7 +902,7 @@ export const ImportacaoPage: React.FC = () => {
             </div>
             <input
               type="file"
-              accept=".csv,.xlsx,.xls"
+              accept=".csv,.xlsx,.xls,.xlsm"
               onChange={handleFileChange}
               style={{ display: 'none' }}
             />
