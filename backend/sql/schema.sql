@@ -131,12 +131,58 @@ CREATE TABLE IF NOT EXISTS indicadores_vendedor (
   meta_sortimento         NUMERIC(10,2),
   realizado_sortimento    NUMERIC(10,2),
   pct_margem              NUMERIC(6,2),
+  -- Campos extras da planilha Dados App (aba Mês)
+  data_inicial_faseamento      DATE,
+  realizado_faseamento         NUMERIC(14,2),
+  meta_faseamento              NUMERIC(14,2),
+  realizado_faseamento_2       NUMERIC(14,2),
+  data_inicial_desconcentracao DATE,
+  data_final_desconcentracao   DATE,
+  meta_desconcentracao         NUMERIC(14,2),
+  realizado_desconcentracao    NUMERIC(14,2),
+  visitas_diaria               INT,
+  positivacao_diaria           INT,
+  fora_de_rota_diaria          INT,
+  visitas_acumulada            INT,
+  positivacao_acumulada        INT,
+  fora_de_rota_acumulada       INT,
+  data_inicial_faseamento_ii   DATE,
+  data_final_faseamento_ii     DATE,
+  meta_faseamento_ii           NUMERIC(14,2),
+  realizado_faseamento_ii      NUMERIC(14,2),
+  data_inicial_desafio         DATE,
+  data_final_desafio           DATE,
+  meta_desafio                 NUMERIC(14,2),
+  realizado_desafio            NUMERIC(14,2),
   mes_referencia          INT NOT NULL,
   ano_referencia          INT NOT NULL,
   data_importacao         TIMESTAMPTZ NOT NULL DEFAULT now(),
   importacao_id           BIGINT,
   PRIMARY KEY (data_referencia, cod_vendedor)
 );
+-- Bancos já existentes: CREATE IF NOT EXISTS não adiciona colunas novas.
+ALTER TABLE indicadores_vendedor ADD COLUMN IF NOT EXISTS data_inicial_faseamento DATE;
+ALTER TABLE indicadores_vendedor ADD COLUMN IF NOT EXISTS realizado_faseamento NUMERIC(14,2);
+ALTER TABLE indicadores_vendedor ADD COLUMN IF NOT EXISTS meta_faseamento NUMERIC(14,2);
+ALTER TABLE indicadores_vendedor ADD COLUMN IF NOT EXISTS realizado_faseamento_2 NUMERIC(14,2);
+ALTER TABLE indicadores_vendedor ADD COLUMN IF NOT EXISTS data_inicial_desconcentracao DATE;
+ALTER TABLE indicadores_vendedor ADD COLUMN IF NOT EXISTS data_final_desconcentracao DATE;
+ALTER TABLE indicadores_vendedor ADD COLUMN IF NOT EXISTS meta_desconcentracao NUMERIC(14,2);
+ALTER TABLE indicadores_vendedor ADD COLUMN IF NOT EXISTS realizado_desconcentracao NUMERIC(14,2);
+ALTER TABLE indicadores_vendedor ADD COLUMN IF NOT EXISTS visitas_diaria INT;
+ALTER TABLE indicadores_vendedor ADD COLUMN IF NOT EXISTS positivacao_diaria INT;
+ALTER TABLE indicadores_vendedor ADD COLUMN IF NOT EXISTS fora_de_rota_diaria INT;
+ALTER TABLE indicadores_vendedor ADD COLUMN IF NOT EXISTS visitas_acumulada INT;
+ALTER TABLE indicadores_vendedor ADD COLUMN IF NOT EXISTS positivacao_acumulada INT;
+ALTER TABLE indicadores_vendedor ADD COLUMN IF NOT EXISTS fora_de_rota_acumulada INT;
+ALTER TABLE indicadores_vendedor ADD COLUMN IF NOT EXISTS data_inicial_faseamento_ii DATE;
+ALTER TABLE indicadores_vendedor ADD COLUMN IF NOT EXISTS data_final_faseamento_ii DATE;
+ALTER TABLE indicadores_vendedor ADD COLUMN IF NOT EXISTS meta_faseamento_ii NUMERIC(14,2);
+ALTER TABLE indicadores_vendedor ADD COLUMN IF NOT EXISTS realizado_faseamento_ii NUMERIC(14,2);
+ALTER TABLE indicadores_vendedor ADD COLUMN IF NOT EXISTS data_inicial_desafio DATE;
+ALTER TABLE indicadores_vendedor ADD COLUMN IF NOT EXISTS data_final_desafio DATE;
+ALTER TABLE indicadores_vendedor ADD COLUMN IF NOT EXISTS meta_desafio NUMERIC(14,2);
+ALTER TABLE indicadores_vendedor ADD COLUMN IF NOT EXISTS realizado_desafio NUMERIC(14,2);
 CREATE INDEX IF NOT EXISTS idx_ind_vend_periodo ON indicadores_vendedor(ano_referencia, mes_referencia);
 CREATE INDEX IF NOT EXISTS idx_ind_vend_vendedor ON indicadores_vendedor(cod_vendedor, data_referencia);
 

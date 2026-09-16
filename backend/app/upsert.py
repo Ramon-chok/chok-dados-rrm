@@ -62,6 +62,13 @@ def map_and_validate_rows(
                 parsed_ok, parsed_val = parse_integer(raw_value)
             elif col.kind == "date":
                 parsed_ok, parsed_val = parse_date_only(raw_value)
+                # Allow empty dates for non-key columns (some date columns
+                # are optional in the layout, e.g. Data Final Desconcentração).
+                # parse_date_only returns (False, 'data ausente') for empty
+                # values; convert that into a successful parse with None
+                # when the column is not part of the key.
+                if not parsed_ok and parsed_val == "data ausente" and col.name not in cfg.key_columns:
+                    parsed_ok, parsed_val = True, None
             elif col.kind == "boolean":
                 parsed_ok, parsed_val = parse_boolean(raw_value)
             else:

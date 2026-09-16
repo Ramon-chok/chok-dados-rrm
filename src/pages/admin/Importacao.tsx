@@ -173,42 +173,46 @@ const IMPORT_TYPES: ImportTypeOption[] = [
         key: 'mes',
         sheetName: 'Mês',
         label: 'Mês',
+        // Nomes de sistema (devem bater com backend/app/import_types.py).
+        // headerHints mapeia cada um para o cabeçalho real da planilha.
         columns: [
-          'Gerência',
-          'Vendedor',
-          'Meta Faturamento',
-          'Realizado Faturamento',
-          'Meta Cobertura',
-          'Realizado Cobertura',
-          'Meta Sortimento',
-          'Realizado Sortimento',
-          '%Margem',
-          'Data Inicial Faseamento',
-          'Realizado Faseamento',
-          'Meta Faseamento',
-          'Realizado Faseamento',
-          'Data Inicial Desconcentração',
-          'Data Final Desconcentração',
-          'Meta Desconcentração',
-          'Realizado Desconcentração',
-          'Visitas Diária',
-          'Positivação Diária',
-          'Fora de Rota Diária',
-          'Visitas Acumulada',
-          'Positivação Acumulada',
-          'Fora de Rota Acumulada',
-          'Data Inicial Faseamento II',
-          'Data FInal Faseamento II',
-          'Meta Faseamento II',
-          'Realizado Faseamento II',
-          'Data Inicial Desafio',
-          'Data Final Desafio',
-          'Meta Desafio',
-          'Realizado Desafio',
+          'cod_vendedor',
+          'gerencia',
+          'nome_vendedor',
+          'meta_faturamento',
+          'realizado_faturamento',
+          'meta_cobertura',
+          'realizado_cobertura',
+          'meta_sortimento',
+          'realizado_sortimento',
+          'pct_margem',
+          'data_inicial_faseamento',
+          'realizado_faseamento',
+          'meta_faseamento',
+          'realizado_faseamento_2',
+          'data_inicial_desconcentracao',
+          'data_final_desconcentracao',
+          'meta_desconcentracao',
+          'realizado_desconcentracao',
+          'visitas_diaria',
+          'positivacao_diaria',
+          'fora_de_rota_diaria',
+          'visitas_acumulada',
+          'positivacao_acumulada',
+          'fora_de_rota_acumulada',
+          'data_inicial_faseamento_ii',
+          'data_final_faseamento_ii',
+          'meta_faseamento_ii',
+          'realizado_faseamento_ii',
+          'data_inicial_desafio',
+          'data_final_desafio',
+          'meta_desafio',
+          'realizado_desafio',
         ],
         headerHints: {
+          cod_vendedor: 'Vendedor',
           gerencia: 'Gerência',
-          vendedor: 'Vendedor',
+          nome_vendedor: 'Nome Vendedor',
           meta_faturamento: 'Meta Faturamento',
           realizado_faturamento: 'Realizado Faturamento',
           meta_cobertura: 'Meta Cobertura',
@@ -216,30 +220,25 @@ const IMPORT_TYPES: ImportTypeOption[] = [
           meta_sortimento: 'Meta Sortimento',
           realizado_sortimento: 'Realizado Sortimento',
           pct_margem: '%Margem',
-
           data_inicial_faseamento: 'Data Inicial Faseamento',
           realizado_faseamento: 'Realizado Faseamento',
           meta_faseamento: 'Meta Faseamento',
-          realizado_faseamento_2: 'Realizado Faseamento',
-
+          // Planilhas às vezes repetem o mesmo título; o parser desambigua com " (2)".
+          realizado_faseamento_2: 'Realizado Faseamento (2)',
           data_inicial_desconcentracao: 'Data Inicial Desconcentração',
           data_final_desconcentracao: 'Data Final Desconcentração',
           meta_desconcentracao: 'Meta Desconcentração',
           realizado_desconcentracao: 'Realizado Desconcentração',
-
           visitas_diaria: 'Visitas Diária',
           positivacao_diaria: 'Positivação Diária',
           fora_de_rota_diaria: 'Fora de Rota Diária',
-
           visitas_acumulada: 'Visitas Acumulada',
           positivacao_acumulada: 'Positivação Acumulada',
           fora_de_rota_acumulada: 'Fora de Rota Acumulada',
-
           data_inicial_faseamento_ii: 'Data Inicial Faseamento II',
           data_final_faseamento_ii: 'Data Final Faseamento II',
           meta_faseamento_ii: 'Meta Faseamento II',
           realizado_faseamento_ii: 'Realizado Faseamento II',
-
           data_inicial_desafio: 'Data Inicial Desafio',
           data_final_desafio: 'Data Final Desafio',
           meta_desafio: 'Meta Desafio',
@@ -251,22 +250,21 @@ const IMPORT_TYPES: ImportTypeOption[] = [
         sheetName: 'Categorias',
         label: 'Categorias',
         columns: [
-          'Gerências',
-          'Equipes',
-          'Cod',
-          'Vendedor',
-          'Fabricantes',
-          'Meta',
-          'Realizado',
-          'Cobertura',
-          'Realizado Cob.',
-          '%Margem',
+          'cod_vendedor',
+          'fabricante',
+          'gerencia',
+          'equipe',
+          'meta',
+          'realizado',
+          'cobertura',
+          'realizado_cobertura',
+          'pct_margem',
         ],
         headerHints: {
-          gerencias: 'Gerências',
-          fabricantes: 'Fabricantes',
-          cod: 'Cod',
-          equipes: 'Equipes',
+          cod_vendedor: 'Cod',
+          fabricante: 'Fabricantes',
+          gerencia: 'Gerências',
+          equipe: 'Equipes',
           meta: 'Meta',
           realizado: 'Realizado',
           cobertura: 'Cobertura',
@@ -495,21 +493,29 @@ export const ImportacaoPage: React.FC = () => {
           // Auto match columns (inclui as ocultas — elas continuam sendo enviadas).
           // Primeiro tenta a dica de cabeçalho real (headerHints) quando existe,
           // com igualdade exata tendo prioridade sobre correspondência parcial.
+          // Cabeçalhos já usados não são reatribuídos (evita duas colunas de
+          // sistema apontarem para o mesmo "Realizado Faseamento").
           const autoMap: Record<string, string> = {};
+          const usedHeaders = new Set<string>();
+          const takeMatch = (pred: (h: string) => boolean): string | undefined => {
+            const hit = headers.find((h) => !usedHeaders.has(h) && pred(h));
+            if (hit) usedHeaders.add(hit);
+            return hit;
+          };
           sheetCfg.columns.forEach((req) => {
             const candidates = [sheetCfg.headerHints?.[req], req].filter(Boolean) as string[];
             let matched: string | undefined;
             for (const cand of candidates) {
-              matched = headers.find((h) => h.toLowerCase() === cand.toLowerCase());
+              matched = takeMatch((h) => h.toLowerCase() === cand.toLowerCase());
               if (matched) break;
             }
             if (!matched) {
               for (const cand of candidates) {
-                matched = headers.find((h) => h.toLowerCase().includes(cand.toLowerCase()));
+                matched = takeMatch((h) => h.toLowerCase().includes(cand.toLowerCase()));
                 if (matched) break;
               }
             }
-            autoMap[req] = matched || headers[0] || '';
+            autoMap[req] = matched || '';
           });
           newMappings[sheetCfg.key] = autoMap;
         });

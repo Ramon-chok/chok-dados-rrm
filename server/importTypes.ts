@@ -304,11 +304,11 @@ export const IMPORT_TYPE_CONFIGS: Record<string, ImportTypeConfig> = {
     ],
   },
 
-  // Dados App — reaproveita as mesmas tabelas/colunas dos indicadores diários
-  // acima: é o mesmo dado, só que enviado num único arquivo com 3 abas.
+  // Dados App — reaproveita as mesmas tabelas dos indicadores diários +
+  // campos extras da planilha (faseamento, desconcentração, desafio, etc.).
   dados_app__mes: {
     id: 'dados_app__mes',
-    label: 'Dados App — Mês com Fórmulas',
+    label: 'Dados App — Mês',
     table: 'indicadores_vendedor',
     keyColumns: ['data_referencia', 'cod_vendedor'],
     snapshot: true,
@@ -323,30 +323,24 @@ export const IMPORT_TYPE_CONFIGS: Record<string, ImportTypeConfig> = {
       { name: 'meta_sortimento', kind: 'numeric' },
       { name: 'realizado_sortimento', kind: 'numeric' },
       { name: 'pct_margem', kind: 'numeric' },
-
       { name: 'data_inicial_faseamento', kind: 'date' },
       { name: 'realizado_faseamento', kind: 'numeric' },
       { name: 'meta_faseamento', kind: 'numeric' },
       { name: 'realizado_faseamento_2', kind: 'numeric' },
-
       { name: 'data_inicial_desconcentracao', kind: 'date' },
       { name: 'data_final_desconcentracao', kind: 'date' },
       { name: 'meta_desconcentracao', kind: 'numeric' },
       { name: 'realizado_desconcentracao', kind: 'numeric' },
-
       { name: 'visitas_diaria', kind: 'integer' },
       { name: 'positivacao_diaria', kind: 'integer' },
       { name: 'fora_de_rota_diaria', kind: 'integer' },
-
       { name: 'visitas_acumulada', kind: 'integer' },
       { name: 'positivacao_acumulada', kind: 'integer' },
       { name: 'fora_de_rota_acumulada', kind: 'integer' },
-
       { name: 'data_inicial_faseamento_ii', kind: 'date' },
       { name: 'data_final_faseamento_ii', kind: 'date' },
       { name: 'meta_faseamento_ii', kind: 'numeric' },
       { name: 'realizado_faseamento_ii', kind: 'numeric' },
-
       { name: 'data_inicial_desafio', kind: 'date' },
       { name: 'data_final_desafio', kind: 'date' },
       { name: 'meta_desafio', kind: 'numeric' },

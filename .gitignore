@@ -12,4 +12,3 @@ pytest.
 .env
 .env.*
 !.env.example
-server/importTypes.ts

@@ -95,10 +95,12 @@ def create_import(
             )
 
             if errors:
-                conn.executemany(
-                    "INSERT INTO importacoes_erros (importacao_id, linha, motivo) VALUES (%s, %s, %s)",
-                    [(importacao_id, e.linha, e.motivo) for e in errors],
-                )
+                # psycopg.Connection may not expose executemany directly; use a cursor
+                with conn.cursor() as cur:
+                    cur.executemany(
+                        "INSERT INTO importacoes_erros (importacao_id, linha, motivo) VALUES (%s, %s, %s)",
+                        [(importacao_id, e.linha, e.motivo) for e in errors],
+                    )
 
             # commit final import metadata (upsert_rows commits per chunk)
             conn.commit()
@@ -119,6 +121,21 @@ def create_import(
     except HTTPException:
         raise
     except Exception as err:
+        # Log full traceback to a file for debugging (safe, local only)
+        try:
+            import traceback
+            from datetime import datetime as _dt
+            from pathlib import Path as _Path
+
+            tb = traceback.format_exc()
+            log_path = _Path(__file__).resolve().parents[2] / "import_error_debug.log"
+            with open(log_path, "a", encoding="utf-8") as fh:
+                fh.write(f"--- {_dt.now().isoformat()} | tipo={body.tipo} | arquivo={body.arquivo} ---\n")
+                fh.write(tb)
+                fh.write("\n\n")
+        except Exception:
+            pass
+
         message = str(err)
         try:
             with get_connection() as conn:
