@@ -73,6 +73,50 @@ export interface DashboardResponse {
   topClientes: Array<{ nome: string; equipe: string | null; valor: number; eRede: boolean; codigo: string | null }>;
 }
 
+export interface FabricanteVendedorRow {
+  codVendedor: string;
+  nome: string;
+  meta: number;
+  realizado: number;
+  pctR: number;
+  metaCobertura: number;
+  realizadoCobertura: number;
+  pctCob: number;
+}
+
+export interface DashboardFilterOptions {
+  equipes: string[];
+  vendedores: Array<{ codVendedor: string; nome: string; equipe: string | null }>;
+}
+
+export interface FabricanteDetalheResponse {
+  fabricante: string;
+  equipes: Array<{
+    equipe: string;
+    meta: number;
+    realizado: number;
+    pctR: number;
+    metaCobertura: number;
+    realizadoCobertura: number;
+    pctCob: number;
+    vendedores: FabricanteVendedorRow[];
+  }>;
+}
+
+export interface ClienteFabricantesResponse {
+  vendedoresConsiderados: string[];
+  fabricantes: Array<{
+    fabricante: string;
+    meta: number;
+    realizado: number;
+    pctR: number;
+    metaCobertura: number;
+    realizadoCobertura: number;
+    pctCob: number;
+    vendedores: FabricanteVendedorRow[];
+  }>;
+}
+
 export interface AnalyticsTreeNode {
   nome: string;
   meta: number;
@@ -445,8 +489,39 @@ export function fetchDashboard(params?: {
   mes?: number;
   start?: string;
   end?: string;
+  equipe?: string;
+  vendedor?: string;
 }): Promise<DashboardResponse> {
   return request<DashboardResponse>(`/dashboard${qs(params)}`);
+}
+
+export function fetchDashboardFilterOptions(): Promise<DashboardFilterOptions> {
+  return request<DashboardFilterOptions>('/analytics/filter-options');
+}
+
+export function fetchFabricanteDetalhe(params: {
+  fabricante: string;
+  ano?: number;
+  mes?: number;
+  start?: string;
+  end?: string;
+  equipe?: string;
+  vendedor?: string;
+}): Promise<FabricanteDetalheResponse> {
+  return request<FabricanteDetalheResponse>(`/analytics/fabricante-detalhe${qs(params)}`);
+}
+
+export function fetchClienteFabricantes(params: {
+  codigo?: string | null;
+  nome?: string;
+  ano?: number;
+  mes?: number;
+  start?: string;
+  end?: string;
+  equipe?: string;
+  vendedor?: string;
+}): Promise<ClienteFabricantesResponse> {
+  return request<ClienteFabricantesResponse>(`/analytics/cliente-fabricantes${qs(params)}`);
 }
 
 export function fetchAnalyticsTree(params?: {

@@ -1,10 +1,20 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTheme } from '../context/ThemeContext';
+import { useAuth } from '../context/AuthContext';
 import { useGlobalFilter } from '../context/GlobalFilterContext';
 import { PeriodSelector } from '../components/common/PeriodSelector';
 import { ExportExcelButton } from '../components/common/ExportExcelButton';
 import { EmptyBlock, ErrorBlock, LoadingBlock } from '../components/common/DataState';
-import { fetchDashboard, DashboardResponse } from '../lib/api';
+import {
+  fetchDashboard,
+  fetchDashboardFilterOptions,
+  fetchClienteFabricantes,
+  fetchFabricanteDetalhe,
+  DashboardResponse,
+  DashboardFilterOptions,
+  ClienteFabricantesResponse,
+  FabricanteDetalheResponse,
+} from '../lib/api';
 import {
   ComposedChart,
   Bar,
@@ -16,18 +26,61 @@ import {
   ResponsiveContainer,
   CartesianGrid,
 } from 'recharts';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 
 const fmt = (v: number) => `R$ ${v.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}`;
 const fmtInt = (v: number) => v.toLocaleString('pt-BR', { maximumFractionDigits: 0 });
 const fmtPct = (v: number) => `${v.toFixed(1)}%`;
-const MES = ['', 'Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
 
 export const DashboardPage: React.FC = () => {
   const { t } = useTheme();
+  const { currentUser } = useAuth();
   const { selectedPeriod, startDate, endDate, ano, mes, periodType } = useGlobalFilter();
   const [data, setData] = useState<DashboardResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const role = currentUser?.role;
+  // Admin/Gerência podem escolher equipe e vendedor livremente; Supervisor só
+  // escolhe vendedor (a equipe já é a dele, travada no backend); Vendedor não
+  // tem filtro (só vê os próprios dados).
+  const canFilterEquipe = role === 'ADMIN' || role === 'GERENTE';
+  const canFilterVendedor = role === 'ADMIN' || role === 'GERENTE' || role === 'SUPERVISOR';
+
+  const [filterOptions, setFilterOptions] = useState<DashboardFilterOptions | null>(null);
+  const [selectedEquipe, setSelectedEquipe] = useState<string>('');
+  const [selectedVendedor, setSelectedVendedor] = useState<string>('');
+
+  useEffect(() => {
+    if (!canFilterEquipe && !canFilterVendedor) return;
+    let mounted = true;
+    (async () => {
+      try {
+        const opts = await fetchDashboardFilterOptions();
+        if (mounted) setFilterOptions(opts);
+      } catch {
+        // Filtros são um extra da tela — se falhar, o dashboard continua
+        // funcionando sem eles (mostrando o escopo padrão do usuário).
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Vendedores disponíveis no dropdown: se uma equipe estiver selecionada
+  // (Admin/Gerência), restringe a lista a essa equipe.
+  const vendedorOptions = useMemo(() => {
+    const all = filterOptions?.vendedores || [];
+    return selectedEquipe ? all.filter((v) => v.equipe === selectedEquipe) : all;
+  }, [filterOptions, selectedEquipe]);
+
+  useEffect(() => {
+    if (selectedVendedor && !vendedorOptions.some((v) => v.codVendedor === selectedVendedor)) {
+      setSelectedVendedor('');
+    }
+  }, [vendedorOptions, selectedVendedor]);
 
   useEffect(() => {
     let mounted = true;
@@ -40,6 +93,8 @@ export const DashboardPage: React.FC = () => {
           mes: periodType === 'mensal' ? mes : undefined,
           start: startDate || undefined,
           end: endDate || undefined,
+          equipe: canFilterEquipe && selectedEquipe ? selectedEquipe : undefined,
+          vendedor: canFilterVendedor && selectedVendedor ? selectedVendedor : undefined,
         });
         if (mounted) setData(res);
       } catch (e) {
@@ -51,15 +106,18 @@ export const DashboardPage: React.FC = () => {
     return () => {
       mounted = false;
     };
-  }, [ano, mes, startDate, endDate, periodType]);
+  }, [ano, mes, startDate, endDate, periodType, canFilterEquipe, canFilterVendedor, selectedEquipe, selectedVendedor]);
 
+  // Gráfico mostra Meta x Realizado x Margem por FABRICANTE (não mais por
+  // mês) — usa a mesma lista já filtrada por equipe/vendedor que alimenta a
+  // tabela de fabricantes abaixo, então reflete o mesmo escopo do usuário.
   const chartData = useMemo(
     () =>
-      (data?.serieMensal || []).map((d) => ({
-        mes: `${MES[d.mes] || d.mes}/${String(d.ano).slice(2)}`,
-        meta: d.meta / 1_000_000,
-        realizado: d.realizado / 1_000_000,
-        margem: d.margem,
+      (data?.fabricantes || []).map((f) => ({
+        fabricante: f.fabricante,
+        meta: f.meta / 1_000_000,
+        realizado: f.realizado / 1_000_000,
+        margem: f.pctMargem,
       })),
     [data]
   );
@@ -215,6 +273,87 @@ export const DashboardPage: React.FC = () => {
   };
 
   const posColor = (v: number) => (v >= 0 ? '#3DD68C' : t.primaryHover);
+  const pctColor = (v: number) => (v >= 100 ? '#3DD68C' : v >= 80 ? '#F59E0B' : t.primaryHover);
+
+  const filterSelectStyle: React.CSSProperties = {
+    fontSize: '13px',
+    fontWeight: 600,
+    color: t.text,
+    background: t.surfaceElevated,
+    border: `1px solid ${t.border}`,
+    borderRadius: '6px',
+    padding: '5px 26px 5px 10px',
+    cursor: 'pointer',
+    outline: 'none',
+    appearance: 'none',
+    WebkitAppearance: 'none',
+  };
+
+  // ─── Fabricantes: expandir para ver a quebra por equipe/vendedor ───
+  // Vendedor não tem o que abrir — já vê só o próprio número.
+  const canDrilldownFabricante = role !== 'VENDEDOR';
+  const [expandedFabricante, setExpandedFabricante] = useState<string | null>(null);
+  const [fabricanteDetalhe, setFabricanteDetalhe] = useState<Record<string, FabricanteDetalheResponse | 'loading' | 'error'>>({});
+
+  // Filtros/período mudaram → os números do dashboard mudaram, então qualquer
+  // detalhe de fabricante já buscado fica desatualizado.
+  useEffect(() => {
+    setExpandedFabricante(null);
+    setFabricanteDetalhe({});
+  }, [data]);
+
+  const handleToggleFabricante = async (fabricante: string) => {
+    if (expandedFabricante === fabricante) {
+      setExpandedFabricante(null);
+      return;
+    }
+    setExpandedFabricante(fabricante);
+    if (fabricanteDetalhe[fabricante]) return;
+    setFabricanteDetalhe((prev) => ({ ...prev, [fabricante]: 'loading' }));
+    try {
+      const res = await fetchFabricanteDetalhe({
+        fabricante,
+        ano: periodType === 'personalizado' ? undefined : ano,
+        mes: periodType === 'mensal' ? mes : undefined,
+        start: startDate || undefined,
+        end: endDate || undefined,
+        equipe: canFilterEquipe && selectedEquipe ? selectedEquipe : undefined,
+        vendedor: canFilterVendedor && selectedVendedor ? selectedVendedor : undefined,
+      });
+      setFabricanteDetalhe((prev) => ({ ...prev, [fabricante]: res }));
+    } catch {
+      setFabricanteDetalhe((prev) => ({ ...prev, [fabricante]: 'error' }));
+    }
+  };
+
+  // ─── Top Clientes: expandir para ver a quebra por fabricante ───
+  const [expandedCliente, setExpandedCliente] = useState<string | null>(null);
+  const [clienteFabricantes, setClienteFabricantes] = useState<Record<string, ClienteFabricantesResponse | 'loading' | 'error'>>({});
+
+  const handleToggleCliente = async (clienteKey: string, codigo: string | null, nome: string) => {
+    if (expandedCliente === clienteKey) {
+      setExpandedCliente(null);
+      return;
+    }
+    setExpandedCliente(clienteKey);
+    if (clienteFabricantes[clienteKey]) return;
+    setClienteFabricantes((prev) => ({ ...prev, [clienteKey]: 'loading' }));
+    try {
+      const res = await fetchClienteFabricantes({
+        codigo: codigo || undefined,
+        nome: codigo ? undefined : nome,
+        ano: periodType === 'personalizado' ? undefined : ano,
+        mes: periodType === 'mensal' ? mes : undefined,
+        start: startDate || undefined,
+        end: endDate || undefined,
+        equipe: canFilterEquipe && selectedEquipe ? selectedEquipe : undefined,
+        vendedor: canFilterVendedor && selectedVendedor ? selectedVendedor : undefined,
+      });
+      setClienteFabricantes((prev) => ({ ...prev, [clienteKey]: res }));
+    } catch {
+      setClienteFabricantes((prev) => ({ ...prev, [clienteKey]: 'error' }));
+    }
+  };
 
   // ─── Estilos das tabelas ────────────────────────────────────
   const thStyle: React.CSSProperties = {
@@ -260,8 +399,50 @@ export const DashboardPage: React.FC = () => {
             Dados consolidados diretamente do banco de dados.
           </p>
         </div>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
           <PeriodSelector />
+          {canFilterEquipe && (
+            <div style={{ position: 'relative' }}>
+              <select
+                value={selectedEquipe}
+                onChange={(e) => setSelectedEquipe(e.target.value)}
+                style={filterSelectStyle}
+              >
+                <option value="">Todas as equipes</option>
+                {(filterOptions?.equipes || []).map((eq) => (
+                  <option key={eq} value={eq}>
+                    {eq}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown
+                size={13}
+                color={t.textMuted}
+                style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}
+              />
+            </div>
+          )}
+          {canFilterVendedor && (
+            <div style={{ position: 'relative' }}>
+              <select
+                value={selectedVendedor}
+                onChange={(e) => setSelectedVendedor(e.target.value)}
+                style={filterSelectStyle}
+              >
+                <option value="">Todos os vendedores</option>
+                {vendedorOptions.map((v) => (
+                  <option key={v.codVendedor} value={v.codVendedor}>
+                    {v.nome}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown
+                size={13}
+                color={t.textMuted}
+                style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}
+              />
+            </div>
+          )}
           <ExportExcelButton getSheets={handleExport} fileName={`dashboard-${selectedPeriod}`} />
         </div>
       </div>
@@ -358,10 +539,10 @@ export const DashboardPage: React.FC = () => {
           </div>
 
           {/* ═══════════════════════════════════════════
-              SEÇÃO 2: GRÁFICO DE EVOLUÇÃO
+              SEÇÃO 2: GRÁFICO POR FABRICANTE
           ═══════════════════════════════════════════ */}
           <div style={{ marginBottom: 24 }}>
-            <div style={sectionTitleStyle}>Evolução Mensal</div>
+            <div style={sectionTitleStyle}>Meta x Realizado por Fabricante</div>
             <div
               style={{
                 background: t.surface,
@@ -384,7 +565,7 @@ export const DashboardPage: React.FC = () => {
                     Meta x Realizado
                   </div>
                   <div style={{ fontSize: 11.5, color: t.textMuted, marginTop: 2 }}>
-                    Valores em milhões (R$) · Margem em percentual
+                    Valores em milhões (R$) por fabricante · Margem em percentual
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -396,19 +577,23 @@ export const DashboardPage: React.FC = () => {
 
               {chartData.length === 0 ? (
                 <EmptyBlock
-                  title="Sem série mensal"
-                  description="Importe indicadores de vendedor para ver o gráfico."
+                  title="Sem fabricantes"
+                  description="Importe indicadores por fabricante para ver o gráfico."
                 />
               ) : (
                 <ResponsiveContainer width="100%" height="82%">
-                  <ComposedChart data={chartData} margin={{ top: 8, right: 8, left: -8, bottom: 0 }}>
+                  <ComposedChart data={chartData} margin={{ top: 8, right: 8, left: -8, bottom: 24 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke={t.border} vertical={false} />
                     <XAxis
-                      dataKey="mes"
+                      dataKey="fabricante"
                       stroke={t.textMuted}
                       fontSize={11}
                       tickLine={false}
                       axisLine={{ stroke: t.border }}
+                      angle={-20}
+                      textAnchor="end"
+                      interval={0}
+                      height={50}
                     />
                     <YAxis
                       yAxisId="left"
@@ -504,47 +689,109 @@ export const DashboardPage: React.FC = () => {
                         <th style={thStyle}>Cliente</th>
                         <th style={thStyle}>Equipe</th>
                         <th style={{ ...thStyle, textAlign: 'right' }}>Valor</th>
+                        <th style={{ ...thStyle, width: 40 }} />
                       </tr>
                     </thead>
                     <tbody>
-                      {data.topClientes.map((c, i) => (
-                        <tr
-                          key={`${c.codigo || c.nome}-${i}`}
-                          style={{ transition: 'background 0.15s' }}
-                          onMouseEnter={(e) => (e.currentTarget.style.background = t.surfaceElevated)}
-                          onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                        >
-                          <td style={tdStyle}>
-                            <span
-                              style={{
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                width: 24,
-                                height: 24,
-                                borderRadius: 6,
-                                background: i < 3 ? `${t.primary}15` : t.surfaceElevated,
-                                color: i < 3 ? t.primary : t.textMuted,
-                                fontSize: 11,
-                                fontWeight: 700,
-                              }}
+                      {data.topClientes.map((c, i) => {
+                        const clienteKey = `${c.codigo || c.nome}-${i}`;
+                        const isOpen = expandedCliente === clienteKey;
+                        const detail = clienteFabricantes[clienteKey];
+                        return (
+                          <React.Fragment key={clienteKey}>
+                            <tr
+                              style={{ transition: 'background 0.15s', cursor: 'pointer' }}
+                              onClick={() => handleToggleCliente(clienteKey, c.codigo, c.nome)}
+                              onMouseEnter={(e) => (e.currentTarget.style.background = t.surfaceElevated)}
+                              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                             >
-                              {i + 1}
-                            </span>
-                          </td>
-                          <td style={{ ...tdStyle, color: t.textMuted, fontFamily: 'monospace' }}>
-                            {c.eRede ? '—' : c.codigo || '—'}
-                          </td>
-                          <td style={{ ...tdStyle, fontWeight: 600 }}>{c.nome}</td>
-                          <td style={{ ...tdStyle, color: t.textSecondary }}>{c.equipe || '—'}</td>
-                          <td
-                            className="num"
-                            style={{ ...tdStyle, textAlign: 'right', fontWeight: 700, color: t.text }}
-                          >
-                            {fmt(c.valor)}
-                          </td>
-                        </tr>
-                      ))}
+                              <td style={tdStyle}>
+                                <span
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    width: 24,
+                                    height: 24,
+                                    borderRadius: 6,
+                                    background: i < 3 ? `${t.primary}15` : t.surfaceElevated,
+                                    color: i < 3 ? t.primary : t.textMuted,
+                                    fontSize: 11,
+                                    fontWeight: 700,
+                                  }}
+                                >
+                                  {i + 1}
+                                </span>
+                              </td>
+                              <td style={{ ...tdStyle, color: t.textMuted, fontFamily: 'monospace' }}>
+                                {c.eRede ? '—' : c.codigo || '—'}
+                              </td>
+                              <td style={{ ...tdStyle, fontWeight: 600 }}>{c.nome}</td>
+                              <td style={{ ...tdStyle, color: t.textSecondary }}>{c.equipe || '—'}</td>
+                              <td
+                                className="num"
+                                style={{ ...tdStyle, textAlign: 'right', fontWeight: 700, color: t.text }}
+                              >
+                                {fmt(c.valor)}
+                              </td>
+                              <td style={{ ...tdStyle, textAlign: 'center', color: t.textMuted }}>
+                                {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                              </td>
+                            </tr>
+                            {isOpen && (
+                              <tr>
+                                <td colSpan={6} style={{ padding: 0, background: t.surfaceElevated, borderBottom: `1px solid ${t.border}` }}>
+                                  <div style={{ padding: '10px 16px 14px 58px' }}>
+                                    {detail === 'loading' && (
+                                      <div style={{ fontSize: 12, color: t.textMuted }}>Carregando fabricantes…</div>
+                                    )}
+                                    {detail === 'error' && (
+                                      <div style={{ fontSize: 12, color: t.primaryHover }}>
+                                        Não foi possível carregar a quebra por fabricante.
+                                      </div>
+                                    )}
+                                    {detail && detail !== 'loading' && detail !== 'error' && (
+                                      <>
+                                        <div style={{ fontSize: 10.5, color: t.textMuted, marginBottom: 8, fontStyle: 'italic' }}>
+                                          Desempenho por fabricante do(s) vendedor(es) responsável(is) por este
+                                          cliente — não é a divisão exata da compra deste cliente por fabricante
+                                          (a base de vendas não registra o fabricante do produto).
+                                        </div>
+                                        {detail.fabricantes.length === 0 ? (
+                                          <div style={{ fontSize: 12, color: t.textMuted }}>Sem dados de fabricante para este cliente.</div>
+                                        ) : (
+                                          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                            <thead>
+                                              <tr>
+                                                <th style={{ ...thStyle, background: 'transparent', position: 'static' }}>Fabricante</th>
+                                                <th style={{ ...thStyle, background: 'transparent', position: 'static', textAlign: 'right' }}>Meta</th>
+                                                <th style={{ ...thStyle, background: 'transparent', position: 'static', textAlign: 'right' }}>Realizado</th>
+                                                <th style={{ ...thStyle, background: 'transparent', position: 'static', textAlign: 'right' }}>% Ating.</th>
+                                                <th style={{ ...thStyle, background: 'transparent', position: 'static', textAlign: 'right' }}>% Cob.</th>
+                                              </tr>
+                                            </thead>
+                                            <tbody>
+                                              {detail.fabricantes.map((f) => (
+                                                <tr key={f.fabricante}>
+                                                  <td style={{ ...tdStyle, fontWeight: 600 }}>{f.fabricante}</td>
+                                                  <td className="num" style={{ ...tdStyle, textAlign: 'right' }}>{fmt(f.meta)}</td>
+                                                  <td className="num" style={{ ...tdStyle, textAlign: 'right', fontWeight: 600 }}>{fmt(f.realizado)}</td>
+                                                  <td className="num" style={{ ...tdStyle, textAlign: 'right' }}>{fmtPct(f.pctR)}</td>
+                                                  <td className="num" style={{ ...tdStyle, textAlign: 'right' }}>{fmtPct(f.pctCob)}</td>
+                                                </tr>
+                                              ))}
+                                            </tbody>
+                                          </table>
+                                        )}
+                                      </>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                          </React.Fragment>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -585,6 +832,7 @@ export const DashboardPage: React.FC = () => {
                   >
                     <thead>
                       <tr>
+                        <th style={{ ...thStyle, width: 28 }} />
                         <th style={thStyle}>Fabricante</th>
                         <th style={{ ...thStyle, textAlign: 'right' }}>Meta</th>
                         <th style={{ ...thStyle, textAlign: 'right' }}>Realizado</th>
@@ -596,64 +844,76 @@ export const DashboardPage: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {data.fabricantes.map((f) => (
-                        <tr
-                          key={f.fabricante}
-                          style={{ transition: 'background 0.15s' }}
-                          onMouseEnter={(e) => (e.currentTarget.style.background = t.surfaceElevated)}
-                          onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                        >
-                          <td style={{ ...tdStyle, fontWeight: 600 }}>{f.fabricante}</td>
-                          <td className="num" style={{ ...tdStyle, textAlign: 'right' }}>
-                            {fmt(f.meta)}
-                          </td>
-                          <td
-                            className="num"
-                            style={{ ...tdStyle, textAlign: 'right', fontWeight: 600 }}
-                          >
-                            {fmt(f.realizado)}
-                          </td>
-                          <td
-                            className="num"
-                            style={{
-                              ...tdStyle,
-                              textAlign: 'right',
-                              fontWeight: 700,
-                              color: f.pctR >= 100 ? '#3DD68C' : f.pctR >= 80 ? '#F59E0B' : t.primaryHover,
-                            }}
-                          >
-                            {fmtPct(f.pctR)}
-                          </td>
-                          <td className="num" style={{ ...tdStyle, textAlign: 'right', color: t.textSecondary }}>
-                            {fmtInt(f.metaCobertura)}
-                          </td>
-                          <td className="num" style={{ ...tdStyle, textAlign: 'right' }}>
-                            {fmtInt(f.realizadoCobertura)}
-                          </td>
-                          <td
-                            className="num"
-                            style={{
-                              ...tdStyle,
-                              textAlign: 'right',
-                              fontWeight: 700,
-                              color: f.pctCob >= 100 ? '#3DD68C' : f.pctCob >= 80 ? '#F59E0B' : t.primaryHover,
-                            }}
-                          >
-                            {fmtPct(f.pctCob)}
-                          </td>
-                          <td
-                            className="num"
-                            style={{
-                              ...tdStyle,
-                              textAlign: 'right',
-                              fontWeight: 600,
-                              color: f.pctMargem >= 0 ? '#3DD68C' : t.primaryHover,
-                            }}
-                          >
-                            {fmtPct(f.pctMargem)}
-                          </td>
-                        </tr>
-                      ))}
+                      {data.fabricantes.map((f) => {
+                        const isOpen = expandedFabricante === f.fabricante;
+                        const detail = fabricanteDetalhe[f.fabricante];
+                        return (
+                          <React.Fragment key={f.fabricante}>
+                            <tr
+                              style={{ transition: 'background 0.15s', cursor: canDrilldownFabricante ? 'pointer' : 'default' }}
+                              onClick={() => canDrilldownFabricante && handleToggleFabricante(f.fabricante)}
+                              onMouseEnter={(e) => (e.currentTarget.style.background = t.surfaceElevated)}
+                              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                            >
+                              <td style={{ ...tdStyle, textAlign: 'center', color: t.textMuted }}>
+                                {canDrilldownFabricante && (isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />)}
+                              </td>
+                              <td style={{ ...tdStyle, fontWeight: 600 }}>{f.fabricante}</td>
+                              <td className="num" style={{ ...tdStyle, textAlign: 'right' }}>
+                                {fmt(f.meta)}
+                              </td>
+                              <td
+                                className="num"
+                                style={{ ...tdStyle, textAlign: 'right', fontWeight: 600 }}
+                              >
+                                {fmt(f.realizado)}
+                              </td>
+                              <td style={{ ...tdStyle, textAlign: 'right' }}>
+                                <PctWithBar value={f.pctR} color={pctColor(f.pctR)} theme={t} />
+                              </td>
+                              <td className="num" style={{ ...tdStyle, textAlign: 'right', color: t.textSecondary }}>
+                                {fmtInt(f.metaCobertura)}
+                              </td>
+                              <td className="num" style={{ ...tdStyle, textAlign: 'right' }}>
+                                {fmtInt(f.realizadoCobertura)}
+                              </td>
+                              <td style={{ ...tdStyle, textAlign: 'right' }}>
+                                <PctWithBar value={f.pctCob} color={pctColor(f.pctCob)} theme={t} />
+                              </td>
+                              <td
+                                className="num"
+                                style={{
+                                  ...tdStyle,
+                                  textAlign: 'right',
+                                  fontWeight: 600,
+                                  color: f.pctMargem >= 0 ? '#3DD68C' : t.primaryHover,
+                                }}
+                              >
+                                {fmtPct(f.pctMargem)}
+                              </td>
+                            </tr>
+                            {isOpen && (
+                              <tr>
+                                <td colSpan={9} style={{ padding: 0, background: t.surfaceElevated, borderBottom: `1px solid ${t.border}` }}>
+                                  <div style={{ padding: '10px 16px 14px 44px' }}>
+                                    {detail === 'loading' && (
+                                      <div style={{ fontSize: 12, color: t.textMuted }}>Carregando detalhamento…</div>
+                                    )}
+                                    {detail === 'error' && (
+                                      <div style={{ fontSize: 12, color: t.primaryHover }}>
+                                        Não foi possível carregar o detalhamento deste fabricante.
+                                      </div>
+                                    )}
+                                    {detail && detail !== 'loading' && detail !== 'error' && (
+                                      <FabricanteDrilldown detail={detail} theme={t} pctColor={pctColor} />
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                          </React.Fragment>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -684,3 +944,113 @@ const LegendItem: React.FC<{ color: string; label: string; theme: any; line?: bo
     <span style={{ fontSize: 11.5, color: t.textSecondary, fontWeight: 500 }}>{label}</span>
   </div>
 );
+
+// ═══════════════════════════════════════════
+// COMPONENTE AUXILIAR - Percentual + barra de progresso
+// ═══════════════════════════════════════════
+const PctWithBar: React.FC<{ value: number; color: string; theme: any }> = ({ value, color, theme: t }) => (
+  <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
+    <span className="num" style={{ fontSize: 12.5, fontWeight: 700, color }}>
+      {`${value.toFixed(1)}%`}
+    </span>
+    <div style={{ width: 64, height: 5, borderRadius: 3, background: t.border, overflow: 'hidden' }}>
+      <div
+        style={{
+          width: `${Math.max(0, Math.min(100, value))}%`,
+          height: '100%',
+          background: color,
+          borderRadius: 3,
+        }}
+      />
+    </div>
+  </div>
+);
+
+// ═══════════════════════════════════════════
+// COMPONENTE AUXILIAR - Detalhamento de fabricante por equipe/vendedor
+// Admin/Gerência sem filtro de equipe veem várias equipes (cada uma com seus
+// vendedores); Supervisor — ou Admin/Gerência já filtrando por equipe — cai
+// no caso de uma única equipe, e mostra só os vendedores dela.
+// ═══════════════════════════════════════════
+const FabricanteDrilldown: React.FC<{
+  detail: import('../lib/api').FabricanteDetalheResponse;
+  theme: any;
+  pctColor: (v: number) => string;
+}> = ({ detail, theme: t, pctColor }) => {
+  const thStyle: React.CSSProperties = {
+    padding: '8px 10px',
+    fontSize: 10.5,
+    fontWeight: 700,
+    color: t.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: '0.04em',
+    textAlign: 'left',
+  };
+  const tdStyle: React.CSSProperties = {
+    padding: '8px 10px',
+    fontSize: 12,
+    color: t.text,
+    borderBottom: `1px solid ${t.border}`,
+  };
+
+  if (detail.equipes.length === 0) {
+    return <div style={{ fontSize: 12, color: t.textMuted }}>Sem dados para este fabricante.</div>;
+  }
+
+  const renderVendedorRows = (vendedores: typeof detail.equipes[0]['vendedores']) =>
+    vendedores.map((v) => (
+      <tr key={v.codVendedor}>
+        <td style={{ ...tdStyle, paddingLeft: 24 }}>{v.nome}</td>
+        <td className="num" style={{ ...tdStyle, textAlign: 'right' }}>{fmt(v.meta)}</td>
+        <td className="num" style={{ ...tdStyle, textAlign: 'right', fontWeight: 600 }}>{fmt(v.realizado)}</td>
+        <td style={{ ...tdStyle, textAlign: 'right' }}>
+          <PctWithBar value={v.pctR} color={pctColor(v.pctR)} theme={t} />
+        </td>
+        <td className="num" style={{ ...tdStyle, textAlign: 'right', color: t.textSecondary }}>{fmtInt(v.metaCobertura)}</td>
+        <td className="num" style={{ ...tdStyle, textAlign: 'right' }}>{fmtInt(v.realizadoCobertura)}</td>
+        <td style={{ ...tdStyle, textAlign: 'right' }}>
+          <PctWithBar value={v.pctCob} color={pctColor(v.pctCob)} theme={t} />
+        </td>
+      </tr>
+    ));
+
+  const single = detail.equipes.length === 1;
+
+  return (
+    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+      <thead>
+        <tr>
+          <th style={thStyle}>{single ? 'Vendedor' : 'Equipe / Vendedor'}</th>
+          <th style={{ ...thStyle, textAlign: 'right' }}>Meta</th>
+          <th style={{ ...thStyle, textAlign: 'right' }}>Realizado</th>
+          <th style={{ ...thStyle, textAlign: 'right' }}>% Ating.</th>
+          <th style={{ ...thStyle, textAlign: 'right' }}>Meta Cob.</th>
+          <th style={{ ...thStyle, textAlign: 'right' }}>Real. Cob.</th>
+          <th style={{ ...thStyle, textAlign: 'right' }}>% Cob.</th>
+        </tr>
+      </thead>
+      <tbody>
+        {single
+          ? renderVendedorRows(detail.equipes[0].vendedores)
+          : detail.equipes.map((eq) => (
+              <React.Fragment key={eq.equipe}>
+                <tr>
+                  <td style={{ ...tdStyle, fontWeight: 700 }}>{eq.equipe}</td>
+                  <td className="num" style={{ ...tdStyle, textAlign: 'right', fontWeight: 700 }}>{fmt(eq.meta)}</td>
+                  <td className="num" style={{ ...tdStyle, textAlign: 'right', fontWeight: 700 }}>{fmt(eq.realizado)}</td>
+                  <td style={{ ...tdStyle, textAlign: 'right' }}>
+                    <PctWithBar value={eq.pctR} color={pctColor(eq.pctR)} theme={t} />
+                  </td>
+                  <td className="num" style={{ ...tdStyle, textAlign: 'right', fontWeight: 700, color: t.textSecondary }}>{fmtInt(eq.metaCobertura)}</td>
+                  <td className="num" style={{ ...tdStyle, textAlign: 'right', fontWeight: 700 }}>{fmtInt(eq.realizadoCobertura)}</td>
+                  <td style={{ ...tdStyle, textAlign: 'right' }}>
+                    <PctWithBar value={eq.pctCob} color={pctColor(eq.pctCob)} theme={t} />
+                  </td>
+                </tr>
+                {renderVendedorRows(eq.vendedores)}
+              </React.Fragment>
+            ))}
+      </tbody>
+    </table>
+  );
+};

@@ -463,8 +463,8 @@ export const ImportacaoPage: React.FC = () => {
     const reader = new FileReader();
     reader.onload = (evt) => {
       try {
-        const bstr = evt.target?.result;
-        const wb = XLSX.read(bstr, { type: 'binary' });
+        const buffer = evt.target?.result as ArrayBuffer;
+        const wb = XLSX.read(buffer, { type: 'array' });
 
         const newSheetsData: Record<string, SheetParsedData> = {};
         const newMappings: Record<string, Record<string, string>> = {};
@@ -493,7 +493,15 @@ export const ImportacaoPage: React.FC = () => {
           // cabeçalho de verdade (ex.: aba "top_clientes" do arquivo Top
           // Clientes) — headerRow indica em que linha (1-based) ele está.
           const headerRowIdx = (sheetCfg.headerRow ?? 1) - 1;
-          const rawHeaders = (data[headerRowIdx] || []).map((h: any) => String(h || '').trim());
+          // Array.from (em vez de .map) é essencial aqui: quando a linha de
+          // cabeçalho tem células totalmente vazias no meio, o SheetJS
+          // devolve um array esparso (buracos reais, não `undefined`). Como
+          // .map() pula buracos e os preserva no resultado, os "headers" mais
+          // abaixo ficariam com posições undefined — e o .find() usado no
+          // auto-match (que NÃO pula buracos) quebraria ao chamar
+          // .toLowerCase() nesse undefined. Array.from materializa os
+          // buracos como undefined "de verdade", que o map interno then trata.
+          const rawHeaders = Array.from(data[headerRowIdx] || [], (h: any) => String(h || '').trim());
 
           // A mesma planilha real pode repetir um nome de coluna (ex.: duas
           // colunas "% Cresc."). Sem desambiguar, a segunda sobrescreveria a
@@ -566,10 +574,17 @@ export const ImportacaoPage: React.FC = () => {
         setStep(3);
       } catch (err) {
         console.error('Erro ao ler arquivo:', err);
-        setFileError('Não foi possível ler o arquivo selecionado. Verifique se é um Excel (.xlsx/.xls/.xlsm) ou CSV válido.');
+        const detail = err instanceof Error ? err.message : String(err);
+        setFileError(
+          `Não foi possível ler o arquivo selecionado. Verifique se é um Excel (.xlsx/.xls/.xlsm) ou CSV válido. (${detail})`
+        );
       }
     };
-    reader.readAsBinaryString(file);
+    reader.onerror = () => {
+      console.error('Erro ao ler arquivo:', reader.error);
+      setFileError('Não foi possível ler o arquivo selecionado. Tente novamente ou use outro arquivo.');
+    };
+    reader.readAsArrayBuffer(file);
   };
 
   const handleProcessImport = async () => {
