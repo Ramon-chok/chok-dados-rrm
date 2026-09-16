@@ -48,7 +48,7 @@ const CONSENT_STORAGE_KEY = 'rr_mind_consent_v1';
 const CONSENT_VERSION = '1.0.0';
 
 export const LoginView: React.FC = () => {
-  const { login, isLoading } = useAuth();
+  const { login, complete2FALogin, isLoading } = useAuth();
   const { mode, toggleTheme, t } = useTheme();
 
   // ============================================
@@ -64,6 +64,11 @@ export const LoginView: React.FC = () => {
   const [submitting, setSubmitting] = useState(false);
   const [capsLockOn, setCapsLockOn] = useState(false);
   const [passwordStrength, setPasswordStrength] = useState(0);
+
+  // 2FA step (após senha correta)
+  const [pending2FA, setPending2FA] = useState<{ tempToken: string; method?: string } | null>(null);
+  const [twoFACode, setTwoFACode] = useState('');
+  const [twoFASubmitting, setTwoFASubmitting] = useState(false);
 
   // ============================================
   // ESTADO — FORGOT
@@ -270,11 +275,39 @@ export const LoginView: React.FC = () => {
     setSubmitting(true);
     try {
       const res = await login(email, password, rememberMe);
+      if ('requires2FA' in res && res.requires2FA) {
+        setPending2FA({ tempToken: res.tempToken, method: res.method });
+        setTwoFACode('');
+        setErrorMessage(null);
+        return;
+      }
       if (!res.success) {
-        setErrorMessage(res.error || 'Falha ao autenticar.');
+        setErrorMessage(('error' in res && res.error) || 'Falha ao autenticar.');
       }
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handle2FASubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!pending2FA?.tempToken) return;
+    if (!twoFACode.trim()) {
+      setErrorMessage('Informe o código 2FA.');
+      return;
+    }
+    setTwoFASubmitting(true);
+    setErrorMessage(null);
+    try {
+      const res = await complete2FALogin(pending2FA.tempToken, twoFACode.trim());
+      if (!res.success) {
+        setErrorMessage(('error' in res && res.error) || 'Código 2FA inválido.');
+      } else {
+        setPending2FA(null);
+        setTwoFACode('');
+      }
+    } finally {
+      setTwoFASubmitting(false);
     }
   };
 
@@ -689,6 +722,124 @@ export const LoginView: React.FC = () => {
               </div>
             )}
 
+            {pending2FA ? (
+              <form onSubmit={handle2FASubmit}>
+                <div style={{ marginBottom: '18px', textAlign: 'center' }}>
+                  <div
+                    style={{
+                      width: 48,
+                      height: 48,
+                      borderRadius: '12px',
+                      background: `linear-gradient(135deg, ${RR_RED}, ${RR_RED_DARK})`,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      margin: '0 auto 12px',
+                    }}
+                  >
+                    <LockIcon size={22} color="#fff" />
+                  </div>
+                  <h3 style={{ margin: '0 0 6px', fontSize: 18, fontWeight: 700, color: t.text }}>
+                    Verificação em duas etapas
+                  </h3>
+                  <p style={{ margin: 0, fontSize: 13, color: t.textSecondary, lineHeight: 1.5 }}>
+                    {pending2FA.method === 'email'
+                      ? 'Informe o código enviado ao seu e-mail.'
+                      : pending2FA.method === 'sms'
+                        ? 'Informe o código enviado por SMS (ou código de backup).'
+                        : 'Informe o código do app autenticador ou um código de backup.'}
+                  </p>
+                </div>
+
+                <div style={{ marginBottom: '18px' }}>
+                  <label
+                    htmlFor="twofa-code"
+                    style={{
+                      display: 'block',
+                      fontSize: '11px',
+                      fontWeight: 600,
+                      color: t.textMuted,
+                      marginBottom: '8px',
+                      textTransform: 'uppercase',
+                      letterSpacing: '1.5px',
+                    }}
+                  >
+                    Código 2FA
+                  </label>
+                  <input
+                    id="twofa-code"
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    value={twoFACode}
+                    onChange={(e) => setTwoFACode(e.target.value.replace(/[^\dA-Za-z-]/g, '').slice(0, 12))}
+                    placeholder="000000"
+                    autoFocus
+                    style={{
+                      width: '100%',
+                      boxSizing: 'border-box',
+                      padding: '14px 16px',
+                      borderRadius: '12px',
+                      border: `1.5px solid ${t.border}`,
+                      background: t.surfaceElevated,
+                      color: t.text,
+                      fontSize: '20px',
+                      fontWeight: 700,
+                      letterSpacing: '6px',
+                      textAlign: 'center',
+                      outline: 'none',
+                      fontFamily: 'monospace',
+                    }}
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={twoFASubmitting || isLoading || !twoFACode.trim()}
+                  style={{
+                    width: '100%',
+                    padding: '16px 24px',
+                    borderRadius: '12px',
+                    border: 'none',
+                    background: `linear-gradient(135deg, ${RR_RED}, ${RR_RED_DARK})`,
+                    color: '#FFFFFF',
+                    fontSize: '14.5px',
+                    fontWeight: 700,
+                    cursor: twoFASubmitting || isLoading || !twoFACode.trim() ? 'not-allowed' : 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '12px',
+                    opacity: twoFASubmitting || isLoading || !twoFACode.trim() ? 0.7 : 1,
+                  }}
+                >
+                  {twoFASubmitting || isLoading ? 'Validando código...' : 'Confirmar e entrar'}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPending2FA(null);
+                    setTwoFACode('');
+                    setErrorMessage(null);
+                  }}
+                  style={{
+                    marginTop: 14,
+                    width: '100%',
+                    padding: '10px',
+                    borderRadius: 10,
+                    border: `1px solid ${t.border}`,
+                    background: 'transparent',
+                    color: t.textSecondary,
+                    fontSize: 13,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Voltar ao login
+                </button>
+              </form>
+            ) : (
             <form onSubmit={handleSubmit}>
               {/* Campo E-mail */}
               <div style={{ marginBottom: '22px' }}>
@@ -991,6 +1142,7 @@ export const LoginView: React.FC = () => {
                 )}
               </button>
             </form>
+            )}
 
             {/* Links de Políticas Legais */}
             <div

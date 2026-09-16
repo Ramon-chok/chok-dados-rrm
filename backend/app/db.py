@@ -26,23 +26,22 @@ def get_pool() -> ConnectionPool:
             raise RuntimeError(
                 "DATABASE_URL não configurada. Defina-a em um .env antes de usar a API."
             )
+        # build base pool kwargs and always disable server-side prepared statements
+        base_kwargs: dict[str, object] = {
+            "row_factory": dict_row,
+            "autocommit": False,
+            "prepare_threshold": None,
+        }
+        if _needs_ssl(settings.database_url):
+            base_kwargs["sslmode"] = "require"
+
         kwargs: dict[str, object] = {
             "conninfo": settings.database_url,
             "min_size": 1,
             "max_size": 10,
-            "kwargs": {
-                "row_factory": dict_row, 
-                "autocommit": False,
-                "prepare_threshold": None,
-                },
+            "kwargs": base_kwargs,
             "open": True,
         }
-        if _needs_ssl(settings.database_url):
-            kwargs["kwargs"] = {  # type: ignore[assignment]
-                "row_factory": dict_row,
-                "autocommit": False,
-                "sslmode": "require",
-            }
         _pool = ConnectionPool(**kwargs)
     return _pool
 

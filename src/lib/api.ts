@@ -190,6 +190,51 @@ export interface LoginApiResponse {
   user: import('../types').User;
 }
 
+/** Resposta de /auth/login quando 2FA está ativo. */
+export interface LoginRequires2FAResponse {
+  requires2FA: true;
+  tempToken: string;
+  method?: 'authenticator' | 'sms' | 'email' | string;
+}
+
+export type LoginResult = LoginApiResponse | LoginRequires2FAResponse;
+
+export function isLoginRequires2FA(body: LoginResult): body is LoginRequires2FAResponse {
+  return !!(body as LoginRequires2FAResponse)?.requires2FA;
+}
+
+export type TwoFAMethodApi = 'authenticator' | 'sms' | 'email';
+
+export interface TwoFAStatusResponse {
+  enabled: boolean;
+  method?: TwoFAMethodApi | null;
+  phone?: string | null;
+  email?: string | null;
+  requireNextLogin?: boolean;
+  activatedAt?: string | null;
+}
+
+export interface TwoFAInitResponse {
+  ok: boolean;
+  method?: TwoFAMethodApi | string;
+  secret?: string;
+  provisioningUri?: string;
+  qrCodeDataUrl?: string;
+  delivery?: string;
+  delivered?: boolean;
+  expiresIn?: number;
+  devCode?: string;
+}
+
+export interface TwoFAVerifyResponse {
+  ok: boolean;
+  enabled?: boolean;
+  method?: string;
+  backupCodes?: string[];
+  requireNextLogin?: boolean;
+  activatedAt?: string;
+}
+
 export class ApiError extends Error {
   constructor(message: string, public status: number) {
     super(message);
@@ -260,19 +305,77 @@ export async function apiLogin(
   email: string,
   password: string,
   rememberMe = true
-): Promise<LoginApiResponse> {
-  const body = await request<LoginApiResponse>('/auth/login', {
+): Promise<LoginResult> {
+  const body = await request<LoginResult>('/auth/login', {
     method: 'POST',
     body: JSON.stringify({ email, password, rememberMe }),
     skipAuth: true,
   });
 
-  if (!body?.token) {
+  if (isLoginRequires2FA(body)) {
+    if (!body.tempToken) {
+      throw new ApiError('Login 2FA não retornou tempToken.', 500);
+    }
+    return body;
+  }
+
+  if (!(body as LoginApiResponse)?.token) {
     throw new ApiError('Login não retornou token.', 500);
   }
 
   // backend sets HttpOnly cookie; do not persist token in localStorage.
+  return body as LoginApiResponse;
+}
+
+export async function apiLogin2FA(tempToken: string, code: string): Promise<LoginApiResponse> {
+  const body = await request<LoginApiResponse>('/auth/2fa-login', {
+    method: 'POST',
+    body: JSON.stringify({ tempToken, code }),
+    skipAuth: true,
+  });
+  if (!body?.token) {
+    throw new ApiError('Verificação 2FA não retornou token.', 500);
+  }
   return body;
+}
+
+export function apiTwoFAStatus(): Promise<TwoFAStatusResponse> {
+  return request<TwoFAStatusResponse>('/2fa/status');
+}
+
+export function apiTwoFAInit(payload: {
+  method: TwoFAMethodApi;
+  phone?: string;
+  email?: string;
+}): Promise<TwoFAInitResponse> {
+  return request<TwoFAInitResponse>('/2fa/init', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export function apiTwoFAResend(): Promise<TwoFAInitResponse> {
+  return request<TwoFAInitResponse>('/2fa/resend', {
+    method: 'POST',
+    body: JSON.stringify({}),
+  });
+}
+
+export function apiTwoFAVerify(payload: {
+  code: string;
+  requireNextLogin?: boolean;
+}): Promise<TwoFAVerifyResponse> {
+  return request<TwoFAVerifyResponse>('/2fa/verify', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export function apiTwoFADisable(code?: string): Promise<{ ok: boolean; enabled: boolean }> {
+  return request<{ ok: boolean; enabled: boolean }>('/2fa/disable', {
+    method: 'POST',
+    body: JSON.stringify(code ? { code } : {}),
+  });
 }
 
 export function apiMe(): Promise<import('../types').User> {

@@ -3,6 +3,14 @@ import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 import { APP_CONFIG } from '../../config/appConfig';
 import {
+  apiTwoFADisable,
+  apiTwoFAInit,
+  apiTwoFAResend,
+  apiTwoFAStatus,
+  apiTwoFAVerify,
+  ApiError,
+} from '../../lib/api';
+import {
   Shield,
   Check,
   Save,
@@ -10,7 +18,6 @@ import {
   Smartphone,
   Mail,
   MessageSquare,
-  QrCode,
   KeyRound,
   ShieldCheck,
   ShieldOff,
@@ -46,14 +53,6 @@ interface TwoFAConfig {
   timestamp: string;
 }
 
-const STORAGE_KEY_2FA = 'rrmind_2fa_config';
-const FAKE_SECRET = 'JBSWY3DPEHPK3PXP';
-const FAKE_BACKUP_CODES = [
-  'A1B2-C3D4', 'E5F6-G7H8', 'J9K0-L1M2',
-  'N3P4-Q5R6', 'S7T8-U9V0', 'W1X2-Y3Z4',
-  'B5C6-D7E8', 'F9G0-H1J2',
-];
-
 const METHOD_INFO: Record<TwoFAMethod, { icon: any; label: string; desc: string; color: string }> = {
   authenticator: {
     icon: Smartphone,
@@ -87,14 +86,14 @@ export const SettingsPage: React.FC = () => {
   const [catalogUrl, setCatalogUrl] = useState(APP_CONFIG.catalogUrl);
   const [emailAlerts, setEmailAlerts] = useState(true);
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [statusLoading, setStatusLoading] = useState(true);
 
-  // ─── Estado 2FA ───────────────────────────────────────────────
-  const [twoFAConfig, setTwoFAConfig] = useState<TwoFAConfig>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY_2FA);
-      if (saved) return JSON.parse(saved);
-    } catch { /* ignore */ }
-    return { enabled: false, method: null, requireNextLogin: true, timestamp: '' };
+  // ─── Estado 2FA (fonte de verdade: backend/PostgreSQL) ─────────
+  const [twoFAConfig, setTwoFAConfig] = useState<TwoFAConfig>({
+    enabled: false,
+    method: null,
+    requireNextLogin: true,
+    timestamp: '',
   });
 
   const [show2FAModal, setShow2FAModal] = useState(false);
@@ -109,17 +108,41 @@ export const SettingsPage: React.FC = () => {
   const [copiedBackup, setCopiedBackup] = useState(false);
   const [verifyError, setVerifyError] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
+  const [isInitLoading, setIsInitLoading] = useState(false);
   const [codeTimer, setCodeTimer] = useState(0);
   const [codeSent, setCodeSent] = useState(false);
+  const [secret, setSecret] = useState('');
+  const [qrCodeDataUrl, setQrCodeDataUrl] = useState('');
+  const [backupCodes, setBackupCodes] = useState<string[]>([]);
+  const [devHintCode, setDevHintCode] = useState('');
+  const [actionError, setActionError] = useState('');
+  const [disabling, setDisabling] = useState(false);
 
   const codeInputRefs = useRef<(HTMLInputElement | null)[]>([]);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const verifyingRef = useRef(false);
 
-  // ─── Persist 2FA Config ───────────────────────────────────────
-  const persist2FA = useCallback((config: TwoFAConfig) => {
-    setTwoFAConfig(config);
-    localStorage.setItem(STORAGE_KEY_2FA, JSON.stringify(config));
+  const loadStatus = useCallback(async () => {
+    setStatusLoading(true);
+    try {
+      const st = await apiTwoFAStatus();
+      setTwoFAConfig({
+        enabled: !!st.enabled,
+        method: (st.method as TwoFAMethod) || null,
+        requireNextLogin: st.requireNextLogin !== false,
+        timestamp: st.activatedAt || '',
+      });
+      setRequire2FAOnNextLogin(st.requireNextLogin !== false);
+    } catch {
+      /* ignore */
+    } finally {
+      setStatusLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    void loadStatus();
+  }, [loadStatus]);
 
   // ─── Countdown Timer ─────────────────────────────────────────
   useEffect(() => {
@@ -153,11 +176,13 @@ export const SettingsPage: React.FC = () => {
     return () => { document.body.style.overflow = ''; };
   }, [show2FAModal, showDisableConfirm]);
 
-  // ─── Handlers ─────────────────────────────────────────────────
-  const handleSave = (e: React.FormEvent) => {
-    e.preventDefault();
-    setSavedSuccess(true);
-    setTimeout(() => setSavedSuccess(false), 3000);
+  // ─── Handlers 2FA ─────────────────────────────────────────────
+  const handleToggle2FA = (checked: boolean) => {
+    if (checked) {
+      handleOpen2FA();
+    } else {
+      setShowDisableConfirm(true);
+    }
   };
 
   const handleOpen2FA = () => {
@@ -166,8 +191,13 @@ export const SettingsPage: React.FC = () => {
     setTwoFAInput('');
     setCodeDigits(['', '', '', '', '', '']);
     setVerifyError('');
+    setActionError('');
     setCodeSent(false);
     setCodeTimer(0);
+    setSecret('');
+    setQrCodeDataUrl('');
+    setBackupCodes([]);
+    setDevHintCode('');
     setShow2FAModal(true);
   };
 
@@ -178,26 +208,64 @@ export const SettingsPage: React.FC = () => {
     setTwoFAInput('');
     setCodeDigits(['', '', '', '', '', '']);
     setVerifyError('');
+    setActionError('');
     setCodeSent(false);
+    setSecret('');
+    setQrCodeDataUrl('');
+    setBackupCodes([]);
+    setDevHintCode('');
+    void loadStatus();
   };
 
-  const handleSelectMethod = (method: TwoFAMethod) => {
+  const handleSelectMethod = async (method: TwoFAMethod) => {
     setTwoFAMethod(method);
     setTwoFAStage('configure');
-    setTwoFAInput('');
+    setTwoFAInput(method === 'email' ? currentUser?.email || '' : '');
     setCodeDigits(['', '', '', '', '', '']);
     setVerifyError('');
+    setActionError('');
     setCodeSent(false);
+    setSecret('');
+    setQrCodeDataUrl('');
+    setDevHintCode('');
+
+    if (method === 'authenticator') {
+      setIsInitLoading(true);
+      try {
+        const res = await apiTwoFAInit({ method: 'authenticator' });
+        setSecret(res.secret || '');
+        setQrCodeDataUrl(res.qrCodeDataUrl || '');
+      } catch (err) {
+        setActionError(err instanceof ApiError ? err.message : 'Falha ao iniciar 2FA.');
+        setTwoFAStage('choose');
+        setTwoFAMethod(null);
+      } finally {
+        setIsInitLoading(false);
+      }
+    }
   };
 
-  const handleSendCode = () => {
-    if (twoFAMethod === 'sms' && !twoFAInput.trim()) return;
-    if (twoFAMethod === 'email' && !twoFAInput.trim()) return;
-    setCodeSent(true);
-    setCodeTimer(60);
-    setTwoFAStage('verify');
-    // Focus first digit
-    setTimeout(() => codeInputRefs.current[0]?.focus(), 150);
+  const handleSendCode = async () => {
+    if (!twoFAMethod || twoFAMethod === 'authenticator') return;
+    if (!twoFAInput.trim()) return;
+    setIsInitLoading(true);
+    setActionError('');
+    try {
+      const res = await apiTwoFAInit({
+        method: twoFAMethod,
+        phone: twoFAMethod === 'sms' ? twoFAInput.trim() : undefined,
+        email: twoFAMethod === 'email' ? twoFAInput.trim() : undefined,
+      });
+      setCodeSent(true);
+      setCodeTimer(60);
+      setTwoFAStage('verify');
+      if (res.devCode) setDevHintCode(res.devCode);
+      setTimeout(() => codeInputRefs.current[0]?.focus(), 150);
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : 'Falha ao enviar código.');
+    } finally {
+      setIsInitLoading(false);
+    }
   };
 
   const handleCodeDigitChange = (index: number, value: string) => {
@@ -247,42 +315,55 @@ export const SettingsPage: React.FC = () => {
   };
 
   const handleVerifyCode = async (code: string) => {
+    if (verifyingRef.current) return;
+    verifyingRef.current = true;
     setIsVerifying(true);
     setVerifyError('');
-
-    // Simulated verification delay
-    await new Promise((r) => setTimeout(r, 1200));
-
-    if (code.length >= 4) {
-      setIsVerifying(false);
+    try {
+      const res = await apiTwoFAVerify({
+        code,
+        requireNextLogin: require2FAOnNextLogin,
+      });
+      setBackupCodes(res.backupCodes || []);
+      setTwoFAConfig({
+        enabled: true,
+        method: (res.method as TwoFAMethod) || twoFAMethod,
+        requireNextLogin: require2FAOnNextLogin,
+        timestamp: res.activatedAt || new Date().toISOString(),
+      });
       setTwoFAStage('backup');
-    } else {
-      setIsVerifying(false);
-      setVerifyError('Código inválido. Tente novamente.');
+    } catch (err) {
+      setVerifyError(err instanceof ApiError ? err.message : 'Código inválido. Tente novamente.');
       setCodeDigits(['', '', '', '', '', '']);
       setTimeout(() => codeInputRefs.current[0]?.focus(), 100);
+    } finally {
+      setIsVerifying(false);
+      verifyingRef.current = false;
     }
   };
 
   const handleFinish2FA = () => {
-    const config: TwoFAConfig = {
-      enabled: true,
-      method: twoFAMethod,
-      requireNextLogin: require2FAOnNextLogin,
-      timestamp: new Date().toISOString(),
-    };
-    persist2FA(config);
     setTwoFAStage('done');
   };
 
-  const handleDisable2FA = () => {
-    persist2FA({ enabled: false, method: null, requireNextLogin: true, timestamp: '' });
-    setShowDisableConfirm(false);
+  const handleDisable2FA = async () => {
+    setDisabling(true);
+    setActionError('');
+    try {
+      await apiTwoFADisable();
+      setTwoFAConfig({ enabled: false, method: null, requireNextLogin: true, timestamp: '' });
+      setShowDisableConfirm(false);
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : 'Falha ao desativar 2FA.');
+    } finally {
+      setDisabling(false);
+    }
   };
 
   const handleCopySecret = async () => {
+    if (!secret) return;
     try {
-      await navigator.clipboard.writeText(FAKE_SECRET);
+      await navigator.clipboard.writeText(secret);
       setCopiedSecret(true);
       setTimeout(() => setCopiedSecret(false), 2000);
     } catch { /* ignore */ }
@@ -290,22 +371,32 @@ export const SettingsPage: React.FC = () => {
 
   const handleCopyBackup = async () => {
     try {
-      await navigator.clipboard.writeText(FAKE_BACKUP_CODES.join('\n'));
+      await navigator.clipboard.writeText(backupCodes.join('\n'));
       setCopiedBackup(true);
       setTimeout(() => setCopiedBackup(false), 2000);
     } catch { /* ignore */ }
   };
 
-  const handleResendCode = () => {
+  const handleResendCode = async () => {
     if (codeTimer > 0) return;
-    setCodeTimer(60);
-    setCodeDigits(['', '', '', '', '', '']);
-    setVerifyError('');
-    setTimeout(() => codeInputRefs.current[0]?.focus(), 100);
+    setActionError('');
+    try {
+      const res = await apiTwoFAResend();
+      setCodeTimer(60);
+      setCodeDigits(['', '', '', '', '', '']);
+      setVerifyError('');
+      if (res.devCode) setDevHintCode(res.devCode);
+      setTimeout(() => codeInputRefs.current[0]?.focus(), 100);
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : 'Falha ao reenviar código.');
+    }
   };
 
-  // ─── Tokens ───────────────────────────────────────────────────
-  const RR_RED = '#D71920';
+  const handleSave = (e: React.FormEvent) => {
+    e.preventDefault();
+    setSavedSuccess(true);
+    setTimeout(() => setSavedSuccess(false), 3000);
+  };
 
   const methodInfo = twoFAMethod ? METHOD_INFO[twoFAMethod] : null;
 
@@ -460,7 +551,7 @@ export const SettingsPage: React.FC = () => {
         </SettingsCard>
 
         {/* ════════════════════════════════════════════
-            SEGURANÇA — 2FA COMPLETAMENTE REDESENHADO
+            SEGURANÇA — 2FA COM MECHANISMO SWITCH
         ════════════════════════════════════════════ */}
         <div
           style={{
@@ -470,208 +561,172 @@ export const SettingsPage: React.FC = () => {
             overflow: 'hidden',
           }}
         >
-          {/* Header com gradiente de acento */}
+          {/* Header com o Switch Principal de Ativação */}
           <div
             style={{
-              padding: '20px 24px',
+              padding: '24px',
               borderBottom: `1px solid ${t.border}`,
               display: 'flex',
-              alignItems: 'flex-start',
-              gap: '14px',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '20px',
+              background: mode === 'dark' ? 'rgba(255,255,255,0.01)' : 'rgba(0,0,0,0.005)',
             }}
           >
-            <div
-              style={{
-                width: 40,
-                height: 40,
-                borderRadius: '10px',
-                background: twoFAConfig.enabled
-                  ? 'linear-gradient(135deg, #10B981, #059669)'
-                  : `linear-gradient(135deg, ${t.primary}, #cc0011)`,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexShrink: 0,
-                boxShadow: twoFAConfig.enabled
-                  ? '0 4px 14px rgba(16, 185, 129, 0.3)'
-                  : `0 4px 14px ${t.primary}30`,
-                transition: 'all 0.3s',
-              }}
-            >
-              {twoFAConfig.enabled ? (
-                <ShieldCheck size={20} color="#fff" />
-              ) : (
-                <Shield size={20} color="#fff" />
-              )}
-            </div>
-            <div style={{ flex: 1 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
-                <span style={{ fontSize: '15px', fontWeight: 700, color: t.text }}>
-                  Autenticação de Dois Fatores (2FA)
-                </span>
-                <span
-                  style={{
-                    fontSize: '10px',
-                    fontWeight: 700,
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.06em',
-                    padding: '2px 8px',
-                    borderRadius: '20px',
-                    background: twoFAConfig.enabled
-                      ? 'rgba(16, 185, 129, 0.12)'
-                      : 'rgba(245, 158, 11, 0.12)',
-                    color: twoFAConfig.enabled ? '#10B981' : '#F59E0B',
-                    border: `1px solid ${twoFAConfig.enabled ? 'rgba(16, 185, 129, 0.3)' : 'rgba(245, 158, 11, 0.3)'}`,
-                  }}
-                >
-                  {twoFAConfig.enabled ? 'Ativo' : 'Inativo'}
-                </span>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '14px', flex: 1 }}>
+              <div
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: '10px',
+                  background: twoFAConfig.enabled
+                    ? 'linear-gradient(135deg, #10B981, #059669)'
+                    : `linear-gradient(135deg, ${t.primary}, #cc0011)`,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                  boxShadow: twoFAConfig.enabled
+                    ? '0 4px 14px rgba(16, 185, 129, 0.3)'
+                    : `0 4px 14px ${t.primary}30`,
+                  transition: 'all 0.3s',
+                }}
+              >
+                {twoFAConfig.enabled ? (
+                  <ShieldCheck size={20} color="#fff" />
+                ) : (
+                  <Shield size={20} color="#fff" />
+                )}
               </div>
-              <p style={{ margin: 0, fontSize: '12.5px', color: t.textMuted, lineHeight: 1.5 }}>
-                Adicione uma camada extra de segurança à sua conta exigindo um código de verificação além da senha.
-              </p>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
+                  <span style={{ fontSize: '15px', fontWeight: 700, color: t.text }}>
+                    Autenticação de Dois Fatores (2FA)
+                  </span>
+                  <span
+                    style={{
+                      fontSize: '10px',
+                      fontWeight: 700,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.06em',
+                      padding: '2px 8px',
+                      borderRadius: '20px',
+                      background: twoFAConfig.enabled
+                        ? 'rgba(16, 185, 129, 0.12)'
+                        : 'rgba(156, 163, 175, 0.12)',
+                      color: twoFAConfig.enabled ? '#10B981' : t.textMuted,
+                      border: `1px solid ${twoFAConfig.enabled ? 'rgba(16, 185, 129, 0.3)' : 'rgba(156, 163, 175, 0.2)'}`,
+                    }}
+                  >
+                    {statusLoading ? '...' : twoFAConfig.enabled ? 'Ativo' : 'Inativo'}
+                  </span>
+                </div>
+                <p style={{ margin: 0, fontSize: '12.5px', color: t.textMuted, lineHeight: 1.5 }}>
+                  Camada extra de segurança.
+                </p>
+              </div>
             </div>
+
+            {/* O BOTÃO SWITCH SOLICITADO */}
+            <ToggleSwitch
+              checked={twoFAConfig.enabled}
+              onChange={handleToggle2FA}
+              label=""
+              theme={t}
+            />
           </div>
 
-          <div style={{ padding: '20px 24px' }}>
+          {/* Área de Informações Expandida */}
+          <div style={{ padding: '24px', background: t.surface }}>
             {twoFAConfig.enabled ? (
-              <>
-                {/* Status Card quando 2FA está ativo */}
-                <div
-                  style={{
-                    background: mode === 'dark' ? 'rgba(16, 185, 129, 0.06)' : 'rgba(16, 185, 129, 0.04)',
-                    border: '1px solid rgba(16, 185, 129, 0.2)',
-                    borderRadius: '12px',
-                    padding: '18px 20px',
-                    marginBottom: '16px',
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                    <div
-                      style={{
-                        width: 44,
-                        height: 44,
-                        borderRadius: '50%',
-                        background: 'rgba(16, 185, 129, 0.15)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                      }}
-                    >
-                      <Fingerprint size={22} color="#10B981" />
+              <div
+                style={{
+                  background: mode === 'dark' ? 'rgba(16, 185, 129, 0.04)' : 'rgba(16, 185, 129, 0.02)',
+                  border: '1px solid rgba(16, 185, 129, 0.15)',
+                  borderRadius: '12px',
+                  padding: '16px 20px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '12px',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div
+                    style={{
+                      width: 40,
+                      height: 40,
+                      borderRadius: '50%',
+                      background: 'rgba(16, 185, 129, 0.12)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Fingerprint size={20} color="#10B981" />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '13.5px', fontWeight: 700, color: t.text }}>
+                      Proteção ativa via {twoFAConfig.method ? METHOD_INFO[twoFAConfig.method].label : ''}
                     </div>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: '14px', fontWeight: 700, color: t.text, marginBottom: '2px' }}>
-                        Proteção Ativa
+                    {twoFAConfig.timestamp && (
+                      <div style={{ fontSize: '11px', color: t.textMuted, marginTop: '2px' }}>
+                        Configurado em: {new Date(twoFAConfig.timestamp).toLocaleDateString('pt-BR', {
+                          day: '2-digit',
+                          month: 'long',
+                          year: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
                       </div>
-                      <div style={{ fontSize: '12.5px', color: t.textSecondary }}>
-                        Método: <strong style={{ color: t.text }}>
-                          {twoFAConfig.method ? METHOD_INFO[twoFAConfig.method].label : 'Não definido'}
-                        </strong>
-                      </div>
-                      {twoFAConfig.timestamp && (
-                        <div style={{ fontSize: '11px', color: t.textMuted, marginTop: '4px' }}>
-                          Configurado em: {new Date(twoFAConfig.timestamp).toLocaleDateString('pt-BR', {
-                            day: '2-digit',
-                            month: 'long',
-                            year: 'numeric',
-                            hour: '2-digit',
-                            minute: '2-digit',
-                          })}
-                        </div>
-                      )}
-                    </div>
-                    {twoFAConfig.method && (() => {
-                      const Icon = METHOD_INFO[twoFAConfig.method].icon;
-                      return (
-                        <div
-                          style={{
-                            width: 36,
-                            height: 36,
-                            borderRadius: '8px',
-                            background: `${METHOD_INFO[twoFAConfig.method].color}15`,
-                            border: `1px solid ${METHOD_INFO[twoFAConfig.method].color}30`,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                          }}
-                        >
-                          <Icon size={17} color={METHOD_INFO[twoFAConfig.method].color} />
-                        </div>
-                      );
-                    })()}
+                    )}
                   </div>
                 </div>
 
-                <div style={{ display: 'flex', gap: '10px' }}>
-                  <button
-                    type="button"
-                    onClick={handleOpen2FA}
-                    style={{
-                      padding: '10px 16px',
-                      borderRadius: '8px',
-                      border: `1px solid ${t.border}`,
-                      background: t.surfaceElevated,
-                      color: t.text,
-                      fontSize: '12.5px',
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      transition: 'all 0.2s',
-                    }}
-                  >
-                    <RefreshCw size={14} />
-                    Reconfigurar
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowDisableConfirm(true)}
-                    style={{
-                      padding: '10px 16px',
-                      borderRadius: '8px',
-                      border: '1px solid rgba(239, 68, 68, 0.3)',
-                      background: 'rgba(239, 68, 68, 0.08)',
-                      color: '#EF4444',
-                      fontSize: '12.5px',
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      transition: 'all 0.2s',
-                    }}
-                  >
-                    <ShieldOff size={14} />
-                    Desativar 2FA
-                  </button>
-                </div>
-              </>
+                <button
+                  type="button"
+                  onClick={handleOpen2FA}
+                  style={{
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    border: `1px solid ${t.border}`,
+                    background: t.surfaceElevated,
+                    color: t.text,
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    transition: 'all 0.2s',
+                  }}
+                >
+                  <RefreshCw size={12} />
+                  Alterar Método
+                </button>
+              </div>
             ) : (
-              <>
-                {/* Informações quando 2FA está desativado */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 <div
                   style={{
-                    background: mode === 'dark' ? 'rgba(245, 158, 11, 0.06)' : 'rgba(245, 158, 11, 0.04)',
-                    border: '1px solid rgba(245, 158, 11, 0.2)',
+                    background: mode === 'dark' ? 'rgba(245, 158, 11, 0.04)' : 'rgba(245, 158, 11, 0.02)',
+                    border: '1px solid rgba(245, 158, 11, 0.15)',
                     borderRadius: '12px',
-                    padding: '16px 18px',
-                    marginBottom: '18px',
+                    padding: '16px',
                     display: 'flex',
                     alignItems: 'flex-start',
                     gap: '12px',
                   }}
                 >
                   <Info size={18} color="#F59E0B" style={{ flexShrink: 0, marginTop: '1px' }} />
-                  <div style={{ fontSize: '12.5px', color: '#D97706', lineHeight: 1.6 }}>
-                    <strong>Recomendação de segurança:</strong> A autenticação de dois fatores protege sua conta mesmo
-                    que sua senha seja comprometida. É fortemente recomendado ativá-la.
+                  <div style={{ fontSize: '12.5px', color: mode === 'dark' ? '#FBBF24' : '#D97706', lineHeight: 1.5 }}>
+                    <strong>Atenção:</strong> Ative o switch acima para configurar 2FA no servidor
+                    (QR code real + códigos de backup no banco).
                   </div>
                 </div>
 
-                {/* Mini-preview dos métodos */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', marginBottom: '18px' }}>
+                {/* Grid Visual de Métodos Disponíveis */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
                   {(Object.keys(METHOD_INFO) as TwoFAMethod[]).map((key) => {
                     const info = METHOD_INFO[key];
                     const Icon = info.icon;
@@ -679,11 +734,12 @@ export const SettingsPage: React.FC = () => {
                       <div
                         key={key}
                         style={{
-                          padding: '14px 12px',
+                          padding: '14px',
                           borderRadius: '10px',
                           border: `1px solid ${t.border}`,
                           background: t.surfaceElevated,
                           textAlign: 'center',
+                          opacity: 0.85,
                         }}
                       >
                         <div
@@ -691,7 +747,7 @@ export const SettingsPage: React.FC = () => {
                             width: 32,
                             height: 32,
                             borderRadius: '8px',
-                            background: `${info.color}15`,
+                            background: `${info.color}12`,
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
@@ -705,41 +761,13 @@ export const SettingsPage: React.FC = () => {
                     );
                   })}
                 </div>
-
-                <button
-                  type="button"
-                  onClick={handleOpen2FA}
-                  style={{
-                    width: '100%',
-                    padding: '14px',
-                    borderRadius: '10px',
-                    border: 'none',
-                    background: `linear-gradient(135deg, ${t.primary}, #cc0011)`,
-                    color: '#fff',
-                    fontSize: '13.5px',
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '10px',
-                    boxShadow: `0 6px 20px ${t.primary}30`,
-                    transition: 'all 0.2s',
-                    position: 'relative',
-                    overflow: 'hidden',
-                  }}
-                >
-                  <Shield size={17} />
-                  Ativar Autenticação 2FA
-                  <ChevronRight size={16} />
-                </button>
-              </>
+              </div>
             )}
           </div>
         </div>
 
         {/* ════════════════════════════════════════════
-            SALVAR
+            SALVAR ALTERAÇÕES
         ════════════════════════════════════════════ */}
         <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '12px' }}>
           {savedSuccess && (
@@ -781,7 +809,7 @@ export const SettingsPage: React.FC = () => {
       </form>
 
       {/* ════════════════════════════════════════════════════════════
-          MODAL 2FA — COMPLETAMENTE REDESENHADO
+          MODAL 2FA — ETAPAS E SELEÇÃO
       ════════════════════════════════════════════════════════════ */}
       {show2FAModal && (
         <div
@@ -938,11 +966,31 @@ export const SettingsPage: React.FC = () => {
 
             {/* Modal Content */}
             <div style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
+              {actionError && (
+                <div
+                  style={{
+                    marginBottom: 16,
+                    padding: '10px 12px',
+                    borderRadius: 8,
+                    background: 'rgba(239,68,68,0.08)',
+                    border: '1px solid rgba(239,68,68,0.25)',
+                    color: '#EF4444',
+                    fontSize: 12.5,
+                    display: 'flex',
+                    gap: 8,
+                    alignItems: 'center',
+                  }}
+                >
+                  <AlertCircle size={14} />
+                  {actionError}
+                </div>
+              )}
+
               {/* ─── STEP 1: ESCOLHA DO MÉTODO ─── */}
               {twoFAStage === 'choose' && (
                 <div style={{ animation: 'rr-fadeIn 0.3s ease' }}>
                   <p style={{ margin: '0 0 20px', fontSize: '13.5px', color: t.textSecondary, lineHeight: 1.6 }}>
-                    Escolha como deseja receber os códigos de verificação ao fazer login na plataforma.
+                    Escolha o método OTP. A configuração será gravada no banco de dados.
                   </p>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -953,7 +1001,8 @@ export const SettingsPage: React.FC = () => {
                         <button
                           key={key}
                           type="button"
-                          onClick={() => handleSelectMethod(key)}
+                          onClick={() => void handleSelectMethod(key)}
+                          disabled={isInitLoading}
                           style={{
                             display: 'flex',
                             alignItems: 'center',
@@ -962,7 +1011,7 @@ export const SettingsPage: React.FC = () => {
                             borderRadius: '12px',
                             border: `1.5px solid ${t.border}`,
                             background: t.surfaceElevated,
-                            cursor: 'pointer',
+                            cursor: isInitLoading ? 'wait' : 'pointer',
                             textAlign: 'left',
                             transition: 'all 0.25s',
                           }}
@@ -1004,27 +1053,25 @@ export const SettingsPage: React.FC = () => {
                     })}
                   </div>
 
-                  {key === 'authenticator' && (
-                    <div
-                      style={{
-                        marginTop: '16px',
-                        padding: '12px 14px',
-                        borderRadius: '8px',
-                        background: 'rgba(139, 92, 246, 0.06)',
-                        border: '1px solid rgba(139, 92, 246, 0.2)',
-                        fontSize: '11.5px',
-                        color: '#8B5CF6',
-                        display: 'flex',
-                        alignItems: 'flex-start',
-                        gap: '8px',
-                      }}
-                    >
-                      <Sparkles size={14} style={{ flexShrink: 0, marginTop: '1px' }} />
-                      <span>
-                        <strong>Recomendado:</strong> Apps autenticadores são o método mais seguro e funcionam offline.
-                      </span>
-                    </div>
-                  )}
+                  <div
+                    style={{
+                      marginTop: '20px',
+                      padding: '14px',
+                      borderRadius: '10px',
+                      background: 'rgba(139, 92, 246, 0.05)',
+                      border: '1px solid rgba(139, 92, 246, 0.15)',
+                      fontSize: '12px',
+                      color: '#8B5CF6',
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      gap: '10px',
+                    }}
+                  >
+                    <Sparkles size={16} style={{ flexShrink: 0, marginTop: '1px' }} />
+                    <span>
+                      <strong>Recomendado:</strong> App autenticador — QR code real gerado no backend (TOTP).
+                    </span>
+                  </div>
                 </div>
               )}
 
@@ -1035,13 +1082,13 @@ export const SettingsPage: React.FC = () => {
                     <>
                       <div style={{ textAlign: 'center', marginBottom: '24px' }}>
                         <p style={{ margin: '0 0 16px', fontSize: '13.5px', color: t.textSecondary, lineHeight: 1.6 }}>
-                          Escaneie o código QR abaixo com seu aplicativo autenticador ou insira a chave manualmente.
+                          Escaneie o QR code com Google Authenticator / Authy ou use a chave manual.
                         </p>
-                        {/* QR Code */}
+                        {/* QR Code real (data URL do backend) */}
                         <div
                           style={{
-                            width: 200,
-                            height: 200,
+                            width: 220,
+                            height: 220,
                             margin: '0 auto 16px',
                             background: '#fff',
                             borderRadius: '14px',
@@ -1054,16 +1101,13 @@ export const SettingsPage: React.FC = () => {
                             overflow: 'hidden',
                           }}
                         >
-                          <QrCode size={120} color="#000" strokeWidth={1} />
-                          <div
-                            style={{
-                              position: 'absolute',
-                              inset: 0,
-                              background: 'repeating-conic-gradient(#000 0% 25%, #fff 0% 50%) 0 0 / 12px 12px',
-                              opacity: 0.05,
-                              pointerEvents: 'none',
-                            }}
-                          />
+                          {isInitLoading ? (
+                            <span style={{ color: '#666', fontSize: 13 }}>Gerando QR...</span>
+                          ) : qrCodeDataUrl ? (
+                            <img src={qrCodeDataUrl} alt="QR Code 2FA" style={{ width: 200, height: 200 }} />
+                          ) : (
+                            <span style={{ color: '#999', fontSize: 12 }}>QR indisponível</span>
+                          )}
                         </div>
 
                         {/* Chave secreta */}
@@ -1085,14 +1129,14 @@ export const SettingsPage: React.FC = () => {
                         >
                           <code
                             style={{
-                              fontSize: '14px',
+                              fontSize: '13px',
                               fontWeight: 700,
                               color: t.text,
-                              letterSpacing: '2px',
+                              letterSpacing: '1px',
                               fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
                             }}
                           >
-                            {showSecret ? FAKE_SECRET : '••••••••••••••••'}
+                            {showSecret ? secret || '—' : '••••••••••••••••'}
                           </code>
                           <button
                             type="button"
@@ -1111,7 +1155,7 @@ export const SettingsPage: React.FC = () => {
                           </button>
                           <button
                             type="button"
-                            onClick={handleCopySecret}
+                            onClick={() => void handleCopySecret()}
                             style={{
                               background: 'none',
                               border: 'none',
@@ -1138,11 +1182,16 @@ export const SettingsPage: React.FC = () => {
                         </button>
                         <button
                           type="button"
+                          disabled={!secret || isInitLoading}
                           onClick={() => {
                             setTwoFAStage('verify');
                             setTimeout(() => codeInputRefs.current[0]?.focus(), 150);
                           }}
-                          style={primaryBtnStyle(t)}
+                          style={{
+                            ...primaryBtnStyle(t),
+                            opacity: secret && !isInitLoading ? 1 : 0.5,
+                            cursor: secret && !isInitLoading ? 'pointer' : 'not-allowed',
+                          }}
                         >
                           Próximo
                           <ArrowRight size={14} />
@@ -1171,7 +1220,7 @@ export const SettingsPage: React.FC = () => {
                         </div>
                         <p style={{ margin: '0 0 20px', fontSize: '13.5px', color: t.textSecondary, lineHeight: 1.6 }}>
                           {twoFAMethod === 'sms'
-                            ? 'Informe seu número de telefone para receber códigos de verificação por SMS.'
+                            ? 'Informe o telefone. O código é salvo no banco (SMS real depende de provedor).'
                             : 'Confirme o e-mail que receberá os códigos de verificação.'}
                         </p>
                       </div>
@@ -1229,15 +1278,15 @@ export const SettingsPage: React.FC = () => {
                         </button>
                         <button
                           type="button"
-                          onClick={handleSendCode}
-                          disabled={!twoFAInput.trim()}
+                          onClick={() => void handleSendCode()}
+                          disabled={!twoFAInput.trim() || isInitLoading}
                           style={{
                             ...primaryBtnStyle(t),
-                            opacity: twoFAInput.trim() ? 1 : 0.5,
-                            cursor: twoFAInput.trim() ? 'pointer' : 'not-allowed',
+                            opacity: twoFAInput.trim() && !isInitLoading ? 1 : 0.5,
+                            cursor: twoFAInput.trim() && !isInitLoading ? 'pointer' : 'not-allowed',
                           }}
                         >
-                          Enviar Código
+                          {isInitLoading ? 'Enviando...' : 'Enviar Código'}
                           <ArrowRight size={14} />
                         </button>
                       </div>
@@ -1246,7 +1295,7 @@ export const SettingsPage: React.FC = () => {
                 </div>
               )}
 
-              {/* ─── STEP 3: VERIFICAÇÃO COM CODE INPUT ─── */}
+              {/* ─── STEP 3: VERIFICAÇÃO ─── */}
               {twoFAStage === 'verify' && (
                 <div style={{ animation: 'rr-fadeIn 0.3s ease', textAlign: 'center' }}>
                   <div
@@ -1267,34 +1316,23 @@ export const SettingsPage: React.FC = () => {
                   <h3 style={{ margin: '0 0 6px', fontSize: '18px', fontWeight: 700, color: t.text }}>
                     Digite o código de verificação
                   </h3>
-                  <p style={{ margin: '0 0 28px', fontSize: '13px', color: t.textSecondary, lineHeight: 1.5 }}>
+                  <p style={{ margin: '0 0 16px', fontSize: '13px', color: t.textSecondary, lineHeight: 1.5 }}>
                     {twoFAMethod === 'authenticator'
                       ? 'Insira o código de 6 dígitos exibido no seu app autenticador.'
                       : `Enviamos um código de 6 dígitos para ${twoFAInput || 'seu destino configurado'}.`}
                   </p>
+                  {devHintCode && twoFAMethod === 'sms' && (
+                    <p style={{ margin: '0 0 12px', fontSize: 12, color: '#F59E0B' }}>
+                      Modo dev (sem SMS): código <strong>{devHintCode}</strong>
+                    </p>
+                  )}
 
-                  {/* Campos do Código OTP */}
-                  <div
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'center',
-                      gap: '8px',
-                      marginBottom: '16px',
-                    }}
-                  >
+                  {/* Campos de Código (OTP Input) */}
+                  <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginBottom: '16px' }}>
                     {codeDigits.map((digit, idx) => (
                       <React.Fragment key={idx}>
                         {idx === 3 && (
-                          <div
-                            style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              color: t.textMuted,
-                              fontSize: '20px',
-                              fontWeight: 300,
-                              margin: '0 2px',
-                            }}
-                          >
+                          <div style={{ display: 'flex', alignItems: 'center', color: t.textMuted, fontSize: '20px', fontWeight: 300, margin: '0 2px' }}>
                             —
                           </div>
                         )}
@@ -1351,7 +1389,7 @@ export const SettingsPage: React.FC = () => {
                     ))}
                   </div>
 
-                  {/* Erro */}
+                  {/* Erro de código */}
                   {verifyError && (
                     <div
                       style={{
@@ -1370,7 +1408,7 @@ export const SettingsPage: React.FC = () => {
                     </div>
                   )}
 
-                  {/* Verificando... */}
+                  {/* Loader */}
                   {isVerifying && (
                     <div
                       style={{
@@ -1394,11 +1432,11 @@ export const SettingsPage: React.FC = () => {
                           display: 'inline-block',
                         }}
                       />
-                      Verificando...
+                      Verificando no servidor...
                     </div>
                   )}
 
-                  {/* Timer / Reenvio */}
+                  {/* Timer */}
                   {twoFAMethod !== 'authenticator' && (
                     <div style={{ marginBottom: '16px' }}>
                       {codeTimer > 0 ? (
@@ -1408,7 +1446,7 @@ export const SettingsPage: React.FC = () => {
                       ) : (
                         <button
                           type="button"
-                          onClick={handleResendCode}
+                          onClick={() => void handleResendCode()}
                           style={{
                             background: 'none',
                             border: 'none',
@@ -1429,7 +1467,6 @@ export const SettingsPage: React.FC = () => {
                     </div>
                   )}
 
-                  {/* Opção Próximo Login */}
                   <div
                     style={{
                       display: 'flex',
@@ -1469,7 +1506,7 @@ export const SettingsPage: React.FC = () => {
                 </div>
               )}
 
-              {/* ─── STEP 4: CÓDIGOS DE BACKUP ─── */}
+              {/* ─── STEP 4: BACKUP ─── */}
               {twoFAStage === 'backup' && (
                 <div style={{ animation: 'rr-fadeIn 0.3s ease', textAlign: 'center' }}>
                   <div
@@ -1492,7 +1529,7 @@ export const SettingsPage: React.FC = () => {
                   </h3>
                   <p style={{ margin: '0 0 20px', fontSize: '13px', color: t.textSecondary, lineHeight: 1.5 }}>
                     Guarde estes códigos em um local seguro. Cada código pode ser usado <strong>uma única vez</strong> caso
-                    perca acesso ao seu método de verificação.
+                    perca acesso ao seu celular. Já estão salvos no banco.
                   </p>
 
                   <div
@@ -1507,7 +1544,7 @@ export const SettingsPage: React.FC = () => {
                       border: `1px solid ${t.border}`,
                     }}
                   >
-                    {FAKE_BACKUP_CODES.map((code, idx) => (
+                    {backupCodes.map((code, idx) => (
                       <div
                         key={idx}
                         style={{
@@ -1528,7 +1565,7 @@ export const SettingsPage: React.FC = () => {
 
                   <button
                     type="button"
-                    onClick={handleCopyBackup}
+                    onClick={() => void handleCopyBackup()}
                     style={{
                       display: 'flex',
                       alignItems: 'center',
@@ -1566,7 +1603,7 @@ export const SettingsPage: React.FC = () => {
                   >
                     <AlertCircle size={14} style={{ flexShrink: 0, marginTop: '1px' }} />
                     <span>
-                      <strong>Atenção:</strong> Estes códigos não serão exibidos novamente. Anote-os agora.
+                      <strong>Atenção:</strong> Esses códigos de emergência não serão exibidos novamente no painel. Guarde-os com carinho.
                     </span>
                   </div>
 
@@ -1585,7 +1622,7 @@ export const SettingsPage: React.FC = () => {
                 </div>
               )}
 
-              {/* ─── STEP 5: SUCESSO ─── */}
+              {/* ─── STEP 5: SUCESSO FINAL ─── */}
               {twoFAStage === 'done' && (
                 <div style={{ animation: 'rr-fadeIn 0.3s ease', textAlign: 'center', padding: '16px 0' }}>
                   <div
@@ -1606,21 +1643,19 @@ export const SettingsPage: React.FC = () => {
                   </div>
 
                   <h3 style={{ margin: '0 0 8px', fontSize: '22px', fontWeight: 800, color: t.text }}>
-                    2FA Ativado!
+                    2FA Ativado com Sucesso!
                   </h3>
                   <p style={{ margin: '0 0 8px', fontSize: '14px', color: t.textSecondary, lineHeight: 1.6 }}>
-                    Sua conta está agora protegida com autenticação de dois fatores via{' '}
-                    <strong style={{ color: methodInfo?.color }}>{methodInfo?.label}</strong>.
+                    Conta protegida via{' '}
+                    <strong style={{ color: methodInfo?.color }}>{methodInfo?.label}</strong> no PostgreSQL.
                   </p>
                   <p style={{ margin: '0 0 24px', fontSize: '12.5px', color: t.textMuted }}>
-                    Um código de verificação será solicitado em seus próximos acessos à plataforma.
+                    O próximo login pedirá o código 2FA após a senha.
                   </p>
 
                   <button
                     type="button"
-                    onClick={() => {
-                      handleClose2FA();
-                    }}
+                    onClick={handleClose2FA}
                     style={{
                       ...primaryBtnStyle(t),
                       width: '100%',
@@ -1630,7 +1665,7 @@ export const SettingsPage: React.FC = () => {
                     }}
                   >
                     <Check size={16} />
-                    Concluir
+                    Entendi, fechar
                   </button>
                 </div>
               )}
@@ -1684,29 +1719,15 @@ export const SettingsPage: React.FC = () => {
             >
               <ShieldOff size={28} color="#EF4444" />
             </div>
-            <h3
-              style={{
-                margin: '0 0 8px',
-                fontSize: '18px',
-                fontWeight: 700,
-                color: t.text,
-                textAlign: 'center',
-              }}
-            >
-              Desativar 2FA?
+            <h3 style={{ margin: '0 0 8px', fontSize: '18px', fontWeight: 700, color: t.text, textAlign: 'center' }}>
+              Desativar Proteção 2FA?
             </h3>
-            <p
-              style={{
-                margin: '0 0 24px',
-                fontSize: '13px',
-                color: t.textSecondary,
-                lineHeight: 1.6,
-                textAlign: 'center',
-              }}
-            >
-              Sua conta ficará protegida apenas pela senha. Isso <strong>reduz significativamente</strong> a segurança
-              do seu acesso. Tem certeza?
+            <p style={{ margin: '0 0 16px', fontSize: '13px', color: t.textSecondary, lineHeight: 1.6, textAlign: 'center' }}>
+              Isso remove o 2FA no banco de dados. Tem certeza?
             </p>
+            {actionError && (
+              <p style={{ color: '#EF4444', fontSize: 12, textAlign: 'center', marginBottom: 12 }}>{actionError}</p>
+            )}
             <div style={{ display: 'flex', gap: '10px' }}>
               <button
                 type="button"
@@ -1723,11 +1744,12 @@ export const SettingsPage: React.FC = () => {
                   cursor: 'pointer',
                 }}
               >
-                Cancelar
+                Voltar protegido
               </button>
               <button
                 type="button"
-                onClick={handleDisable2FA}
+                disabled={disabling}
+                onClick={() => void handleDisable2FA()}
                 style={{
                   flex: 1,
                   padding: '11px',
@@ -1739,9 +1761,10 @@ export const SettingsPage: React.FC = () => {
                   fontWeight: 600,
                   cursor: 'pointer',
                   boxShadow: '0 4px 14px rgba(239, 68, 68, 0.3)',
+                  opacity: disabling ? 0.7 : 1,
                 }}
               >
-                Sim, desativar
+                {disabling ? 'Desativando...' : 'Sim, desativar'}
               </button>
             </div>
           </div>
@@ -1749,7 +1772,7 @@ export const SettingsPage: React.FC = () => {
       )}
 
       {/* ════════════════════════════════════════════
-          STYLES & KEYFRAMES
+          ANIMATIONS CSS
       ════════════════════════════════════════════ */}
       <style>{`
         @keyframes rr-fadeIn {
@@ -1780,9 +1803,9 @@ export const SettingsPage: React.FC = () => {
   );
 };
 
-// ════════════════════════════════════════════════════════════
-// COMPONENTES REUTILIZÁVEIS
-// ════════════════════════════════════════════════════════════
+// ============================================
+// COMPONENTES AUXILIARES / REUTILIZÁVEIS
+// ============================================
 
 const SettingsCard: React.FC<{
   icon: any;
@@ -1833,7 +1856,7 @@ const ToggleSwitch: React.FC<{
 }> = ({ checked, onChange, label, theme: t, small = false }) => (
   <label
     style={{
-      display: 'flex',
+      display: 'inline-flex',
       alignItems: 'center',
       gap: '10px',
       cursor: 'pointer',
@@ -1843,14 +1866,17 @@ const ToggleSwitch: React.FC<{
     }}
   >
     <div
-      onClick={() => onChange(!checked)}
+      onClick={(e) => {
+        e.preventDefault();
+        onChange(!checked);
+      }}
       style={{
         position: 'relative',
-        width: small ? '36px' : '42px',
+        width: small ? '36px' : '44px',
         height: small ? '20px' : '24px',
         borderRadius: '999px',
         background: checked ? '#10B981' : t.border,
-        transition: 'background 0.25s',
+        transition: 'background 0.25s ease',
         cursor: 'pointer',
         flexShrink: 0,
       }}
@@ -1859,21 +1885,21 @@ const ToggleSwitch: React.FC<{
         style={{
           position: 'absolute',
           top: small ? '2px' : '3px',
-          left: checked ? (small ? '18px' : '21px') : '3px',
+          left: checked ? (small ? '18px' : '23px') : '3px',
           width: small ? '16px' : '18px',
           height: small ? '16px' : '18px',
           borderRadius: '50%',
           background: '#fff',
           transition: 'left 0.25s cubic-bezier(0.16, 1, 0.3, 1)',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.15)',
+          boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
         }}
       />
     </div>
-    <span>{label}</span>
+    {label && <span>{label}</span>}
   </label>
 );
 
-// ─── Helper Styles ──────────────────────────────────────────
+// ─── Estilos de Botão Reutilizáveis ─────────────────────────
 const primaryBtnStyle = (t: any): React.CSSProperties => ({
   display: 'flex',
   alignItems: 'center',

@@ -34,3 +34,19 @@ CREATE TABLE IF NOT EXISTS audit_log (
   criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_audit_log_criado ON audit_log(criado_em DESC);
+
+-- Autenticação de dois fatores (2FA / TOTP / e-mail / SMS)
+CREATE TABLE IF NOT EXISTS autenticacao_2fa (
+  user_id TEXT PRIMARY KEY,
+  metodo VARCHAR(50),
+  segredo VARCHAR(100),
+  status BOOLEAN DEFAULT false,
+  telefone VARCHAR(20),
+  email VARCHAR(100),
+  codigo_temp VARCHAR(10),
+  expira_temp TIMESTAMPTZ,
+  backup_codes TEXT[] DEFAULT '{}',
+  require_next_login BOOLEAN DEFAULT true,
+  activated_at TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_autenticacao_2fa_status ON autenticacao_2fa(status);

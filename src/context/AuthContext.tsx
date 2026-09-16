@@ -1,14 +1,29 @@
 ﻿import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { User, Permission, PageId } from '../types';
-import { apiListUsers, apiLogin, apiLogout, apiMe, ApiError, setUnauthorizedHandler } from '../lib/api';
+import {
+  apiListUsers,
+  apiLogin,
+  apiLogin2FA,
+  apiLogout,
+  apiMe,
+  ApiError,
+  isLoginRequires2FA,
+  setUnauthorizedHandler,
+} from '../lib/api';
 import { clearAuthToken } from '../lib/authToken';
+
+export type LoginOutcome =
+  | { success: true }
+  | { success: false; error: string }
+  | { success: false; requires2FA: true; tempToken: string; method?: string };
 
 interface AuthContextType {
   currentUser: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
   token: string | null;
-  login: (email: string, password?: string, rememberMe?: boolean) => Promise<{ success: boolean; error?: string }>;
+  login: (email: string, password?: string, rememberMe?: boolean) => Promise<LoginOutcome>;
+  complete2FALogin: (tempToken: string, code: string) => Promise<LoginOutcome>;
   logout: () => void;
   hasPermission: (permission: Permission) => boolean;
   canAccessPage: (pageId: PageId) => boolean;
@@ -74,10 +89,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     email: string,
     password = '',
     rememberMe = true
-  ): Promise<{ success: boolean; error?: string }> => {
+  ): Promise<LoginOutcome> => {
     setIsLoading(true);
     try {
       const body = await apiLogin(email.trim(), password, rememberMe);
+      if (isLoginRequires2FA(body)) {
+        setIsLoading(false);
+        return {
+          success: false,
+          requires2FA: true,
+          tempToken: body.tempToken,
+          method: body.method,
+        };
+      }
       setCurrentUser(body.user);
       if (body.user.role === 'ADMIN') await refreshUsers();
       else setAvailableUsers([]);
@@ -90,6 +114,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           : err instanceof Error
             ? err.message
             : 'Falha ao autenticar.';
+      return { success: false, error: message };
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const complete2FALogin = async (tempToken: string, code: string): Promise<LoginOutcome> => {
+    setIsLoading(true);
+    try {
+      const body = await apiLogin2FA(tempToken, code.trim());
+      setCurrentUser(body.user);
+      if (body.user.role === 'ADMIN') await refreshUsers();
+      else setAvailableUsers([]);
+      return { success: true };
+    } catch (err) {
+      const message =
+        err instanceof ApiError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : 'Código 2FA inválido.';
       return { success: false, error: message };
     } finally {
       setIsLoading(false);
@@ -175,6 +220,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isLoading,
         token: null,
         login,
+        complete2FALogin,
         logout,
         hasPermission,
         canAccessPage,

@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS vendedores (
   atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS vendedor_equipe_historico (
+CREATE TABLE IF NOT EXISTS historico (
   id            BIGSERIAL PRIMARY KEY,
   cod_vendedor  TEXT NOT NULL,
   equipe        TEXT NOT NULL,
@@ -45,7 +45,7 @@ CREATE TABLE IF NOT EXISTS vendedor_equipe_historico (
   valido_ate    DATE,
   criado_em     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-CREATE INDEX IF NOT EXISTS idx_veh_vendedor ON vendedor_equipe_historico(cod_vendedor, valido_de);
+CREATE INDEX IF NOT EXISTS idx_veh_vendedor ON historico(cod_vendedor, valido_de);
 
 CREATE TABLE IF NOT EXISTS clientes (
   cod_cliente   TEXT PRIMARY KEY,

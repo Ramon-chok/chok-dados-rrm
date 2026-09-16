@@ -65,16 +65,58 @@ def login(payload: LoginRequest, response: Response) -> object:
         data["last_login_at"] = datetime.now(UTC)
         data.pop("password_hash", None)
 
-    # check if user has 2FA enabled; if so return a temporary token for 2FA verification
+    # Verifica se o usuário possui 2FA habilitado; se sim, retorna um token temporário para verificação do 2FA.
     with get_connection() as conn:
-        row2 = conn.execute("SELECT status FROM autenticacao_2fa WHERE user_id = %s", (data["id"],)).fetchone()
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS autenticacao_2fa (
+                user_id text PRIMARY KEY,
+                metodo VARCHAR(50),
+                segredo VARCHAR(100),
+                status boolean DEFAULT false,
+                telefone VARCHAR(20),
+                email VARCHAR(100),
+                codigo_temp VARCHAR(10),
+                expira_temp timestamptz,
+                backup_codes text[] DEFAULT '{}',
+                require_next_login boolean DEFAULT true,
+                activated_at timestamptz
+            )
+            """
+        )
+        for alter in (
+            "ALTER TABLE autenticacao_2fa ADD COLUMN IF NOT EXISTS backup_codes text[] DEFAULT '{}'",
+            "ALTER TABLE autenticacao_2fa ADD COLUMN IF NOT EXISTS require_next_login boolean DEFAULT true",
+            "ALTER TABLE autenticacao_2fa ADD COLUMN IF NOT EXISTS activated_at timestamptz",
+        ):
+            try:
+                conn.execute(alter)
+            except Exception:
+                pass
+        conn.commit()
+
+        row2 = conn.execute(
+            "SELECT status, metodo, require_next_login FROM autenticacao_2fa WHERE user_id = %s",
+            (data["id"],),
+        ).fetchone()
     if row2 and row2["status"]:
         # create short-lived temp token for 2FA verification (5 minutes)
         settings = get_settings()
         now = datetime.now(UTC)
-        payload2 = {"sub": str(data["id"]), "typ": "2fa_pending", "iat": int(now.timestamp()), "exp": int((now + timedelta(minutes=5)).timestamp())}
+        payload2 = {
+            "sub": str(data["id"]),
+            "typ": "2fa_pending",
+            "iat": int(now.timestamp()),
+            "exp": int((now + timedelta(minutes=5)).timestamp()),
+        }
         temp_token = jwt.encode(payload2, settings.jwt_secret, algorithm=settings.jwt_algorithm)
-        return {"requires2FA": True, "tempToken": temp_token}
+        if isinstance(temp_token, bytes):
+            temp_token = temp_token.decode("utf-8")
+        return {
+            "requires2FA": True,
+            "tempToken": temp_token,
+            "method": row2.get("metodo") or "authenticator",
+        }
 
     token, expires_in = create_access_token(
         data["id"],
@@ -134,29 +176,81 @@ def twofa_login(payload: dict = Body(...), response: Response = None):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Temp token inválido")
 
     user_id = decoded.get("sub")
+    code_norm = code.strip().replace(" ", "")
     with get_connection() as conn:
-        row = conn.execute("SELECT metodo, segredo, codigo_temp, expira_temp FROM autenticacao_2fa WHERE user_id = %s", (user_id,)).fetchone()
-        if not row:
+        row = conn.execute(
+            """
+            SELECT metodo, segredo, codigo_temp, expira_temp, backup_codes, status
+            FROM autenticacao_2fa
+            WHERE user_id = %s
+            """,
+            (user_id,),
+        ).fetchone()
+        if not row or not row.get("status"):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Configuração 2FA não encontrada")
         method = row["metodo"]
         ok = False
+        used_backup: str | None = None
         if method == "authenticator":
             secret = row["segredo"]
             if secret:
                 import pyotp
 
-                ok = pyotp.TOTP(secret).verify(code, valid_window=1)
+                ok = pyotp.TOTP(secret).verify(code_norm, valid_window=1)
         else:
             temp_code = row["codigo_temp"]
             exp = row["expira_temp"]
-            if temp_code and exp and datetime.utcnow() <= exp:
-                ok = (code == temp_code)
+            if exp is not None and getattr(exp, "tzinfo", None) is None:
+                exp = exp.replace(tzinfo=UTC)
+            if temp_code and exp and datetime.now(UTC) <= exp:
+                ok = code_norm == str(temp_code)
+
+        # códigos de backup (one-time)
+        if not ok:
+            backups = list(row.get("backup_codes") or [])
+            upper_map = {str(c).upper(): str(c) for c in backups}
+            if code_norm.upper() in upper_map:
+                ok = True
+                used_backup = upper_map[code_norm.upper()]
+
         if not ok:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Código inválido")
 
+        if used_backup:
+            remaining = [c for c in (row.get("backup_codes") or []) if str(c) != used_backup]
+            conn.execute(
+                "UPDATE autenticacao_2fa SET backup_codes = %s, codigo_temp = NULL, expira_temp = NULL WHERE user_id = %s",
+                (remaining, user_id),
+            )
+            conn.commit()
+
     # load user data and issue final token
     with get_connection() as conn:
-        rowu = conn.execute("SELECT id::text AS id, name, email, role, telefone AS phone, codigo AS seller_code, equipe AS team FROM usuarios WHERE id::text = %s", (user_id,)).fetchone()
+        rowu = conn.execute(
+            """
+            SELECT
+              id::text AS id,
+              name,
+              email,
+              role,
+              telefone AS phone,
+              endereco AS address,
+              bairro AS neighborhood,
+              municipio AS city,
+              estado AS state,
+              cep,
+              codigo AS seller_code,
+              equipe AS team,
+              supervisor,
+              NULL::text AS manager,
+              status,
+              last_login_at,
+              COALESCE(extra_permissions, '{}'::text[]) AS extra_permissions
+            FROM usuarios
+            WHERE id::text = %s
+            """,
+            (user_id,),
+        ).fetchone()
         if not rowu:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuário não encontrado")
         data = dict(rowu)
