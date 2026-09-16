@@ -32,12 +32,29 @@ export function mapAndValidateRows(
   const valid: MappedRow[] = [];
   const errors: RowError[] = [];
 
+  // Colunas já "consumidas" por um campo mapeado normalmente — o que sobrar
+  // do cabeçalho original da planilha vai para a coluna dynamicJsonColumn
+  // (quando configurada). Calculado uma vez fora do loop de linhas.
+  const mappedHeaders = new Set(Object.values(mapping).filter(Boolean));
+
   rawRows.forEach((raw, idx) => {
     const linha = idx + 1;
     const values: Record<string, unknown> = {};
     let rowError: string | null = null;
 
     for (const col of cfg.columns) {
+      if (col.kind === 'jsonb' && col.name === cfg.dynamicJsonColumn) {
+        const jsonValue: Record<string, unknown> = {};
+        for (const [header, cellValue] of Object.entries(raw)) {
+          if (mappedHeaders.has(header)) continue;
+          if (cellValue === undefined || cellValue === null || cellValue === '') continue;
+          const asNumber = parseNumeric(cellValue);
+          jsonValue[header] = asNumber.ok && asNumber.value !== null ? asNumber.value : cellValue;
+        }
+        values[col.name] = jsonValue;
+        continue;
+      }
+
       const sourceHeader = mapping[col.name];
       const rawValue = sourceHeader ? raw[sourceHeader] : undefined;
 
@@ -154,7 +171,13 @@ export async function upsertRows(
     const tuples: string[] = [];
 
     for (const row of chunk) {
-      const rowParams: unknown[] = valueColumns.map((c) => row.values[c] ?? null);
+      const rowParams: unknown[] = valueColumns.map((c) => {
+        const val = row.values[c] ?? null;
+        const colCfg = cfg.columns.find((cc) => cc.name === c);
+        // node-postgres não serializa objetos JS para jsonb automaticamente —
+        // precisa chegar como texto (o Postgres já faz o parse na coluna jsonb).
+        return colCfg?.kind === 'jsonb' ? JSON.stringify(val ?? {}) : val;
+      });
       if (cfg.snapshot && snapshot) {
         rowParams.push(snapshot.dataReferencia, snapshot.mesReferencia, snapshot.anoReferencia);
       }

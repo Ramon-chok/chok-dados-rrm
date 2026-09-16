@@ -270,15 +270,20 @@ CREATE TABLE IF NOT EXISTS top_clientes (
 );
 CREATE INDEX IF NOT EXISTS idx_topcli_periodo ON top_clientes(ano_referencia, mes_referencia);
 
--- Não Positivados — aba "Por vendedor"
+-- Não Positivados — aba "Por vendedor". Na planilha real é uma matriz
+-- cliente x fabricante (uma coluna por fabricante, com o valor vendido no
+-- período) — a lista de fabricantes muda com o tempo, então em vez de uma
+-- coluna fixa por fabricante, `fabricantes` guarda o mapa completo
+-- {"3M": 1234.56, "ARCOR": 0, ...} vindo direto da planilha (ver
+-- dynamicJsonColumn em server/importTypes.ts e server/upsert.ts).
 CREATE TABLE IF NOT EXISTS nao_positivados_vendedor (
   data_referencia     DATE NOT NULL,
   cod_vendedor        TEXT NOT NULL,
   cod_cliente         TEXT NOT NULL,
-  vendedor            TEXT,
-  cliente             TEXT,
-  ultima_compra       DATE,
-  dias_sem_comprar    INT,
+  razao_social        TEXT,
+  nome_fantasia       TEXT,
+  municipio           TEXT,
+  fabricantes         JSONB NOT NULL DEFAULT '{}'::jsonb,
   mes_referencia      INT NOT NULL,
   ano_referencia      INT NOT NULL,
   data_importacao     TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -287,14 +292,15 @@ CREATE TABLE IF NOT EXISTS nao_positivados_vendedor (
 );
 CREATE INDEX IF NOT EXISTS idx_naopos_vend_periodo ON nao_positivados_vendedor(ano_referencia, mes_referencia);
 
--- Não Positivados — aba "Equipe"
+-- Não Positivados — aba "Equipe" (mesma matriz cliente x fabricante, por equipe)
 CREATE TABLE IF NOT EXISTS nao_positivados_equipe (
   data_referencia     DATE NOT NULL,
   equipe              TEXT NOT NULL,
   cod_cliente         TEXT NOT NULL,
-  cliente             TEXT,
-  ultima_compra       DATE,
-  dias_sem_comprar    INT,
+  razao_social        TEXT,
+  nome_fantasia       TEXT,
+  municipio           TEXT,
+  fabricantes         JSONB NOT NULL DEFAULT '{}'::jsonb,
   mes_referencia      INT NOT NULL,
   ano_referencia      INT NOT NULL,
   data_importacao     TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -303,13 +309,14 @@ CREATE TABLE IF NOT EXISTS nao_positivados_equipe (
 );
 CREATE INDEX IF NOT EXISTS idx_naopos_equipe_periodo ON nao_positivados_equipe(ano_referencia, mes_referencia);
 
--- Não Positivados — aba "Chok total"
+-- Não Positivados — aba "Chok total" (mesma matriz cliente x fabricante, consolidado)
 CREATE TABLE IF NOT EXISTS nao_positivados_chok_total (
   data_referencia     DATE NOT NULL,
   cod_cliente         TEXT NOT NULL,
-  cliente             TEXT,
-  ultima_compra       DATE,
-  dias_sem_comprar    INT,
+  razao_social        TEXT,
+  nome_fantasia       TEXT,
+  municipio           TEXT,
+  fabricantes         JSONB NOT NULL DEFAULT '{}'::jsonb,
   mes_referencia      INT NOT NULL,
   ano_referencia      INT NOT NULL,
   data_importacao     TIMESTAMPTZ NOT NULL DEFAULT now(),
