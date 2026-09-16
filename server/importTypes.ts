@@ -9,7 +9,7 @@
 // chave, então o mesmo período é atualizado (UPDATE) e um novo período sempre
 // cria uma linha nova (INSERT) — nunca se sobrescreve o passado.
 
-export type ColumnKind = 'text' | 'numeric' | 'integer' | 'date' | 'boolean' | 'jsonb';
+export type ColumnKind = 'text' | 'numeric' | 'integer' | 'date' | 'boolean';
 
 export interface ImportColumn {
   name: string;
@@ -32,14 +32,6 @@ export interface ImportTypeConfig {
    * tem atualizado_em (DEFAULT now()) — ver server/upsert.ts. Padrão: true.
    */
   tracksImport?: boolean;
-  /**
-   * Nome de uma coluna do tipo 'jsonb' (deve existir em `columns`) que recebe,
-   * automaticamente, TODAS as colunas da planilha que não foram consumidas
-   * por nenhum outro campo mapeado — usada para planilhas onde cada coluna é
-   * um valor dinâmico (ex.: "Não Positivados", onde cada fabricante vira uma
-   * coluna e a lista de fabricantes muda com o tempo). Ver server/upsert.ts.
-   */
-  dynamicJsonColumn?: string;
 }
 
 export const IMPORT_TYPE_CONFIGS: Record<string, ImportTypeConfig> = {
@@ -301,7 +293,7 @@ export const IMPORT_TYPE_CONFIGS: Record<string, ImportTypeConfig> = {
   // Top Clientes — aba "top_clientes": venda total no mês por cliente
   top_clientes__top_clientes: {
     id: 'top_clientes__top_clientes',
-    label: 'Top Clientes — Venda Total no Mês (aba "top_clientes")',
+    label: 'Top Clien-tes — Venda Total no Mês (aba "top_clientes")',
     table: 'top_clientes',
     keyColumns: ['data_referencia', 'cod_cliente'],
     snapshot: true,
@@ -331,6 +323,34 @@ export const IMPORT_TYPE_CONFIGS: Record<string, ImportTypeConfig> = {
       { name: 'meta_sortimento', kind: 'numeric' },
       { name: 'realizado_sortimento', kind: 'numeric' },
       { name: 'pct_margem', kind: 'numeric' },
+
+      { name: 'data_inicial_faseamento', kind: 'date' },
+      { name: 'realizado_faseamento', kind: 'numeric' },
+      { name: 'meta_faseamento', kind: 'numeric' },
+      { name: 'realizado_faseamento_2', kind: 'numeric' },
+
+      { name: 'data_inicial_desconcentracao', kind: 'date' },
+      { name: 'data_final_desconcentracao', kind: 'date' },
+      { name: 'meta_desconcentracao', kind: 'numeric' },
+      { name: 'realizado_desconcentracao', kind: 'numeric' },
+
+      { name: 'visitas_diaria', kind: 'integer' },
+      { name: 'positivacao_diaria', kind: 'integer' },
+      { name: 'fora_de_rota_diaria', kind: 'integer' },
+
+      { name: 'visitas_acumulada', kind: 'integer' },
+      { name: 'positivacao_acumulada', kind: 'integer' },
+      { name: 'fora_de_rota_acumulada', kind: 'integer' },
+
+      { name: 'data_inicial_faseamento_ii', kind: 'date' },
+      { name: 'data_final_faseamento_ii', kind: 'date' },
+      { name: 'meta_faseamento_ii', kind: 'numeric' },
+      { name: 'realizado_faseamento_ii', kind: 'numeric' },
+
+      { name: 'data_inicial_desafio', kind: 'date' },
+      { name: 'data_final_desafio', kind: 'date' },
+      { name: 'meta_desafio', kind: 'numeric' },
+      { name: 'realizado_desafio', kind: 'numeric' },
     ],
   },
   dados_app__positivacao: {
@@ -371,26 +391,20 @@ export const IMPORT_TYPE_CONFIGS: Record<string, ImportTypeConfig> = {
     ],
   },
 
-  // Não Positivados — 3 bases (vendedor / equipe / Chok total). Na planilha
-  // real, cada fabricante aparece como uma coluna própria (matriz cliente x
-  // fabricante com o valor vendido no período) — a lista de fabricantes muda
-  // com o tempo, então em vez de listar cada um aqui, `fabricantes` (jsonb)
-  // recebe automaticamente TODAS as colunas da planilha não usadas pelos
-  // campos de identificação abaixo (ver dynamicJsonColumn em server/upsert.ts).
+  // Não Positivados — 3 bases (vendedor / equipe / Chok total)
   nao_positivados__por_vendedor: {
     id: 'nao_positivados__por_vendedor',
     label: 'Não Positivados — Por Vendedor',
     table: 'nao_positivados_vendedor',
     keyColumns: ['data_referencia', 'cod_vendedor', 'cod_cliente'],
     snapshot: true,
-    dynamicJsonColumn: 'fabricantes',
     columns: [
       { name: 'cod_vendedor', kind: 'text' },
+      { name: 'vendedor', kind: 'text' },
       { name: 'cod_cliente', kind: 'text' },
-      { name: 'razao_social', kind: 'text' },
-      { name: 'nome_fantasia', kind: 'text' },
-      { name: 'municipio', kind: 'text' },
-      { name: 'fabricantes', kind: 'jsonb' },
+      { name: 'cliente', kind: 'text' },
+      { name: 'ultima_compra', kind: 'date' },
+      { name: 'dias_sem_comprar', kind: 'integer' },
     ],
   },
   nao_positivados__equipe: {
@@ -399,14 +413,12 @@ export const IMPORT_TYPE_CONFIGS: Record<string, ImportTypeConfig> = {
     table: 'nao_positivados_equipe',
     keyColumns: ['data_referencia', 'equipe', 'cod_cliente'],
     snapshot: true,
-    dynamicJsonColumn: 'fabricantes',
     columns: [
       { name: 'equipe', kind: 'text' },
       { name: 'cod_cliente', kind: 'text' },
-      { name: 'razao_social', kind: 'text' },
-      { name: 'nome_fantasia', kind: 'text' },
-      { name: 'municipio', kind: 'text' },
-      { name: 'fabricantes', kind: 'jsonb' },
+      { name: 'cliente', kind: 'text' },
+      { name: 'ultima_compra', kind: 'date' },
+      { name: 'dias_sem_comprar', kind: 'integer' },
     ],
   },
   nao_positivados__chok_total: {
@@ -415,13 +427,11 @@ export const IMPORT_TYPE_CONFIGS: Record<string, ImportTypeConfig> = {
     table: 'nao_positivados_chok_total',
     keyColumns: ['data_referencia', 'cod_cliente'],
     snapshot: true,
-    dynamicJsonColumn: 'fabricantes',
     columns: [
       { name: 'cod_cliente', kind: 'text' },
-      { name: 'razao_social', kind: 'text' },
-      { name: 'nome_fantasia', kind: 'text' },
-      { name: 'municipio', kind: 'text' },
-      { name: 'fabricantes', kind: 'jsonb' },
+      { name: 'cliente', kind: 'text' },
+      { name: 'ultima_compra', kind: 'date' },
+      { name: 'dias_sem_comprar', kind: 'integer' },
     ],
   },
 };
