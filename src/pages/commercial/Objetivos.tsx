@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useGlobalFilter } from '../../context/GlobalFilterContext';
 import { ExportExcelButton } from '../../components/common/ExportExcelButton';
 import { EmptyBlock, ErrorBlock, LoadingBlock } from '../../components/common/DataState';
+import { SingleSelectFilter } from '../../components/common/SingleSelectFilter';
 import {
   fetchTargets,
   fetchObjetivosFaseamento,
@@ -12,7 +13,6 @@ import {
   ObjetivosFaseamentoResponse,
   DashboardFilterOptions,
 } from '../../lib/api';
-import { Target, ChevronDown } from 'lucide-react';
 
 const fmt = (v: number) => `R$ ${v.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}`;
 const fmtPct = (v: number) => `${v.toFixed(1)}%`;
@@ -126,11 +126,6 @@ export const ObjetivosPage: React.FC = () => {
     );
   }, [rows, query]);
 
-  const totals = useMemo(() => ({
-    metaFat: filtered.reduce((s, r) => s + (r.metaFaturamento || 0), 0),
-    metaCob: filtered.reduce((s, r) => s + (r.metaCobertura || 0), 0),
-  }), [filtered]);
-
   const handleExport = () => [{
     sheetName: 'Objetivos',
     data: filtered.map((r) => ({
@@ -144,35 +139,21 @@ export const ObjetivosPage: React.FC = () => {
     })),
   }];
 
-  const faseamentoSelectStyle: React.CSSProperties = {
-    fontSize: '13px',
-    fontWeight: 600,
-    color: t.text,
-    background: t.surfaceElevated,
-    border: `1px solid ${t.border}`,
-    borderRadius: '6px',
-    padding: '5px 26px 5px 10px',
-    cursor: 'pointer',
-    outline: 'none',
-    appearance: 'none',
-    WebkitAppearance: 'none',
-  };
-
   const faseamentoCard = (title: string, block: { meta: number; realizado: number; pct: number } | undefined) => (
-    <div style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 10, padding: 12, flex: 1, minWidth: 160 }}>
-      <div style={{ fontSize: 11, color: t.textMuted, marginBottom: 6 }}>{title}</div>
-      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+    <div style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 10, padding: '14px 16px', width: '100%' }}>
+      <div style={{ fontSize: 11.5, fontWeight: 600, color: t.textMuted, marginBottom: 10 }}>{title}</div>
+      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', justifyContent: 'space-between' }}>
         <div>
-          <div style={{ fontSize: 10, color: t.textMuted }}>Meta</div>
-          <div className="num" style={{ fontWeight: 700, color: t.text }}>{fmt(block?.meta || 0)}</div>
+          <div style={{ fontSize: 10.5, color: t.textMuted }}>Meta</div>
+          <div className="num" style={{ fontSize: 15, fontWeight: 700, color: t.text }}>{fmt(block?.meta || 0)}</div>
         </div>
         <div>
-          <div style={{ fontSize: 10, color: t.textMuted }}>Realizado</div>
-          <div className="num" style={{ fontWeight: 700, color: t.text }}>{fmt(block?.realizado || 0)}</div>
+          <div style={{ fontSize: 10.5, color: t.textMuted }}>Realizado</div>
+          <div className="num" style={{ fontSize: 15, fontWeight: 700, color: t.text }}>{fmt(block?.realizado || 0)}</div>
         </div>
         <div>
-          <div style={{ fontSize: 10, color: t.textMuted }}>Ating.</div>
-          <div className="num" style={{ fontWeight: 700, color: t.primary }}>{fmtPct(block?.pct || 0)}</div>
+          <div style={{ fontSize: 10.5, color: t.textMuted }}>Ating.</div>
+          <div className="num" style={{ fontSize: 15, fontWeight: 700, color: t.primary }}>{fmtPct(block?.pct || 0)}</div>
         </div>
       </div>
     </div>
@@ -187,38 +168,37 @@ export const ObjetivosPage: React.FC = () => {
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
           {canFilterEquipe && (
-            <div style={{ position: 'relative' }}>
-              <select value={selectedEquipe} onChange={(e) => setSelectedEquipe(e.target.value)} style={faseamentoSelectStyle}>
-                <option value="">Todas as equipes</option>
-                {(filterOptions?.equipes || []).map((eq) => (
-                  <option key={eq} value={eq}>{eq}</option>
-                ))}
-              </select>
-              <ChevronDown size={13} color={t.textMuted} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
-            </div>
+            <SingleSelectFilter
+              label="Equipe"
+              options={(filterOptions?.equipes || []).map((eq) => ({ value: eq, label: eq }))}
+              value={selectedEquipe}
+              onChange={setSelectedEquipe}
+              placeholder="Todas as equipes"
+              allLabel="Todas as equipes"
+            />
           )}
           {canFilterVendedor && (
-            <div style={{ position: 'relative' }}>
-              <select value={selectedVendedor} onChange={(e) => setSelectedVendedor(e.target.value)} style={faseamentoSelectStyle}>
-                <option value="">Todos os vendedores</option>
-                {vendedorOptions.map((v) => (
-                  <option key={v.codVendedor} value={v.codVendedor}>{v.nome}</option>
-                ))}
-              </select>
-              <ChevronDown size={13} color={t.textMuted} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
-            </div>
+            <SingleSelectFilter
+              label="Vendedor"
+              options={vendedorOptions.map((v) => ({ value: v.codVendedor, label: v.nome }))}
+              value={selectedVendedor}
+              onChange={setSelectedVendedor}
+              placeholder="Todos os vendedores"
+              allLabel="Todos os vendedores"
+            />
           )}
           <ExportExcelButton getSheets={handleExport} fileName="objetivos" />
         </div>
       </div>
 
-      {/* Metas de Faseamento / Faseamento II / Desconcentração / Desafio — aba "Mês" do Dados App */}
+      {/* Metas de Faseamento / Faseamento II / Desconcentração / Desafio — aba "Mês" do Dados App.
+          Cards empilhados, cada um ocupando toda a largura disponível. */}
       <div style={{ marginBottom: 20 }}>
         <div style={{ fontSize: 13, fontWeight: 700, color: t.text, marginBottom: 10 }}>Faseamento &amp; Desafios</div>
         {faseamentoLoading && <LoadingBlock />}
         {faseamentoError && <ErrorBlock message={faseamentoError} />}
         {!faseamentoLoading && !faseamentoError && (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {faseamentoCard('Meta Faseamento', faseamento?.faseamento)}
             {faseamentoCard('Meta Faseamento II', faseamento?.faseamentoII)}
             {faseamentoCard('Meta Desconcentração', faseamento?.desconcentracao)}
@@ -227,20 +207,6 @@ export const ObjetivosPage: React.FC = () => {
         )}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(160px,1fr))', gap: 10, marginBottom: 14 }}>
-        <div style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 10, padding: 12 }}>
-          <div style={{ fontSize: 11, color: t.textMuted, display: 'flex', alignItems: 'center', gap: 6 }}><Target size={14} /> Meta faturamento</div>
-          <div className="num" style={{ fontWeight: 700, color: t.text }}>{fmt(totals.metaFat)}</div>
-        </div>
-        <div style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 10, padding: 12 }}>
-          <div style={{ fontSize: 11, color: t.textMuted }}>Meta cobertura</div>
-          <div className="num" style={{ fontWeight: 700, color: t.text }}>{totals.metaCob.toLocaleString('pt-BR')}</div>
-        </div>
-        <div style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 10, padding: 12 }}>
-          <div style={{ fontSize: 11, color: t.textMuted }}>Registros</div>
-          <div className="num" style={{ fontWeight: 700, color: t.text }}>{filtered.length}</div>
-        </div>
-      </div>
       <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Filtrar vendedor, equipe ou fabricante..." style={{ width: '100%', maxWidth: 420, marginBottom: 14, padding: '10px 12px', borderRadius: 8, border: `1px solid ${t.border}`, background: t.surface, color: t.text }} />
       {loading && <LoadingBlock />}
       {error && <ErrorBlock message={error} />}

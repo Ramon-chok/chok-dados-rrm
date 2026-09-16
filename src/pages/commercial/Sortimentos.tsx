@@ -2,6 +2,7 @@
 import { useTheme } from '../../context/ThemeContext';
 import { ExportExcelButton } from '../../components/common/ExportExcelButton';
 import { EmptyBlock, ErrorBlock, LoadingBlock } from '../../components/common/DataState';
+import { SingleSelectFilter } from '../../components/common/SingleSelectFilter';
 import { fetchSortimento, SortimentoRow } from '../../lib/api';
 import { Search } from 'lucide-react';
 
@@ -9,8 +10,8 @@ export const SortimentosPage: React.FC = () => {
   const { t } = useTheme();
   const [rows, setRows] = useState<SortimentoRow[]>([]);
   const [query, setQuery] = useState('');
-  const [fab, setFab] = useState('Todos');
-  const [linha, setLinha] = useState('Todas');
+  const [fab, setFab] = useState('');
+  const [linha, setLinha] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -22,8 +23,8 @@ export const SortimentosPage: React.FC = () => {
       try {
         const data = await fetchSortimento({
           q: query || undefined,
-          fabricante: fab === 'Todos' ? undefined : fab,
-          linha: linha === 'Todas' ? undefined : linha,
+          fabricante: fab || undefined,
+          linha: linha || undefined,
         });
         if (mounted) setRows(data);
       } catch (e) {
@@ -38,11 +39,11 @@ export const SortimentosPage: React.FC = () => {
   }, [query, fab, linha]);
 
   const fabs = useMemo(
-    () => ['Todos', ...Array.from(new Set(rows.map((r) => r.fabricante).filter(Boolean) as string[])).sort()],
+    () => Array.from(new Set(rows.map((r) => r.fabricante).filter(Boolean) as string[])).sort((a, b) => a.localeCompare(b, 'pt-BR')),
     [rows]
   );
   const linhas = useMemo(
-    () => ['Todas', ...Array.from(new Set(rows.map((r) => r.linha).filter(Boolean) as string[])).sort()],
+    () => Array.from(new Set(rows.map((r) => r.linha).filter(Boolean) as string[])).sort((a, b) => a.localeCompare(b, 'pt-BR')),
     [rows]
   );
 
@@ -100,40 +101,22 @@ export const SortimentosPage: React.FC = () => {
             }}
           />
         </div>
-        <select
+        <SingleSelectFilter
+          label="Fabricante"
+          options={fabs.map((f) => ({ value: f, label: f }))}
           value={fab}
-          onChange={(e) => setFab(e.target.value)}
-          style={{
-            padding: '8px 10px',
-            borderRadius: 8,
-            border: `1px solid ${t.border}`,
-            background: t.surface,
-            color: t.text,
-          }}
-        >
-          {fabs.map((f) => (
-            <option key={f} value={f}>
-              {f === 'Todos' ? 'Todos os fabricantes' : f}
-            </option>
-          ))}
-        </select>
-        <select
+          onChange={setFab}
+          placeholder="Todos os fabricantes"
+          allLabel="Todos os fabricantes"
+        />
+        <SingleSelectFilter
+          label="Linha"
+          options={linhas.map((l) => ({ value: l, label: l }))}
           value={linha}
-          onChange={(e) => setLinha(e.target.value)}
-          style={{
-            padding: '8px 10px',
-            borderRadius: 8,
-            border: `1px solid ${t.border}`,
-            background: t.surface,
-            color: t.text,
-          }}
-        >
-          {linhas.map((l) => (
-            <option key={l} value={l}>
-              {l === 'Todas' ? 'Todas as linhas' : l}
-            </option>
-          ))}
-        </select>
+          onChange={setLinha}
+          placeholder="Todas as linhas"
+          allLabel="Todas as linhas"
+        />
       </div>
       {loading && <LoadingBlock />}
       {error && <ErrorBlock message={error} />}

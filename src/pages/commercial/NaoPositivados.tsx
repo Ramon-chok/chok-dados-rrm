@@ -2,17 +2,19 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 import { useGlobalFilter } from '../../context/GlobalFilterContext';
-import { PeriodSelector } from '../../components/common/PeriodSelector';
 import { ExportExcelButton } from '../../components/common/ExportExcelButton';
 import { EmptyBlock, ErrorBlock, LoadingBlock } from '../../components/common/DataState';
+import { MultiSelectFilter } from '../../components/common/MultiSelectFilter';
+import { SingleSelectFilter } from '../../components/common/SingleSelectFilter';
 import {
   fetchNaoPositivadosImport,
   fetchDashboardFilterOptions,
   NaoPositivadosImportResponse,
   NaoPositivadoNivel,
+  NaoPositivadoRow,
   DashboardFilterOptions,
 } from '../../lib/api';
-import { Search, ChevronDown } from 'lucide-react';
+import { Search } from 'lucide-react';
 
 const NIVEL_LABELS: Record<NaoPositivadoNivel, string> = {
   total: 'Chok Total',
@@ -20,23 +22,25 @@ const NIVEL_LABELS: Record<NaoPositivadoNivel, string> = {
   vendedor: 'Por Vendedor',
 };
 
+const fmtValor = (v: number) => `R$ ${v.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}`;
+
 export const NaoPositivadosPage: React.FC = () => {
   const { t } = useTheme();
   const { currentUser } = useAuth();
   const { selectedPeriod, startDate, endDate, ano, mes, periodType } = useGlobalFilter();
 
   const role = currentUser?.role;
-  // Admin/Gerência: veem o Chok Total por padrão, mas podem trocar para ver
-  // por Equipe ou por Vendedor (com filtro opcional de qual). Supervisor: só
-  // o nível Equipe, travado na própria equipe. Vendedor: só o nível
-  // Vendedor, travado no próprio código — nenhum seletor aparece pra eles.
-  const canPickNivel = role === 'ADMIN' || role === 'GERENTE';
+  // Mesmo critério do Dashboard: Admin/Gerência podem escolher equipe e
+  // vendedor livremente; Supervisor só escolhe vendedor (equipe já é a dele,
+  // travada no backend); Vendedor não tem filtro (só vê os próprios dados).
+  const canFilterEquipe = role === 'ADMIN' || role === 'GERENTE';
+  const canFilterVendedor = role === 'ADMIN' || role === 'GERENTE' || role === 'SUPERVISOR';
 
-  const [nivel, setNivel] = useState<NaoPositivadoNivel>('total');
   const [filterOptions, setFilterOptions] = useState<DashboardFilterOptions | null>(null);
   const [selectedEquipe, setSelectedEquipe] = useState('');
   const [selectedVendedor, setSelectedVendedor] = useState('');
   const [selectedCategoria, setSelectedCategoria] = useState('');
+  const [selectedMunicipios, setSelectedMunicipios] = useState<string[]>([]);
 
   const [data, setData] = useState<NaoPositivadosImportResponse | null>(null);
   const [query, setQuery] = useState('');
@@ -44,14 +48,14 @@ export const NaoPositivadosPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!canPickNivel) return;
+    if (!canFilterEquipe && !canFilterVendedor) return;
     let mounted = true;
     (async () => {
       try {
         const opts = await fetchDashboardFilterOptions();
         if (mounted) setFilterOptions(opts);
       } catch {
-        // Filtros são um extra da tela — sem eles, segue no nível padrão.
+        // Filtros são um extra da tela — sem eles, segue no escopo padrão.
       }
     })();
     return () => {
@@ -60,12 +64,21 @@ export const NaoPositivadosPage: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const vendedorOptions = useMemo(() => filterOptions?.vendedores || [], [filterOptions]);
+  const vendedorOptions = useMemo(() => {
+    const all = filterOptions?.vendedores || [];
+    return selectedEquipe ? all.filter((v) => v.equipe === selectedEquipe) : all;
+  }, [filterOptions, selectedEquipe]);
 
   useEffect(() => {
-    // Categoria escolhida pode não existir mais depois de trocar de nível/filtro.
+    if (selectedVendedor && !vendedorOptions.some((v) => v.codVendedor === selectedVendedor)) {
+      setSelectedVendedor('');
+    }
+  }, [vendedorOptions, selectedVendedor]);
+
+  useEffect(() => {
+    // Categoria escolhida pode não existir mais depois de trocar de dados.
     setSelectedCategoria('');
-  }, [nivel, selectedEquipe, selectedVendedor]);
+  }, [data]);
 
   useEffect(() => {
     let mounted = true;
@@ -78,9 +91,9 @@ export const NaoPositivadosPage: React.FC = () => {
           mes: periodType === 'mensal' ? mes : undefined,
           start: startDate || undefined,
           end: endDate || undefined,
-          nivel: canPickNivel ? nivel : undefined,
-          equipe: canPickNivel && nivel === 'equipe' && selectedEquipe ? selectedEquipe : undefined,
-          vendedor: canPickNivel && nivel === 'vendedor' && selectedVendedor ? selectedVendedor : undefined,
+          nivel: canFilterVendedor && selectedVendedor ? 'vendedor' : canFilterEquipe && selectedEquipe ? 'equipe' : undefined,
+          equipe: canFilterEquipe && selectedEquipe ? selectedEquipe : undefined,
+          vendedor: canFilterVendedor && selectedVendedor ? selectedVendedor : undefined,
         });
         if (mounted) setData(res);
       } catch (e) {
@@ -92,22 +105,51 @@ export const NaoPositivadosPage: React.FC = () => {
     return () => {
       mounted = false;
     };
-  }, [ano, mes, startDate, endDate, periodType, canPickNivel, nivel, selectedEquipe, selectedVendedor]);
+  }, [ano, mes, startDate, endDate, periodType, canFilterEquipe, canFilterVendedor, selectedEquipe, selectedVendedor]);
+
+  const municipioOptions = useMemo(() => {
+    const set = new Set<string>();
+    (data?.rows || []).forEach((c) => {
+      if (c.municipio) set.add(c.municipio);
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [data]);
+
+  useEffect(() => {
+    // Municípios selecionados podem não existir mais depois de trocar de dados.
+    setSelectedMunicipios((prev) => prev.filter((m) => municipioOptions.includes(m)));
+  }, [municipioOptions]);
 
   const filtered = useMemo(() => {
     const list = data?.rows || [];
     const q = query.toLowerCase();
-    if (!q) return list;
-    return list.filter(
-      (c) =>
+    return list.filter((c) => {
+      const matchesQuery =
+        !q ||
         (c.razaoSocial || '').toLowerCase().includes(q) ||
         (c.nomeFantasia || '').toLowerCase().includes(q) ||
         (c.codCliente || '').toLowerCase().includes(q) ||
-        (c.vendedor || '').toLowerCase().includes(q)
-    );
-  }, [data, query]);
+        (c.vendedor || '').toLowerCase().includes(q);
+      const matchesMunicipio =
+        selectedMunicipios.length === 0 || selectedMunicipios.includes(c.municipio || '');
+      return matchesQuery && matchesMunicipio;
+    });
+  }, [data, query, selectedMunicipios]);
 
-  const effectiveNivel = data?.nivel || nivel;
+  const effectiveNivel = data?.nivel || 'total';
+
+  // Valor total de venda do cliente (soma de todos os fabricantes) — ou, se
+  // o usuário filtrar por um fabricante específico, o valor daquela coluna.
+  const totalValor = (c: NaoPositivadoRow) =>
+    Object.values(c.fabricantes || {}).reduce((acc: number, v) => acc + (Number(v) || 0), 0);
+  const lastColLabel = selectedCategoria || 'Valor Total';
+  const lastColValue = (c: NaoPositivadoRow) =>
+    selectedCategoria ? Number(c.fabricantes?.[selectedCategoria]) || 0 : totalValor(c);
+  const maxLastColValue = useMemo(
+    () => Math.max(1, ...filtered.map((c) => lastColValue(c))),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [filtered, selectedCategoria]
+  );
 
   const handleExport = () => [
     {
@@ -119,25 +161,11 @@ export const NaoPositivadosPage: React.FC = () => {
         Município: c.municipio,
         ...(effectiveNivel === 'vendedor' ? { Vendedor: c.vendedor, Equipe: c.equipe } : {}),
         ...(effectiveNivel === 'equipe' ? { Equipe: c.equipe } : {}),
-        ...(selectedCategoria ? { [selectedCategoria]: c.fabricantes?.[selectedCategoria] ?? '' } : {}),
+        [lastColLabel]: lastColValue(c),
         Período: selectedPeriod,
       })),
     },
   ];
-
-  const selectStyle: React.CSSProperties = {
-    fontSize: '13px',
-    fontWeight: 600,
-    color: t.text,
-    background: t.surfaceElevated,
-    border: `1px solid ${t.border}`,
-    borderRadius: '6px',
-    padding: '5px 26px 5px 10px',
-    cursor: 'pointer',
-    outline: 'none',
-    appearance: 'none',
-    WebkitAppearance: 'none',
-  };
 
   return (
     <div>
@@ -151,49 +179,42 @@ export const NaoPositivadosPage: React.FC = () => {
           </p>
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-          <PeriodSelector />
-          {canPickNivel && (
-            <div style={{ position: 'relative' }}>
-              <select value={nivel} onChange={(e) => setNivel(e.target.value as NaoPositivadoNivel)} style={selectStyle}>
-                <option value="total">Chok Total</option>
-                <option value="equipe">Por Equipe</option>
-                <option value="vendedor">Por Vendedor</option>
-              </select>
-              <ChevronDown size={13} color={t.textMuted} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
-            </div>
+          {canFilterEquipe && (
+            <SingleSelectFilter
+              label="Equipe"
+              options={(filterOptions?.equipes || []).map((eq) => ({ value: eq, label: eq }))}
+              value={selectedEquipe}
+              onChange={setSelectedEquipe}
+              placeholder="Todas as equipes"
+              allLabel="Todas as equipes"
+            />
           )}
-          {canPickNivel && nivel === 'equipe' && (
-            <div style={{ position: 'relative' }}>
-              <select value={selectedEquipe} onChange={(e) => setSelectedEquipe(e.target.value)} style={selectStyle}>
-                <option value="">Todas as equipes</option>
-                {(filterOptions?.equipes || []).map((eq) => (
-                  <option key={eq} value={eq}>{eq}</option>
-                ))}
-              </select>
-              <ChevronDown size={13} color={t.textMuted} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
-            </div>
+          {canFilterVendedor && (
+            <SingleSelectFilter
+              label="Vendedor"
+              options={vendedorOptions.map((v) => ({ value: v.codVendedor, label: v.nome }))}
+              value={selectedVendedor}
+              onChange={setSelectedVendedor}
+              placeholder="Todos os vendedores"
+              allLabel="Todos os vendedores"
+            />
           )}
-          {canPickNivel && nivel === 'vendedor' && (
-            <div style={{ position: 'relative' }}>
-              <select value={selectedVendedor} onChange={(e) => setSelectedVendedor(e.target.value)} style={selectStyle}>
-                <option value="">Todos os vendedores</option>
-                {vendedorOptions.map((v) => (
-                  <option key={v.codVendedor} value={v.codVendedor}>{v.nome}</option>
-                ))}
-              </select>
-              <ChevronDown size={13} color={t.textMuted} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
-            </div>
-          )}
+          <MultiSelectFilter
+            label="Município"
+            options={municipioOptions}
+            selected={selectedMunicipios}
+            onChange={setSelectedMunicipios}
+            placeholder="Todos os municípios"
+          />
           {(data?.categorias.length || 0) > 0 && (
-            <div style={{ position: 'relative' }}>
-              <select value={selectedCategoria} onChange={(e) => setSelectedCategoria(e.target.value)} style={selectStyle}>
-                <option value="">Todas as categorias</option>
-                {data!.categorias.map((c) => (
-                  <option key={c} value={c}>{c}</option>
-                ))}
-              </select>
-              <ChevronDown size={13} color={t.textMuted} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
-            </div>
+            <SingleSelectFilter
+              label="Categoria"
+              options={data!.categorias.map((c) => ({ value: c, label: c }))}
+              value={selectedCategoria}
+              onChange={setSelectedCategoria}
+              placeholder="Todas as categorias"
+              allLabel="Todas as categorias"
+            />
           )}
           <ExportExcelButton getSheets={handleExport} fileName="nao-positivados" />
         </div>
@@ -221,39 +242,64 @@ export const NaoPositivadosPage: React.FC = () => {
       {error && <ErrorBlock message={error} />}
       {!loading && !error && filtered.length === 0 && <EmptyBlock title="Sem registros" />}
       {!loading && !error && filtered.length > 0 && (
-        <div style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 12, overflow: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
-            <thead>
-              <tr style={{ color: t.textMuted, textAlign: 'left', borderBottom: `1px solid ${t.border}` }}>
-                <th style={{ padding: 12 }}>Cód. Cliente</th>
-                <th>Razão Social</th>
-                <th>Nome Fantasia</th>
-                <th>Município</th>
-                {effectiveNivel === 'vendedor' && <th>Vendedor</th>}
-                {(effectiveNivel === 'vendedor' || effectiveNivel === 'equipe') && <th>Equipe</th>}
-                {selectedCategoria && <th style={{ textAlign: 'right' }}>{selectedCategoria}</th>}
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((c) => (
-                <tr key={c.codCliente} style={{ borderTop: `1px solid ${t.border}`, color: t.text }}>
-                  <td style={{ padding: 12, fontFamily: 'monospace', color: t.textMuted }}>{c.codCliente}</td>
-                  <td style={{ fontWeight: 600 }}>{c.razaoSocial || '—'}</td>
-                  <td>{c.nomeFantasia || '—'}</td>
-                  <td>{c.municipio || '—'}</td>
-                  {effectiveNivel === 'vendedor' && <td>{c.vendedor || c.codVendedor || '—'}</td>}
-                  {(effectiveNivel === 'vendedor' || effectiveNivel === 'equipe') && <td>{c.equipe || '—'}</td>}
-                  {selectedCategoria && (
-                    <td className="num" style={{ textAlign: 'right' }}>
-                      {c.fabricantes?.[selectedCategoria] ?? '—'}
-                    </td>
-                  )}
+        <div style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 12, overflow: 'hidden' }}>
+          <div style={{ overflow: 'auto', maxHeight: 620 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+              <thead>
+                <tr style={{ color: t.textMuted, textAlign: 'left', borderBottom: `1px solid ${t.border}`, background: t.surfaceElevated }}>
+                  <th style={{ padding: 12, position: 'sticky', top: 0, background: t.surfaceElevated }}>Cód. Cliente</th>
+                  <th style={{ position: 'sticky', top: 0, background: t.surfaceElevated }}>Razão Social</th>
+                  <th style={{ position: 'sticky', top: 0, background: t.surfaceElevated }}>Nome Fantasia</th>
+                  <th style={{ position: 'sticky', top: 0, background: t.surfaceElevated }}>Município</th>
+                  {effectiveNivel === 'vendedor' && <th style={{ position: 'sticky', top: 0, background: t.surfaceElevated }}>Vendedor</th>}
+                  {(effectiveNivel === 'vendedor' || effectiveNivel === 'equipe') && <th style={{ position: 'sticky', top: 0, background: t.surfaceElevated }}>Equipe</th>}
+                  <th style={{ textAlign: 'right', position: 'sticky', top: 0, background: t.surfaceElevated, minWidth: 140 }}>{lastColLabel}</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {filtered.map((c) => (
+                  <tr key={c.codCliente} style={{ borderTop: `1px solid ${t.border}`, color: t.text }}>
+                    <td style={{ padding: 12, fontFamily: 'monospace', color: t.textMuted }}>{c.codCliente}</td>
+                    <td style={{ fontWeight: 600 }}>{c.razaoSocial || '—'}</td>
+                    <td>{c.nomeFantasia || '—'}</td>
+                    <td>{c.municipio || '—'}</td>
+                    {effectiveNivel === 'vendedor' && <td>{c.vendedor || c.codVendedor || '—'}</td>}
+                    {(effectiveNivel === 'vendedor' || effectiveNivel === 'equipe') && <td>{c.equipe || '—'}</td>}
+                    <td style={{ textAlign: 'right', padding: '10px 12px' }}>
+                      <ValueWithBar value={lastColValue(c)} max={maxLastColValue} theme={t} formatter={fmtValor} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </div>
   );
 };
+
+// Valor + barra de progressão relativa ao maior valor da coluna na listagem
+// filtrada atual (mesmo padrão visual usado no Dashboard para percentuais).
+const ValueWithBar: React.FC<{ value: number; max: number; theme: any; formatter: (v: number) => string }> = ({
+  value,
+  max,
+  theme: t,
+  formatter,
+}) => (
+  <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
+    <span className="num" style={{ fontSize: 12.5, fontWeight: 700, color: t.text }}>
+      {formatter(value)}
+    </span>
+    <div style={{ width: 90, height: 5, borderRadius: 3, background: t.border, overflow: 'hidden' }}>
+      <div
+        style={{
+          width: `${Math.max(0, Math.min(100, (value / max) * 100))}%`,
+          height: '100%',
+          background: t.primary,
+          borderRadius: 3,
+        }}
+      />
+    </div>
+  </div>
+);

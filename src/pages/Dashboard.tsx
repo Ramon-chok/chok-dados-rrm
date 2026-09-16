@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { useGlobalFilter } from '../context/GlobalFilterContext';
 import { ExportExcelButton } from '../components/common/ExportExcelButton';
 import { EmptyBlock, ErrorBlock, LoadingBlock } from '../components/common/DataState';
+import { SingleSelectFilter } from '../components/common/SingleSelectFilter';
 import {
   fetchDashboard,
   fetchDashboardFilterOptions,
@@ -294,20 +295,6 @@ export const DashboardPage: React.FC = () => {
   const posColor = (v: number) => (v >= 0 ? '#3DD68C' : t.primaryHover);
   const pctColor = (v: number) => (v >= 100 ? '#3DD68C' : v >= 80 ? '#F59E0B' : t.primaryHover);
 
-  const filterSelectStyle: React.CSSProperties = {
-    fontSize: '13px',
-    fontWeight: 600,
-    color: t.text,
-    background: t.surfaceElevated,
-    border: `1px solid ${t.border}`,
-    borderRadius: '6px',
-    padding: '5px 26px 5px 10px',
-    cursor: 'pointer',
-    outline: 'none',
-    appearance: 'none',
-    WebkitAppearance: 'none',
-  };
-
   // ─── Fabricantes: expandir para ver a quebra por equipe/vendedor ───
   // Vendedor não tem o que abrir — já vê só o próprio número.
   const canDrilldownFabricante = role !== 'VENDEDOR';
@@ -420,46 +407,24 @@ export const DashboardPage: React.FC = () => {
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
           {canFilterEquipe && (
-            <div style={{ position: 'relative' }}>
-              <select
-                value={selectedEquipe}
-                onChange={(e) => setSelectedEquipe(e.target.value)}
-                style={filterSelectStyle}
-              >
-                <option value="">Todas as equipes</option>
-                {(filterOptions?.equipes || []).map((eq) => (
-                  <option key={eq} value={eq}>
-                    {eq}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown
-                size={13}
-                color={t.textMuted}
-                style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}
-              />
-            </div>
+            <SingleSelectFilter
+              label="Equipe"
+              options={(filterOptions?.equipes || []).map((eq) => ({ value: eq, label: eq }))}
+              value={selectedEquipe}
+              onChange={setSelectedEquipe}
+              placeholder="Todas as equipes"
+              allLabel="Todas as equipes"
+            />
           )}
           {canFilterVendedor && (
-            <div style={{ position: 'relative' }}>
-              <select
-                value={selectedVendedor}
-                onChange={(e) => setSelectedVendedor(e.target.value)}
-                style={filterSelectStyle}
-              >
-                <option value="">Todos os vendedores</option>
-                {vendedorOptions.map((v) => (
-                  <option key={v.codVendedor} value={v.codVendedor}>
-                    {v.nome}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown
-                size={13}
-                color={t.textMuted}
-                style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}
-              />
-            </div>
+            <SingleSelectFilter
+              label="Vendedor"
+              options={vendedorOptions.map((v) => ({ value: v.codVendedor, label: v.nome }))}
+              value={selectedVendedor}
+              onChange={setSelectedVendedor}
+              placeholder="Todos os vendedores"
+              allLabel="Todos os vendedores"
+            />
           )}
           <ExportExcelButton getSheets={handleExport} fileName={`dashboard-${selectedPeriod}`} />
         </div>

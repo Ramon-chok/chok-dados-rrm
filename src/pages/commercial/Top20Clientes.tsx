@@ -2,19 +2,20 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 import { useGlobalFilter } from '../../context/GlobalFilterContext';
-import { PeriodSelector } from '../../components/common/PeriodSelector';
 import { ExportExcelButton } from '../../components/common/ExportExcelButton';
 import { EmptyBlock, ErrorBlock, LoadingBlock } from '../../components/common/DataState';
+import { SingleSelectFilter } from '../../components/common/SingleSelectFilter';
 import {
   fetchTop20Customers,
   fetchDashboardFilterOptions,
   Top20ClienteRow,
   DashboardFilterOptions,
 } from '../../lib/api';
-import { ChevronDown } from 'lucide-react';
 
 const fmt = (v: number) => `R$ ${v.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}`;
 const fmtPct = (v: number) => `${v.toFixed(1)}%`;
+const fmtDate = (v: string | null) => (v ? new Date(v).toLocaleDateString('pt-BR') : '—');
+const crescColor = (v: number, t: any) => (v >= 0 ? '#3DD68C' : t.complementaryRed);
 
 export const Top20ClientesPage: React.FC = () => {
   const { t } = useTheme();
@@ -22,15 +23,13 @@ export const Top20ClientesPage: React.FC = () => {
   const { selectedPeriod, startDate, endDate, ano, mes, periodType } = useGlobalFilter();
 
   const role = currentUser?.role;
-  // Admin/Gerência: veem tudo e filtram por gerência, equipe ou vendedor.
-  // Supervisor: só a própria equipe (travada no backend), podendo filtrar
-  // por vendedor dela — inicialmente (sem filtro) vê todos os dados da
-  // equipe. Vendedor: só os próprios registros, sem filtro nenhum.
-  const canFilterGerenciaEquipe = role === 'ADMIN' || role === 'GERENTE';
+  // Mesmo critério do Dashboard: Admin/Gerência podem escolher equipe e
+  // vendedor livremente; Supervisor só escolhe vendedor (equipe já é a dele,
+  // travada no backend); Vendedor não tem filtro (só vê os próprios dados).
+  const canFilterEquipe = role === 'ADMIN' || role === 'GERENTE';
   const canFilterVendedor = role === 'ADMIN' || role === 'GERENTE' || role === 'SUPERVISOR';
 
   const [filterOptions, setFilterOptions] = useState<DashboardFilterOptions | null>(null);
-  const [selectedGerencia, setSelectedGerencia] = useState('');
   const [selectedEquipe, setSelectedEquipe] = useState('');
   const [selectedVendedor, setSelectedVendedor] = useState('');
 
@@ -39,7 +38,7 @@ export const Top20ClientesPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!canFilterGerenciaEquipe && !canFilterVendedor) return;
+    if (!canFilterEquipe && !canFilterVendedor) return;
     let mounted = true;
     (async () => {
       try {
@@ -77,8 +76,7 @@ export const Top20ClientesPage: React.FC = () => {
           mes: periodType === 'mensal' ? mes : undefined,
           start: startDate || undefined,
           end: endDate || undefined,
-          gerencia: canFilterGerenciaEquipe && selectedGerencia ? selectedGerencia : undefined,
-          equipe: canFilterGerenciaEquipe && selectedEquipe ? selectedEquipe : undefined,
+          equipe: canFilterEquipe && selectedEquipe ? selectedEquipe : undefined,
           vendedor: canFilterVendedor && selectedVendedor ? selectedVendedor : undefined,
         });
         if (mounted) setRows(res);
@@ -91,12 +89,13 @@ export const Top20ClientesPage: React.FC = () => {
     return () => {
       mounted = false;
     };
-  }, [ano, mes, startDate, endDate, periodType, canFilterGerenciaEquipe, canFilterVendedor, selectedGerencia, selectedEquipe, selectedVendedor]);
+  }, [ano, mes, startDate, endDate, periodType, canFilterEquipe, canFilterVendedor, selectedEquipe, selectedVendedor]);
 
   const handleExport = () => [
     {
       sheetName: 'Top 20 Clientes',
       data: rows.map((r) => ({
+        'Data Referência': fmtDate(r.dataReferencia),
         Nível: r.nivel,
         Gerência: r.gerencia,
         Equipe: r.equipe,
@@ -115,20 +114,6 @@ export const Top20ClientesPage: React.FC = () => {
       })),
     },
   ];
-
-  const filterSelectStyle: React.CSSProperties = {
-    fontSize: '13px',
-    fontWeight: 600,
-    color: t.text,
-    background: t.surfaceElevated,
-    border: `1px solid ${t.border}`,
-    borderRadius: '6px',
-    padding: '5px 26px 5px 10px',
-    cursor: 'pointer',
-    outline: 'none',
-    appearance: 'none',
-    WebkitAppearance: 'none',
-  };
 
   const thStyle: React.CSSProperties = {
     padding: '10px 12px',
@@ -173,69 +158,25 @@ export const Top20ClientesPage: React.FC = () => {
           </p>
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-          <PeriodSelector />
-          {canFilterGerenciaEquipe && (
-            <div style={{ position: 'relative' }}>
-              <select
-                value={selectedGerencia}
-                onChange={(e) => setSelectedGerencia(e.target.value)}
-                style={filterSelectStyle}
-              >
-                <option value="">Todas as gerências</option>
-                {(filterOptions?.gerencias || []).map((g) => (
-                  <option key={g} value={g}>
-                    {g}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown
-                size={13}
-                color={t.textMuted}
-                style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}
-              />
-            </div>
-          )}
-          {canFilterGerenciaEquipe && (
-            <div style={{ position: 'relative' }}>
-              <select
-                value={selectedEquipe}
-                onChange={(e) => setSelectedEquipe(e.target.value)}
-                style={filterSelectStyle}
-              >
-                <option value="">Todas as equipes</option>
-                {(filterOptions?.equipes || []).map((eq) => (
-                  <option key={eq} value={eq}>
-                    {eq}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown
-                size={13}
-                color={t.textMuted}
-                style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}
-              />
-            </div>
+          {canFilterEquipe && (
+            <SingleSelectFilter
+              label="Equipe"
+              options={(filterOptions?.equipes || []).map((eq) => ({ value: eq, label: eq }))}
+              value={selectedEquipe}
+              onChange={setSelectedEquipe}
+              placeholder="Todas as equipes"
+              allLabel="Todas as equipes"
+            />
           )}
           {canFilterVendedor && (
-            <div style={{ position: 'relative' }}>
-              <select
-                value={selectedVendedor}
-                onChange={(e) => setSelectedVendedor(e.target.value)}
-                style={filterSelectStyle}
-              >
-                <option value="">Todos os vendedores</option>
-                {vendedorOptions.map((v) => (
-                  <option key={v.codVendedor} value={v.codVendedor}>
-                    {v.nome}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown
-                size={13}
-                color={t.textMuted}
-                style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}
-              />
-            </div>
+            <SingleSelectFilter
+              label="Vendedor"
+              options={vendedorOptions.map((v) => ({ value: v.codVendedor, label: v.nome }))}
+              value={selectedVendedor}
+              onChange={setSelectedVendedor}
+              placeholder="Todos os vendedores"
+              allLabel="Todos os vendedores"
+            />
           )}
           <ExportExcelButton getSheets={handleExport} fileName="top-20-clientes" />
         </div>
@@ -247,10 +188,11 @@ export const Top20ClientesPage: React.FC = () => {
 
       {!loading && !error && rows.length > 0 && (
         <div style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 12, overflow: 'hidden' }}>
-          <div style={{ overflowX: 'auto', maxHeight: 640 }}>
+          <div style={{ overflow: 'auto', maxHeight: 640 }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr>
+                  <th style={thStyle}>Data Referência</th>
                   <th style={thStyle}>Nível</th>
                   <th style={thStyle}>Gerência</th>
                   <th style={thStyle}>Equipe</th>
@@ -273,6 +215,7 @@ export const Top20ClientesPage: React.FC = () => {
                     onMouseEnter={(e) => (e.currentTarget.style.background = t.surfaceElevated)}
                     onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                   >
+                    <td style={{ ...tdStyle, color: t.textMuted }}>{fmtDate(r.dataReferencia)}</td>
                     <td style={tdStyle}>{r.nivel || '—'}</td>
                     <td style={{ ...tdStyle, color: t.textSecondary }}>{r.gerencia || '—'}</td>
                     <td style={{ ...tdStyle, color: t.textSecondary }}>{r.equipe || '—'}</td>
@@ -284,7 +227,7 @@ export const Top20ClientesPage: React.FC = () => {
                     <td className="num" style={{ ...tdStyle, textAlign: 'right' }}>{fmt(r.trimestre26)}</td>
                     <td
                       className="num"
-                      style={{ ...tdStyle, textAlign: 'right', fontWeight: 700, color: r.pctCrescTrimestre >= 0 ? '#3DD68C' : t.primaryHover }}
+                      style={{ ...tdStyle, textAlign: 'right', fontWeight: 700, color: crescColor(r.pctCrescTrimestre, t) }}
                     >
                       {fmtPct(r.pctCrescTrimestre)}
                     </td>
@@ -292,7 +235,7 @@ export const Top20ClientesPage: React.FC = () => {
                     <td className="num" style={{ ...tdStyle, textAlign: 'right' }}>{fmt(r.mes26)}</td>
                     <td
                       className="num"
-                      style={{ ...tdStyle, textAlign: 'right', fontWeight: 700, color: r.pctCrescMes >= 0 ? '#3DD68C' : t.primaryHover }}
+                      style={{ ...tdStyle, textAlign: 'right', fontWeight: 700, color: crescColor(r.pctCrescMes, t) }}
                     >
                       {fmtPct(r.pctCrescMes)}
                     </td>
