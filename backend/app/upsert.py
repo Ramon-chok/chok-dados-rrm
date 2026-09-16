@@ -108,6 +108,57 @@ def _dedupe_by_key(rows: list[MappedRow], key_columns: tuple[str, ...]) -> list[
     return list(deduped.values())
 
 
+def _replace_snapshot_rows(
+    conn: Connection,
+    cfg: ImportTypeConfig,
+    rows: list[MappedRow],
+    importacao_id: int,
+    data_importacao: datetime,
+    snapshot: SnapshotContext,
+) -> UpsertOutcome:
+    """Para planilhas onde a mesma combinação de key_columns pode se repetir
+    legitimamente (ex.: o mesmo cliente aparecendo mais de uma vez na mesma
+    aba) — em vez de UPSERT por chave (que exigiria descartar duplicatas),
+    apaga o snapshot inteiro da data_referencia e regrava TODAS as linhas do
+    arquivo, uma a uma, exatamente como constam nele.
+    """
+    value_columns = [c.name for c in cfg.columns]
+    extra_columns: list[str] = []
+    if cfg.snapshot:
+        extra_columns.extend(["data_referencia", "mes_referencia", "ano_referencia"])
+    if cfg.tracks_import:
+        extra_columns.extend(["data_importacao", "importacao_id"])
+    insert_columns = [*value_columns, *extra_columns]
+
+    conn.execute(f"DELETE FROM {cfg.table} WHERE data_referencia = %s", (snapshot.data_referencia,))
+
+    novos = 0
+    for i in range(0, len(rows), CHUNK_SIZE):
+        chunk = rows[i : i + CHUNK_SIZE]
+        params: list[Any] = []
+        tuples: list[str] = []
+
+        for row in chunk:
+            row_params: list[Any] = [row.values.get(c) for c in value_columns]
+            if cfg.snapshot:
+                row_params.extend(
+                    [snapshot.data_referencia, snapshot.mes_referencia, snapshot.ano_referencia]
+                )
+            if cfg.tracks_import:
+                row_params.extend([data_importacao, importacao_id])
+
+            placeholders = ", ".join(["%s"] * len(row_params))
+            tuples.append(f"({placeholders})")
+            params.extend(row_params)
+
+        sql = f"INSERT INTO {cfg.table} ({', '.join(insert_columns)}) VALUES {', '.join(tuples)}"
+        conn.execute(sql, params)
+        novos += len(chunk)
+        conn.commit()
+
+    return UpsertOutcome(novos=novos, atualizados=0)
+
+
 def upsert_rows(
     conn: Connection,
     cfg: ImportTypeConfig,
@@ -118,6 +169,10 @@ def upsert_rows(
 ) -> UpsertOutcome:
     if not rows:
         return UpsertOutcome(0, 0)
+
+    if cfg.replace_snapshot_rows:
+        assert snapshot is not None, "replace_snapshot_rows requer snapshot=True"
+        return _replace_snapshot_rows(conn, cfg, rows, importacao_id, data_importacao, snapshot)
 
     rows = _dedupe_by_key(rows, cfg.key_columns)
 

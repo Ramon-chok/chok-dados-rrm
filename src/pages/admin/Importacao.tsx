@@ -111,20 +111,6 @@ const IMPORT_TYPES: ImportTypeOption[] = [
           'mes_26',
           'pct_cresc_mes',
         ],
-        // Regra do negócio: nesta aba só ficam visíveis a coluna de
-        // identificação do cliente (código ou Cliente/Redes) e as colunas
-        // de trimestre, mês e percentual — o restante (nível, gerência,
-        // equipe, vendedor, pasta) continua sendo lido, só não é exibido.
-        visibleColumns: [
-          'cod_cliente',
-          'cliente_redes',
-          'trimestre_25',
-          'trimestre_26',
-          'pct_cresc_trimestre',
-          'mes_25',
-          'mes_26',
-          'pct_cresc_mes',
-        ],
         headerHints: {
           nivel: 'Nível',
           gerencia: 'Gerências',
@@ -150,14 +136,32 @@ const IMPORT_TYPES: ImportTypeOption[] = [
         key: 'top_clientes',
         sheetName: 'top_clientes',
         label: 'Top Clientes (Venda Total no Mês)',
-        columns: ['cod_cliente', 'cliente', 'venda_total_mes'],
+        // gerencia/equipe/cod_vendedor/nome_vendedor vêm junto para o
+        // Dashboard poder filtrar o Top 10 Clientes por equipe/vendedor
+        // (Gerência vê a empresa toda, Supervisor só a própria equipe,
+        // Vendedor só os clientes associados a ele).
+        columns: [
+          'gerencia',
+          'equipe',
+          'cod_vendedor',
+          'nome_vendedor',
+          'cod_cliente',
+          'cliente',
+          'municipio',
+          'venda_total_mes',
+        ],
         // Na planilha real desta aba, as 3 primeiras linhas são filtros da
         // tabela dinâmica (tp_ped / dt_ped) — o cabeçalho de verdade só
         // aparece na linha 4.
         headerRow: 4,
         headerHints: {
+          gerencia: 'descrição gerência',
+          equipe: 'nome da equipe',
+          cod_vendedor: 'cd_vend',
+          nome_vendedor: 'nome vendedor',
           cod_cliente: 'cd_clien',
           cliente: 'razão social',
+          municipio: 'municipio',
           venda_total_mes: 'Soma de vl_venda',
         },
       },

@@ -227,6 +227,70 @@ CREATE TABLE IF NOT EXISTS indicadores_positivacao (
 CREATE INDEX IF NOT EXISTS idx_ind_pos_periodo ON indicadores_positivacao(ano_referencia, mes_referencia);
 CREATE INDEX IF NOT EXISTS idx_ind_pos_vendedor ON indicadores_positivacao(cod_vendedor, data_referencia);
 
+-- Planilha "Top Clientes" — aba "top_20_clientes": ranking de clientes por
+-- vendedor/equipe/gerência, comparando trimestre e mês.
+-- PK é um "id" próprio (não a combinação de negócio) porque a mesma
+-- combinação data/vendedor/cliente pode se repetir legitimamente na
+-- planilha — cada reimportação apaga e regrava o dia inteiro (ver
+-- replace_snapshot_rows em app.import_types / app.upsert), preservando
+-- toda e qualquer duplicata exatamente como consta no arquivo.
+CREATE TABLE IF NOT EXISTS top_20_clientes (
+  id                   BIGSERIAL PRIMARY KEY,
+  data_referencia      DATE NOT NULL,
+  cod_vendedor         TEXT NOT NULL,
+  nivel                TEXT,
+  gerencia             TEXT,
+  equipe               TEXT,
+  nome_vendedor        TEXT,
+  pasta                TEXT,
+  cod_cliente          TEXT NOT NULL,
+  cliente_redes        TEXT,
+  trimestre_25         NUMERIC(14,2),
+  trimestre_26         NUMERIC(14,2),
+  pct_cresc_trimestre  NUMERIC(6,2),
+  mes_25               NUMERIC(14,2),
+  mes_26               NUMERIC(14,2),
+  pct_cresc_mes        NUMERIC(6,2),
+  mes_referencia       INT NOT NULL,
+  ano_referencia       INT NOT NULL,
+  data_importacao      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  importacao_id        BIGINT
+);
+CREATE INDEX IF NOT EXISTS idx_top20_data ON top_20_clientes(data_referencia);
+CREATE INDEX IF NOT EXISTS idx_top20_periodo ON top_20_clientes(ano_referencia, mes_referencia);
+CREATE INDEX IF NOT EXISTS idx_top20_vendedor ON top_20_clientes(cod_vendedor, data_referencia);
+
+-- Planilha "Top Clientes" — aba "top_clientes": venda total no mês por
+-- cliente. Alimenta o Top 10 Clientes do Dashboard (gerencia/equipe/
+-- cod_vendedor vêm junto para poder filtrar por escopo do usuário). Mesmo
+-- motivo do "id" próprio: um cod_cliente pode se repetir na planilha e
+-- nenhuma linha pode ser descartada.
+CREATE TABLE IF NOT EXISTS top_clientes (
+  id                BIGSERIAL PRIMARY KEY,
+  data_referencia   DATE NOT NULL,
+  cod_cliente       TEXT NOT NULL,
+  gerencia          TEXT,
+  equipe            TEXT,
+  cod_vendedor      TEXT,
+  nome_vendedor     TEXT,
+  cliente           TEXT,
+  municipio         TEXT,
+  venda_total_mes   NUMERIC(14,2),
+  mes_referencia    INT NOT NULL,
+  ano_referencia    INT NOT NULL,
+  data_importacao   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  importacao_id     BIGINT
+);
+-- Bancos já existentes: CREATE IF NOT EXISTS não adiciona colunas novas.
+ALTER TABLE top_clientes ADD COLUMN IF NOT EXISTS gerencia TEXT;
+ALTER TABLE top_clientes ADD COLUMN IF NOT EXISTS equipe TEXT;
+ALTER TABLE top_clientes ADD COLUMN IF NOT EXISTS cod_vendedor TEXT;
+ALTER TABLE top_clientes ADD COLUMN IF NOT EXISTS nome_vendedor TEXT;
+ALTER TABLE top_clientes ADD COLUMN IF NOT EXISTS municipio TEXT;
+CREATE INDEX IF NOT EXISTS idx_top_clientes_data ON top_clientes(data_referencia);
+CREATE INDEX IF NOT EXISTS idx_top_clientes_periodo ON top_clientes(ano_referencia, mes_referencia);
+CREATE INDEX IF NOT EXISTS idx_top_clientes_vendedor ON top_clientes(cod_vendedor, data_referencia);
+
 CREATE TABLE IF NOT EXISTS importacoes (
   id               BIGSERIAL PRIMARY KEY,
   tipo             TEXT NOT NULL,

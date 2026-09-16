@@ -27,6 +27,14 @@ class ImportTypeConfig:
     # transacionais (vendas, metas, visitas) e os indicadores diários (snapshot)
     # têm essas colunas de auditoria. Ver app.upsert.upsert_rows.
     tracks_import: bool = True
+    # Quando True, a planilha pode legitimamente repetir a mesma combinação
+    # de key_columns (ex.: o mesmo cliente aparecendo mais de uma vez na
+    # mesma aba) — nesse caso NÃO se faz UPSERT por chave nem se descarta
+    # duplicata nenhuma. Em vez disso, cada importação apaga o snapshot
+    # inteiro da data_referencia e regrava todas as linhas do arquivo,
+    # exatamente como constam nele. Requer snapshot=True e uma PK própria
+    # (id) na tabela, já que key_columns deixa de servir de chave única.
+    replace_snapshot_rows: bool = False
 
 
 IMPORT_TYPE_CONFIGS: dict[str, ImportTypeConfig] = {
@@ -215,6 +223,51 @@ IMPORT_TYPE_CONFIGS: dict[str, ImportTypeConfig] = {
             ImportColumn("cobertura", "numeric"),
             ImportColumn("realizado_cobertura", "numeric"),
             ImportColumn("pct_margem", "numeric"),
+        ),
+    ),
+    # Top Clientes — aba "top_20_clientes": ranking por vendedor/equipe/gerência.
+    "top_clientes__top_20_clientes": ImportTypeConfig(
+        id="top_clientes__top_20_clientes",
+        label='Top Clientes — Top 20 (aba "top_20_clientes")',
+        table="top_20_clientes",
+        key_columns=("data_referencia", "cod_vendedor", "cod_cliente"),
+        snapshot=True,
+        replace_snapshot_rows=True,
+        columns=(
+            ImportColumn("cod_vendedor", "text"),
+            ImportColumn("nivel", "text"),
+            ImportColumn("gerencia", "text"),
+            ImportColumn("equipe", "text"),
+            ImportColumn("nome_vendedor", "text"),
+            ImportColumn("pasta", "text"),
+            ImportColumn("cod_cliente", "text"),
+            ImportColumn("cliente_redes", "text"),
+            ImportColumn("trimestre_25", "numeric"),
+            ImportColumn("trimestre_26", "numeric"),
+            ImportColumn("pct_cresc_trimestre", "numeric"),
+            ImportColumn("mes_25", "numeric"),
+            ImportColumn("mes_26", "numeric"),
+            ImportColumn("pct_cresc_mes", "numeric"),
+        ),
+    ),
+    # Top Clientes — aba "top_clientes": venda total no mês por cliente.
+    # Alimenta o Top 10 Clientes do Dashboard.
+    "top_clientes__top_clientes": ImportTypeConfig(
+        id="top_clientes__top_clientes",
+        label='Top Clientes — Venda Total no Mês (aba "top_clientes")',
+        table="top_clientes",
+        key_columns=("data_referencia", "cod_cliente"),
+        snapshot=True,
+        replace_snapshot_rows=True,
+        columns=(
+            ImportColumn("gerencia", "text"),
+            ImportColumn("equipe", "text"),
+            ImportColumn("cod_vendedor", "text"),
+            ImportColumn("nome_vendedor", "text"),
+            ImportColumn("cod_cliente", "text"),
+            ImportColumn("cliente", "text"),
+            ImportColumn("municipio", "text"),
+            ImportColumn("venda_total_mes", "numeric"),
         ),
     ),
     "indicadores_positivacao": ImportTypeConfig(

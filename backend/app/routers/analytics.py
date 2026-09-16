@@ -167,39 +167,37 @@ def dashboard(
             fab_params,
         ).fetchall()
 
+        # Top Clientes vem da planilha "Top Clientes" (aba "top_clientes",
+        # venda total no mês por cliente) — não da tabela `vendas` (que não
+        # tem importação implementada ainda). tc.equipe vem junto na
+        # importação, mas — como em indicadores_fabricante — prefere-se a
+        # equipe resolvida via `vendedores` (fonte confiável) quando existir,
+        # com fallback para o valor já importado.
         top_params: list[Any] = []
         top_parts = ["1=1"]
-        if start:
-            top_parts.append("v.data_emissao >= %s")
-            top_params.append(start)
-        if end:
-            top_parts.append("v.data_emissao <= %s")
-            top_params.append(end)
-        if ano and mes:
-            top_parts.append("EXTRACT(YEAR FROM v.data_emissao) = %s")
-            top_params.append(ano)
-            top_parts.append("EXTRACT(MONTH FROM v.data_emissao) = %s")
-            top_params.append(mes)
+        top_period = _period_clause("tc", ano, mes, start, end, top_params)
+        if top_period:
+            top_parts.append(top_period.replace(" AND ", "", 1))
         if eff_vendedor:
-            top_parts.append("v.cod_vendedor = %s")
+            top_parts.append("tc.cod_vendedor = %s")
             top_params.append(eff_vendedor)
         if eff_equipe:
-            top_parts.append("ve.equipe = %s")
+            top_parts.append("COALESCE(tv.equipe, tc.equipe) = %s")
             top_params.append(eff_equipe)
         top_clientes = conn.execute(
             f"""
-            SELECT COALESCE(c.razao_social, v.cod_cliente) AS nome,
-                   ve.equipe,
+            SELECT COALESCE(c.razao_social, tc.cliente, tc.cod_cliente) AS nome,
+                   COALESCE(tv.equipe, tc.equipe) AS equipe,
                    -- Uma "rede" agrupa vários cod_cliente sob o mesmo nome
                    -- comercial: se qualquer código do grupo estiver marcado
                    -- como rede, o grupo inteiro é tratado como rede (não faz
                    -- sentido expor um único código nesse caso).
                    BOOL_OR(COALESCE(c.e_rede, false)) AS e_rede,
-                   MIN(v.cod_cliente) AS codigo,
-                   COALESCE(SUM(v.valor_total), 0) AS valor
-            FROM vendas v
-            LEFT JOIN clientes c ON c.cod_cliente = v.cod_cliente
-            LEFT JOIN vendedores ve ON ve.cod_vendedor = v.cod_vendedor
+                   MIN(tc.cod_cliente) AS codigo,
+                   COALESCE(SUM(tc.venda_total_mes), 0) AS valor
+            FROM top_clientes tc
+            LEFT JOIN clientes c ON c.cod_cliente = tc.cod_cliente
+            LEFT JOIN vendedores tv ON tv.cod_vendedor = tc.cod_vendedor
             WHERE {" AND ".join(top_parts)}
             GROUP BY 1, 2
             ORDER BY valor DESC
