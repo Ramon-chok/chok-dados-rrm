@@ -355,6 +355,85 @@ const IMPORT_TYPES: ImportTypeOption[] = [
       },
     ],
   },
+  {
+    id: 'raiox',
+    label: 'Raio-X',
+    description: 'Raio-X fornecido pelo SAR para acompanhamento diário de vendedores',
+    templateFile: '/templates/importacao/raiox.xlsx',
+    sheets: [
+      {
+        key: 'raiox',
+        sheetName: 'Acompanhamento',
+        label: 'Acompanhamento',
+
+        columns: [
+          'cod_vendedor',
+          'vendedor',
+          'equipe',
+
+          'semanas_ativas',
+          'dia_semana',
+
+          'visitas_previstas',
+          'visitas_realizadas',
+          'visitas_fora_rota',
+          'perc_gps',
+
+          'apontamentos_inconsistencia',
+          'revistas_pedidos',
+          'positivacao',
+          'perc_positivacao',
+
+          'vendas',
+          'faturamento',
+
+          'hora_inicio',
+          'hora_check_in',
+          'hora_check_out',
+          'hora_ultimo_pedido',
+          'hora_fim',
+
+          'acumulado_visitas',
+          'acumulado_visitas_realizadas',
+          'acumulado_positivacao',
+          'acumulado_pedidos'
+        ],
+
+        headerHints: {
+          cod_vendedor: 'CODIGO',
+          vendedor: 'VENDEDOR',
+          equipe: 'EQUIPE',
+
+          semanas_ativas: 'Semanas Ativas',
+          dia_semana: 'Dia Semana',
+
+          visitas_previstas: 'REVIST.',
+          visitas_realizadas: 'REALIZADA',
+          visitas_fora_rota: 'DE ROTA',
+          perc_gps: '% GPS',
+
+          apontamentos_inconsistencia: 'APONTAMENTOS/INCONSISTÊNCIA',
+          revistas_pedidos: 'REVIST./PEDIDOS',
+          positivacao: 'POSITIVAÇÃO',
+          perc_positivacao: '%',
+
+          vendas: 'VENDAS',
+          faturamento: 'R$',
+
+          hora_inicio: 'Início',
+          hora_check_in: 'Check-in',
+          hora_check_out: 'Check-out',
+          hora_ultimo_pedido: 'Último pedido',
+          hora_fim: 'EM PONTO',
+
+          acumulado_visitas: 'VISITAS',
+          acumulado_visitas_realizadas: 'REALIZADA',
+          acumulado_positivacao: 'POSITIVAÇÃO',
+          acumulado_pedidos: 'PEDIDOS'
+        }
+      },
+    ],
+  },
 ];
 
 interface HistoryItem {

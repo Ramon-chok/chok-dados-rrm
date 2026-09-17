@@ -435,3 +435,37 @@ CREATE TABLE IF NOT EXISTS importacoes_erros (
   motivo         TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_importacoes_erros_importacao ON importacoes_erros(importacao_id);
+
+CREATE TABLE IF NOT EXISTS raiox (
+  data_referencia     DATE NOT NULL,
+  cod_vendedor        TEXT NOT NULL,
+  vendedor            TEXT,
+  equipe              TEXT,
+  semanas_ativas      INT,
+  dia_semana          TEXT,
+  visitas_previstas   INT,
+  visitas_realizadas  INT,
+  visitas_fora_rota   INT,
+  perc_gps            NUMERIC,
+  apontamentos_inconsistencia INT,
+  revistas_pedidos    INT,
+  positivacao         INT,
+  perc_positivacao    NUMERIC,
+  vendas              INT,
+  faturamento         NUMERIC,
+  hora_inicio         TIME,
+  hora_check_in       TIME,
+  hora_check_out      TIME,
+  hora_ultimo_pedido  TIME,
+  hora_fim            TIME,
+  acumulado_visitas   INT,
+  acumulado_visitas_realizadas INT,
+  acumulado_positivacao INT,
+  acumulado_pedidos   INT,
+  mes_referencia      INT NOT NULL,
+  ano_referencia      INT NOT NULL,
+  data_importacao     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  importacao_id       BIGINT,
+  PRIMARY KEY (data_referencia, cod_vendedor, mes_referencia, ano_referencia)
+);
+CREATE INDEX IF NOT EXISTS idx_raiox_periodo ON raiox(ano_referencia, mes_referencia);
