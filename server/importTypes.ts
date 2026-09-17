@@ -453,7 +453,7 @@ export const IMPORT_TYPE_CONFIGS: Record<string, ImportTypeConfig> = {
   raiox: {
     id: 'raiox',
     label: 'Raio-X — Acompanhamento',
-    table: 'Acompanhamento',
+    table: 'raiox',
     keyColumns: ['data_referencia', 'cod_vendedor'],
     snapshot: true,
     columns: [
@@ -466,7 +466,8 @@ export const IMPORT_TYPE_CONFIGS: Record<string, ImportTypeConfig> = {
       { name: 'visitas_fora_rota', kind: 'integer' },
       { name: 'perc_gps', kind: 'numeric' },
 
-      { name: 'apontamentos_inconsistencia', kind: 'integer' },
+      // Texto livre na planilha real (ex.: "Setor vago", observações).
+      { name: 'apontamentos_inconsistencia', kind: 'text' },
       { name: 'positiva_prevista', kind: 'integer' },
       { name: 'pedidos', kind: 'integer' },
       { name: 'perc_positivacao', kind: 'numeric' },

@@ -362,7 +362,9 @@ const IMPORT_TYPES: ImportTypeOption[] = [
     templateFile: '/templates/importacao/raiox.xlsx',
     sheets: [
       {
-        key: 'Acompanhamento',
+        // key interna usada no payload (tipo = "raiox" ou "raiox__raiox").
+        // O nome da aba no Excel continua sendo "Acompanhamento".
+        key: 'raiox',
         sheetName: 'Acompanhamento',
         label: 'Acompanhamento',
 

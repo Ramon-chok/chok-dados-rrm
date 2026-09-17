@@ -5,18 +5,35 @@
 
 export type ParseResult<T> = { ok: true; value: T | null } | { ok: false; error: string };
 
+const EXCEL_ERROR_RE =
+  /^#(DIV\/0!|N\/?A|VALUE!|REF!|NAME\?|NUM!|NULL!|CALC!|SPILL!|GETTING_DATA)$/i;
+const NON_FINITE_TEXT = new Set([
+  'nan',
+  'inf',
+  '+inf',
+  '-inf',
+  'infinity',
+  '+infinity',
+  '-infinity',
+]);
+
 export function parseNumeric(raw: unknown): ParseResult<number> {
   if (raw === undefined || raw === null || raw === '') return { ok: true, value: null };
   if (typeof raw === 'number') {
-    if (Number.isNaN(raw)) return { ok: false, error: 'valor numérico inválido' };
+    // Planilhas com #DIV/0! / #N/A frequentemente chegam como ±Infinity ou NaN
+    // via SheetJS — rejeitar a linha em vez de derrubar a importação.
+    if (!Number.isFinite(raw)) return { ok: false, error: `valor numérico inválido: "${raw}"` };
     return { ok: true, value: raw };
   }
   const s = String(raw).trim();
   if (s === '') return { ok: true, value: null };
+  if (EXCEL_ERROR_RE.test(s) || NON_FINITE_TEXT.has(s.toLowerCase())) {
+    return { ok: false, error: `valor numérico inválido: "${raw}"` };
+  }
   // Aceita formato BR (1.234,56) e formato simples (1234.56)
   const normalized = /,\d{1,2}$/.test(s) ? s.replace(/\./g, '').replace(',', '.') : s.replace(/,/g, '');
   const n = Number(normalized.replace(/[R$\s%]/g, ''));
-  if (Number.isNaN(n)) return { ok: false, error: `valor numérico inválido: "${raw}"` };
+  if (!Number.isFinite(n)) return { ok: false, error: `valor numérico inválido: "${raw}"` };
   return { ok: true, value: n };
 }
 
@@ -24,6 +41,7 @@ export function parseInteger(raw: unknown): ParseResult<number> {
   const res = parseNumeric(raw);
   if (!res.ok) return res;
   if (res.value === null) return { ok: true, value: null };
+  if (!Number.isFinite(res.value)) return { ok: false, error: `valor inteiro inválido: "${raw}"` };
   return { ok: true, value: Math.trunc(res.value) };
 }
 

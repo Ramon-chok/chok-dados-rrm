@@ -455,7 +455,7 @@ IMPORT_TYPE_CONFIGS: dict[str, ImportTypeConfig] = {
     "raiox": ImportTypeConfig(
         id="raiox",
         label="Raio-X — Acompanhamento",
-        table="Acompanhamento",
+        table="raiox",
         key_columns=("data_referencia", "cod_vendedor"),
         snapshot=True,
         columns=(
@@ -466,7 +466,7 @@ IMPORT_TYPE_CONFIGS: dict[str, ImportTypeConfig] = {
             ImportColumn("visitas_realizadas", "integer"),
             ImportColumn("visitas_fora_rota", "integer"),
             ImportColumn("perc_gps", "numeric"),
-            ImportColumn("apontamentos_inconsistencia", "integer"),
+            ImportColumn("apontamentos_inconsistencia", "text"),
             ImportColumn("positiva_prevista", "integer"),
             ImportColumn("pedidos", "integer"),
             ImportColumn("perc_positivacao", "numeric"),

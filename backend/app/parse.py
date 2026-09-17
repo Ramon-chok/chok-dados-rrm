@@ -16,27 +16,37 @@ ParseResult = ParseOk[T] | ParseErr
 EXCEL_EPOCH_UTC = datetime(1899, 12, 30, tzinfo=UTC)
 
 
+_EXCEL_ERROR_RE = re.compile(r"^#(DIV/0!|N/?A|VALUE!|REF!|NAME\?|NUM!|NULL!|CALC!|SPILL!|GETTING_DATA)$", re.I)
+
+
 def parse_numeric(raw: object) -> ParseResult[float]:
     if raw is None or raw == "":
         return True, None
     if isinstance(raw, bool):
         return False, "valor numérico inválido"
     if isinstance(raw, (int, float)):
-        if isinstance(raw, float) and math.isnan(raw):
-            return False, "valor numérico inválido"
+        # Planilhas com #DIV/0! / #N/A frequentemente chegam como ±inf ou NaN
+        # via SheetJS — rejeitar em vez de derrubar a importação com OverflowError.
+        if isinstance(raw, float) and not math.isfinite(raw):
+            return False, f'valor numérico inválido: "{raw}"'
         return True, float(raw)
     s = str(raw).strip()
     if s == "":
         return True, None
+    if _EXCEL_ERROR_RE.match(s) or s.lower() in {"nan", "inf", "+inf", "-inf", "infinity", "+infinity", "-infinity"}:
+        return False, f'valor numérico inválido: "{raw}"'
     if re.search(r",\d{1,2}$", s):
         normalized = s.replace(".", "").replace(",", ".")
     else:
         normalized = s.replace(",", "")
     cleaned = re.sub(r"[R$\s%]", "", normalized)
     try:
-        return True, float(cleaned)
+        value = float(cleaned)
     except ValueError:
         return False, f'valor numérico inválido: "{raw}"'
+    if not math.isfinite(value):
+        return False, f'valor numérico inválido: "{raw}"'
+    return True, value
 
 
 def parse_integer(raw: object) -> ParseResult[int]:
@@ -45,7 +55,12 @@ def parse_integer(raw: object) -> ParseResult[int]:
         return False, value  # type: ignore[return-value]
     if value is None:
         return True, None
-    return True, int(value)
+    if not math.isfinite(value):
+        return False, f'valor inteiro inválido: "{raw}"'
+    try:
+        return True, int(value)
+    except (OverflowError, ValueError):
+        return False, f'valor inteiro inválido: "{raw}"'
 
 
 def parse_date_only(raw: object) -> ParseResult[str]:

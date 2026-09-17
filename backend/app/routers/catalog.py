@@ -760,7 +760,11 @@ def sar_raiox(
               COALESCE(SUM(r.visitas_realizadas), 0) AS visitas_realizadas,
               COALESCE(SUM(r.visitas_fora_rota), 0) AS visitas_fora_rota,
               AVG(r.perc_gps) AS perc_gps,
-              COALESCE(SUM(r.apontamentos_inconsistencia), 0) AS apontamentos_inconsistencia,
+              -- Campo textual (não contagem): no período junta textos distintos.
+              NULLIF(
+                string_agg(DISTINCT NULLIF(BTRIM(r.apontamentos_inconsistencia), ''), ' | '),
+                ''
+              ) AS apontamentos_inconsistencia,
               COALESCE(SUM(r.positiva_prevista), 0) AS positiva_prevista,
               COALESCE(SUM(r.pedidos), 0) AS pedidos,
               AVG(r.perc_positivacao) AS perc_positivacao,
@@ -808,7 +812,11 @@ def sar_raiox(
             "visitasRealizadas": num(r["visitas_realizadas"]),
             "visitasForaRota": num(r["visitas_fora_rota"]),
             "percGps": round(num(r["perc_gps"]), 4),
-            "apontamentosInconsistencia": num(r["apontamentos_inconsistencia"]),
+            "apontamentosInconsistencia": (
+                str(r["apontamentos_inconsistencia"]).strip()
+                if r["apontamentos_inconsistencia"] not in (None, "")
+                else None
+            ),
             "positivaPrevista": num(r["positiva_prevista"]),
             "pedidos": num(r["pedidos"]),
             "percPositivacao": round(num(r["perc_positivacao"]), 4),

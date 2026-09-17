@@ -6,7 +6,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.db import get_connection
-from app.import_types import get_import_type_config
+from app.import_types import IMPORT_TYPE_CONFIGS, get_import_type_config
 from app.parse import parse_date_only
 from app.schemas import ImportRequest, ImportResultSummary, ImportRowError
 from app.security import require_import_api_key, require_roles
@@ -28,15 +28,21 @@ def create_import(
 ) -> ImportResultSummary:
     cfg = get_import_type_config(body.tipo)
     if not cfg:
-        # Log for diagnosis
+        available = ", ".join(sorted(IMPORT_TYPE_CONFIGS.keys()))
         try:
             import logging
-            logging.getLogger('uvicorn.error').error('Unknown import tipo received: %s', body.tipo)
-            logging.getLogger('uvicorn.error').error('Available import types: %s', list(IMPORT_TYPE_CONFIGS.keys()))
-            logging.getLogger('uvicorn.error').error('Received useMacro: %s', getattr(body, 'useMacro', None))
+
+            logging.getLogger("uvicorn.error").error(
+                "Unknown import tipo received: %r | available=%s",
+                body.tipo,
+                available,
+            )
         except Exception:
             pass
-        raise HTTPException(status_code=400, detail=f'Tipo de importação desconhecido: "{body.tipo}".')
+        raise HTTPException(
+            status_code=400,
+            detail=f'Tipo de importação desconhecido: "{body.tipo}". Tipos válidos: {available}.',
+        )
 
     ok, data_referencia = parse_date_only(body.dataReferencia)
     if not ok or not data_referencia:

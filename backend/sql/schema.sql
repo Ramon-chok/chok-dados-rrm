@@ -454,7 +454,8 @@ CREATE TABLE IF NOT EXISTS raiox (
   visitas_fora_rota             INT,
   perc_gps                      NUMERIC(6,2),
 
-  apontamentos_inconsistencia   INT,
+  -- Texto livre (ex.: "Setor vago"); NÃO é contagem numérica.
+  apontamentos_inconsistencia   TEXT,
   positiva_prevista             INT,
   pedidos                       INT,
   perc_positivacao              NUMERIC(6,2),

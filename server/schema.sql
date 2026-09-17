@@ -452,7 +452,7 @@ CREATE TABLE IF NOT EXISTS raiox (
   visitas_fora_rota             INT,
   perc_gps                      NUMERIC(6,2),
 
-  apontamentos_inconsistencia   INT,
+  apontamentos_inconsistencia   TEXT,
   positiva_prevista             INT,
   pedidos                       INT,
   perc_positivacao              NUMERIC(6,2),
@@ -496,7 +496,22 @@ ALTER TABLE raiox ADD COLUMN IF NOT EXISTS visitas_previstas INT;
 ALTER TABLE raiox ADD COLUMN IF NOT EXISTS visitas_realizadas INT;
 ALTER TABLE raiox ADD COLUMN IF NOT EXISTS visitas_fora_rota INT;
 ALTER TABLE raiox ADD COLUMN IF NOT EXISTS perc_gps NUMERIC(6,2);
-ALTER TABLE raiox ADD COLUMN IF NOT EXISTS apontamentos_inconsistencia INT;
+ALTER TABLE raiox ADD COLUMN IF NOT EXISTS apontamentos_inconsistencia TEXT;
+-- Instalações antigas podem ter criado a coluna como INT — converte para TEXT.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+      FROM information_schema.columns
+     WHERE table_name = 'raiox'
+       AND column_name = 'apontamentos_inconsistencia'
+       AND data_type IN ('integer', 'bigint', 'smallint', 'numeric')
+  ) THEN
+    ALTER TABLE raiox
+      ALTER COLUMN apontamentos_inconsistencia TYPE TEXT
+      USING apontamentos_inconsistencia::text;
+  END IF;
+END $$;
 ALTER TABLE raiox ADD COLUMN IF NOT EXISTS positiva_prevista INT;
 ALTER TABLE raiox ADD COLUMN IF NOT EXISTS pedidos INT;
 ALTER TABLE raiox ADD COLUMN IF NOT EXISTS perc_positivacao NUMERIC(6,2);

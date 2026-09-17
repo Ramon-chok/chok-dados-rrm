@@ -284,7 +284,8 @@ export interface RaioXRow {
   visitasRealizadas: number;
   visitasForaRota: number;
   percGps: number;
-  apontamentosInconsistencia: number;
+  /** Texto livre da planilha (ex.: "Setor vago"); null se vazio. */
+  apontamentosInconsistencia: string | null;
   positivaPrevista: number;
   pedidos: number;
   percPositivacao: number;

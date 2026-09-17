@@ -115,7 +115,8 @@ export const RaioXPage: React.FC = () => {
         !q ||
         (r.vendedor || '').toLowerCase().includes(q) ||
         (r.codVendedor || '').toLowerCase().includes(q) ||
-        (r.equipe || '').toLowerCase().includes(q);
+        (r.equipe || '').toLowerCase().includes(q) ||
+        (r.apontamentosInconsistencia || '').toLowerCase().includes(q);
       return matchesVendedor && matchesQuery;
     });
   }, [rows, query, selectedVendedor]);
@@ -196,6 +197,7 @@ export const RaioXPage: React.FC = () => {
         'Acumulado Real.': r.acumuladoRealizadas,
         'Acumulado %': r.acumuladoPorcentagem,
         '% Positivação Acumulada': r.percPositivacaoAcumulado,
+        Apontamentos: r.apontamentosInconsistencia || '',
       })),
     },
   ];
@@ -494,6 +496,7 @@ export const RaioXPage: React.FC = () => {
                       <th colSpan={4} style={{ ...groupHeaderStyle, borderLeft: `1px solid ${t.border}` }}>Positivação</th>
                       <th colSpan={3} style={{ ...groupHeaderStyle, borderLeft: `1px solid ${t.border}` }}>Horários</th>
                       <th colSpan={4} style={{ ...groupHeaderStyle, borderLeft: `1px solid ${t.border}` }}>Acumulado</th>
+                      <th colSpan={1} style={{ ...groupHeaderStyle, borderLeft: `1px solid ${t.border}` }}>Observações</th>
                     </tr>
                     <tr>
                       <th style={colHeaderStyle}>Vendedor</th>
@@ -513,6 +516,7 @@ export const RaioXPage: React.FC = () => {
                       <th style={colHeaderStyle}>Real.</th>
                       <th style={colHeaderStyle}>%</th>
                       <th style={colHeaderStyle}>% Positiv.</th>
+                      <th style={{ ...colHeaderStyle, borderLeft: `1px solid ${t.border}` }}>Apontamentos</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -541,6 +545,20 @@ export const RaioXPage: React.FC = () => {
                         <td className="num" style={{ ...cellStyle, color: t.textMuted }}>{fmtNum(r.acumuladoRealizadas)}</td>
                         <td className="num" style={{ ...cellStyle, color: t.textMuted }}>{fmtPct(r.acumuladoPorcentagem)}</td>
                         <td className="num" style={{ ...cellStyle, color: t.textMuted }}>{fmtPct(r.percPositivacaoAcumulado)}</td>
+                        <td
+                          style={{
+                            ...cellStyle,
+                            borderLeft: `1px solid ${t.border}`,
+                            color: r.apontamentosInconsistencia ? t.text : t.textMuted,
+                            whiteSpace: 'normal',
+                            maxWidth: 280,
+                            minWidth: 140,
+                            lineHeight: 1.35,
+                          }}
+                          title={r.apontamentosInconsistencia || undefined}
+                        >
+                          {r.apontamentosInconsistencia || '—'}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
