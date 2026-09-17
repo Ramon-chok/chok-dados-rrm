@@ -30,7 +30,18 @@ interface ImportRequestBody {
   usuarioEmail?: string;
   mapping: Record<string, string>;
   rows: Record<string, unknown>[];
+  /** Índice 0-based do lote fatiado (opcional — default 0). */
+  chunkIndex?: number;
+  /** Total de lotes desta planilha/aba (opcional — default 1). */
+  totalChunks?: number;
+  /** id da importação criado no 1º lote — obrigatório a partir do 2º. */
+  importId?: number;
+  /** Deslocamento 0-based no arquivo original para numerar erros corretamente. */
+  rowOffset?: number;
 }
+
+/** Limite duro por POST — o frontend fatia planilhas pesadas abaixo deste teto. */
+const MAX_ROWS_PER_REQUEST = 2500;
 
 importsRouter.post('/', requireApiKey, async (req: Request, res: Response) => {
   const body = req.body as ImportRequestBody;
@@ -56,13 +67,30 @@ importsRouter.post('/', requireApiKey, async (req: Request, res: Response) => {
   if (!Array.isArray(body.rows) || body.rows.length === 0) {
     return res.status(400).json({ error: 'Nenhuma linha para importar.' });
   }
+  if (body.rows.length > MAX_ROWS_PER_REQUEST) {
+    return res.status(413).json({
+      error: `Lote com ${body.rows.length} linhas excede o limite de ${MAX_ROWS_PER_REQUEST} por requisição. Envie a planilha fatiada em partes.`,
+    });
+  }
   if (!body.mapping || typeof body.mapping !== 'object') {
     return res.status(400).json({ error: 'Mapeamento de colunas ausente.' });
   }
 
-  const { valid, errors } = mapAndValidateRows(cfg, body.mapping, body.rows);
+  const chunkIndex = body.chunkIndex ?? 0;
+  const totalChunks = body.totalChunks ?? 1;
+  if (chunkIndex < 0 || totalChunks < 1 || chunkIndex >= totalChunks) {
+    return res.status(400).json({ error: 'Metadados de fatiamento inválidos (chunkIndex/totalChunks).' });
+  }
+  if (chunkIndex > 0 && (body.importId === undefined || body.importId === null)) {
+    return res.status(400).json({ error: 'Lotes seguintes exigem importId retornado no primeiro lote.' });
+  }
+
+  const rowOffset = body.rowOffset ?? 0;
+  const { valid, errors } = mapAndValidateRows(cfg, body.mapping, body.rows, rowOffset);
   const dataImportacao = new Date();
   const totalLinhas = body.rows.length;
+  const clearBefore = chunkIndex === 0;
+  const isLastChunk = chunkIndex >= totalChunks - 1;
 
   // client fora do try (para o catch/finally poderem checar se chegou a
   // existir) — se pool.connect() falhar (ex: banco fora do ar, credencial
@@ -73,13 +101,30 @@ importsRouter.post('/', requireApiKey, async (req: Request, res: Response) => {
     client = await pool.connect();
     await client.query('BEGIN');
 
-    // Reserva o id do log de auditoria antes do upsert, para que cada linha
-    // gravada já saia com o importacao_id definitivo (evita um UPDATE extra
-    // de correção depois).
-    const seqResult = await client.query(
-      `SELECT nextval(pg_get_serial_sequence('importacoes', 'id')) AS id`
-    );
-    const importacaoId = Number(seqResult.rows[0].id);
+    let importacaoId: number;
+    if (chunkIndex === 0) {
+      // Reserva o id do log de auditoria antes do upsert, para que cada linha
+      // gravada já saia com o importacao_id definitivo (evita um UPDATE extra
+      // de correção depois).
+      const seqResult = await client.query(
+        `SELECT nextval(pg_get_serial_sequence('importacoes', 'id')) AS id`
+      );
+      importacaoId = Number(seqResult.rows[0].id);
+    } else {
+      importacaoId = Number(body.importId);
+      const existing = await client.query(
+        `SELECT id, tipo FROM importacoes WHERE id = $1`,
+        [importacaoId]
+      );
+      if (existing.rowCount === 0) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: `importId ${importacaoId} não encontrado.` });
+      }
+      if (String(existing.rows[0].tipo) !== cfg.id) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'importId não corresponde ao tipo desta importação.' });
+      }
+    }
 
     const outcome = await upsertRows(
       client,
@@ -87,33 +132,58 @@ importsRouter.post('/', requireApiKey, async (req: Request, res: Response) => {
       valid,
       importacaoId,
       dataImportacao,
-      cfg.snapshot ? { dataReferencia, mesReferencia, anoReferencia } : null
+      cfg.snapshot ? { dataReferencia, mesReferencia, anoReferencia } : null,
+      { clearBefore }
     );
 
     const status = errors.length === 0 ? 'CONCLUIDO' : valid.length > 0 ? 'CONCLUIDO_COM_AVISOS' : 'FALHA';
+    const logStatus =
+      !isLastChunk && status !== 'FALHA' ? 'CONCLUIDO_COM_AVISOS' : status;
 
-    await client.query(
-      `INSERT INTO importacoes
-         (id, tipo, arquivo, usuario_nome, usuario_email, data_referencia, mes_referencia, ano_referencia,
-          data_importacao, total_linhas, novos, atualizados, rejeitados, status)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
-      [
-        importacaoId,
-        cfg.id,
-        body.arquivo || null,
-        body.usuarioNome || null,
-        body.usuarioEmail || null,
-        dataReferencia,
-        mesReferencia,
-        anoReferencia,
-        dataImportacao,
-        totalLinhas,
-        outcome.novos,
-        outcome.atualizados,
-        errors.length,
-        status,
-      ]
-    );
+    if (chunkIndex === 0) {
+      await client.query(
+        `INSERT INTO importacoes
+           (id, tipo, arquivo, usuario_nome, usuario_email, data_referencia, mes_referencia, ano_referencia,
+            data_importacao, total_linhas, novos, atualizados, rejeitados, status)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+        [
+          importacaoId,
+          cfg.id,
+          body.arquivo || null,
+          body.usuarioNome || null,
+          body.usuarioEmail || null,
+          dataReferencia,
+          mesReferencia,
+          anoReferencia,
+          dataImportacao,
+          totalLinhas,
+          outcome.novos,
+          outcome.atualizados,
+          errors.length,
+          logStatus,
+        ]
+      );
+    } else {
+      await client.query(
+        `UPDATE importacoes
+            SET total_linhas = total_linhas + $1,
+                novos = novos + $2,
+                atualizados = atualizados + $3,
+                rejeitados = rejeitados + $4,
+                status = $5,
+                data_importacao = $6
+          WHERE id = $7`,
+        [
+          totalLinhas,
+          outcome.novos,
+          outcome.atualizados,
+          errors.length,
+          isLastChunk ? logStatus : 'CONCLUIDO_COM_AVISOS',
+          dataImportacao,
+          importacaoId,
+        ]
+      );
+    }
 
     if (errors.length > 0) {
       const errParams: unknown[] = [];
@@ -143,6 +213,9 @@ importsRouter.post('/', requireApiKey, async (req: Request, res: Response) => {
       rejeitados: errors.length,
       status,
       erros: errors,
+      chunkIndex,
+      totalChunks,
+      done: isLastChunk,
     });
   } catch (err) {
     if (client) {

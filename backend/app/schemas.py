@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from typing import Any, Literal
 
@@ -97,6 +97,14 @@ class ImportRequest(BaseModel):
     usuarioEmail: str | None = None
     mapping: dict[str, str]
     rows: list[dict[str, Any]]
+    # Fatiamento de planilhas pesadas: o frontend envia vários POSTs
+    # sequenciais com o mesmo importId a partir do 2º lote.
+    chunkIndex: int | None = Field(default=None, ge=0)
+    totalChunks: int | None = Field(default=None, ge=1)
+    importId: int | None = None
+    # Deslocamento 0-based no arquivo original — corrige o número da linha
+    # nos erros de validação quando o lote não é o primeiro.
+    rowOffset: int | None = Field(default=None, ge=0)
 
 
 class ImportRowError(BaseModel):
@@ -116,6 +124,9 @@ class ImportResultSummary(BaseModel):
     rejeitados: int
     status: ImportStatus
     erros: list[ImportRowError]
+    chunkIndex: int | None = None
+    totalChunks: int | None = None
+    done: bool = True
 
 
 class PeriodQuery(BaseModel):

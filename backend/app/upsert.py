@@ -49,6 +49,7 @@ def map_and_validate_rows(
     cfg: ImportTypeConfig,
     mapping: dict[str, str],
     raw_rows: list[dict[str, Any]],
+    row_offset: int = 0,
 ) -> tuple[list[MappedRow], list[RowError]]:
     valid: list[MappedRow] = []
     errors: list[RowError] = []
@@ -56,7 +57,9 @@ def map_and_validate_rows(
     mapped_headers = {h for h in mapping.values() if h}
 
     for idx, raw in enumerate(raw_rows):
-        linha = idx + 1
+        # row_offset permite que lotes fatiados reportem o número real da
+        # linha no arquivo original (1-based no arquivo completo).
+        linha = row_offset + idx + 1
         values: dict[str, Any] = {}
         row_error: str | None = None
 
@@ -188,9 +191,12 @@ def _replace_snapshot_rows(
     importacao_id: int,
     data_importacao: datetime,
     snapshot: SnapshotContext,
+    *,
+    clear_before: bool = True,
 ) -> UpsertOutcome:
-    """Apaga o snapshot da data_referencia e regrava TODAS as linhas do arquivo."""
-    conn.execute(f"DELETE FROM {cfg.table} WHERE data_referencia = %s", (snapshot.data_referencia,))
+    """Apaga o snapshot da data_referencia (se clear_before) e grava o lote."""
+    if clear_before:
+        conn.execute(f"DELETE FROM {cfg.table} WHERE data_referencia = %s", (snapshot.data_referencia,))
     return _bulk_insert_all(conn, cfg, rows, importacao_id, data_importacao, snapshot)
 
 
@@ -201,9 +207,12 @@ def _replace_all_rows(
     importacao_id: int,
     data_importacao: datetime,
     snapshot: SnapshotContext | None,
+    *,
+    clear_before: bool = True,
 ) -> UpsertOutcome:
-    """Apaga a tabela inteira e regrava TODAS as linhas do arquivo (ex.: sortimento)."""
-    conn.execute(f"DELETE FROM {cfg.table}")
+    """Apaga a tabela inteira (se clear_before) e grava o lote (ex.: sortimento)."""
+    if clear_before:
+        conn.execute(f"DELETE FROM {cfg.table}")
     return _bulk_insert_all(conn, cfg, rows, importacao_id, data_importacao, snapshot)
 
 
@@ -214,6 +223,8 @@ def upsert_rows(
     importacao_id: int,
     data_importacao: datetime,
     snapshot: SnapshotContext | None,
+    *,
+    clear_before: bool = True,
 ) -> UpsertOutcome:
     """Grava todas as linhas válidas da planilha.
 
@@ -222,16 +233,23 @@ def upsert_rows(
     - replace_snapshot_rows: DELETE do dia + INSERT de todas as linhas
     - demais tipos: UPSERT linha a linha (cada ocorrência do arquivo é aplicada;
       evita erro do Postgres com a mesma chave repetida no mesmo statement)
+
+    clear_before=False é usado nos lotes seguintes de uma importação fatiada
+    (só o 1º POST pode apagar snapshot/tabela; os demais apenas acrescentam).
     """
     if not rows:
         return UpsertOutcome(0, 0)
 
     if getattr(cfg, "replace_all_rows", False):
-        return _replace_all_rows(conn, cfg, rows, importacao_id, data_importacao, snapshot)
+        return _replace_all_rows(
+            conn, cfg, rows, importacao_id, data_importacao, snapshot, clear_before=clear_before
+        )
 
     if cfg.replace_snapshot_rows:
         assert snapshot is not None, "replace_snapshot_rows requer snapshot=True"
-        return _replace_snapshot_rows(conn, cfg, rows, importacao_id, data_importacao, snapshot)
+        return _replace_snapshot_rows(
+            conn, cfg, rows, importacao_id, data_importacao, snapshot, clear_before=clear_before
+        )
 
     value_columns = [c.name for c in cfg.columns]
     insert_columns = _insert_columns(cfg)

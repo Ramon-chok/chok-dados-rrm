@@ -22,7 +22,13 @@ export interface ImportResultSummary {
   rejeitados: number;
   status: 'CONCLUIDO' | 'CONCLUIDO_COM_AVISOS' | 'FALHA';
   erros: ImportRowError[];
+  chunkIndex?: number | null;
+  totalChunks?: number | null;
+  done?: boolean;
 }
+
+/** Tamanho de cada lote enviado ao backend (linhas). */
+export const IMPORT_CHUNK_SIZE = 800;
 
 export interface ImportLogEntry {
   id: number;
@@ -354,8 +360,16 @@ function qs(params?: Record<string, string | number | boolean | null | undefined
   return s ? `?${s}` : '';
 }
 
-async function request<T>(path: string, options?: RequestInit & { skipAuth?: boolean }): Promise<T> {
-  const { skipAuth, ...fetchOpts } = options || {};
+/** Timeout padrão das APIs de leitura/auth (ms). */
+export const DEFAULT_API_TIMEOUT_MS = 45_000;
+/** Timeout maior para lotes de importação (ms) — planilhas pesadas. */
+export const IMPORT_API_TIMEOUT_MS = 120_000;
+
+async function request<T>(
+  path: string,
+  options?: RequestInit & { skipAuth?: boolean; timeoutMs?: number }
+): Promise<T> {
+  const { skipAuth, timeoutMs = DEFAULT_API_TIMEOUT_MS, ...fetchOpts } = options || {};
 
   // Rely on backend for session expiration (cookie HttpOnly). Do not check local expiration in client.
 
@@ -366,33 +380,66 @@ async function request<T>(path: string, options?: RequestInit & { skipAuth?: boo
     ...((fetchOpts.headers as Record<string, string>) || {}),
   };
 
-  const res = await fetch(`/api${path}`, {
-    ...fetchOpts,
-    headers,
-    // enviar cookies (inclui o cookie HttpOnly setado pelo backend)
-    credentials: 'include',
-  });
-
-  if (!res.ok) {
-    let message = `Erro ${res.status} ao chamar ${path}`;
-    try {
-      const body = await res.json();
-      if (body?.error) message = body.error;
-      else if (body?.detail) message = typeof body.detail === 'string' ? body.detail : message;
-    } catch {
-      // ignore
-    }
-
-    if (res.status === 401 && !skipAuth) {
-      clearAuthToken();
-      onUnauthorized?.();
-    }
-
-    throw new ApiError(message, res.status);
+  const controller = new AbortController();
+  const externalSignal = fetchOpts.signal;
+  const onExternalAbort = () => controller.abort((externalSignal as AbortSignal | undefined)?.reason);
+  if (externalSignal) {
+    if (externalSignal.aborted) controller.abort(externalSignal.reason);
+    else externalSignal.addEventListener('abort', onExternalAbort, { once: true });
   }
 
-  if (res.status === 204) return undefined as T;
-  return res.json() as Promise<T>;
+  const timer =
+    timeoutMs > 0
+      ? setTimeout(() => {
+          controller.abort(new DOMException(`Timeout após ${Math.round(timeoutMs / 1000)}s ao chamar ${path}`, 'TimeoutError'));
+        }, timeoutMs)
+      : null;
+
+  try {
+    const res = await fetch(`/api${path}`, {
+      ...fetchOpts,
+      headers,
+      signal: controller.signal,
+      // enviar cookies (inclui o cookie HttpOnly setado pelo backend)
+      credentials: 'include',
+    });
+
+    if (!res.ok) {
+      let message = `Erro ${res.status} ao chamar ${path}`;
+      try {
+        const body = await res.json();
+        if (body?.error) message = body.error;
+        else if (body?.detail) message = typeof body.detail === 'string' ? body.detail : message;
+      } catch {
+        // ignore
+      }
+
+      if (res.status === 401 && !skipAuth) {
+        clearAuthToken();
+        onUnauthorized?.();
+      }
+
+      throw new ApiError(message, res.status);
+    }
+
+    if (res.status === 204) return undefined as T;
+    return res.json() as Promise<T>;
+  } catch (err) {
+    if (err instanceof ApiError) throw err;
+    if (err instanceof DOMException && (err.name === 'AbortError' || err.name === 'TimeoutError')) {
+      const timedOut = err.name === 'TimeoutError' || /timeout/i.test(err.message);
+      throw new ApiError(
+        timedOut
+          ? `A requisição para ${path} excedeu o tempo limite (${Math.round(timeoutMs / 1000)}s). Tente novamente ou envie em partes menores.`
+          : `Requisição para ${path} foi cancelada.`,
+        408
+      );
+    }
+    throw err;
+  } finally {
+    if (timer) clearTimeout(timer);
+    if (externalSignal) externalSignal.removeEventListener('abort', onExternalAbort);
+  }
 }
 
 export async function apiLogin(
@@ -707,11 +754,141 @@ export interface SubmitImportParams {
   usuarioEmail?: string;
   mapping: Record<string, string>;
   rows: Record<string, unknown>[];
+  chunkIndex?: number;
+  totalChunks?: number;
+  importId?: number;
+  rowOffset?: number;
+}
+
+export interface SubmitImportChunkedProgress {
+  sheetLabel?: string;
+  chunkIndex: number;
+  totalChunks: number;
+  rowsInChunk: number;
+  rowsDone: number;
+  rowsTotal: number;
+  percent: number;
+}
+
+export interface SubmitImportChunkedOptions {
+  /** Tamanho do lote (default IMPORT_CHUNK_SIZE). */
+  chunkSize?: number;
+  /** Callback de progresso entre lotes. */
+  onProgress?: (p: SubmitImportChunkedProgress) => void;
+  /** Rótulo da aba (só para UI de progresso). */
+  sheetLabel?: string;
+  signal?: AbortSignal;
+}
+
+/**
+ * Envia a planilha fatiada em lotes sequenciais.
+ * O 1º lote cria o importId; os demais reutilizam e NÃO reexecutam o DELETE
+ * de replace_* no backend (clear_before só no chunk 0).
+ */
+export async function submitImportChunked(
+  params: SubmitImportParams,
+  options?: SubmitImportChunkedOptions
+): Promise<ImportResultSummary> {
+  const chunkSize = Math.max(50, options?.chunkSize ?? IMPORT_CHUNK_SIZE);
+  const allRows = params.rows || [];
+  const totalRows = allRows.length;
+  if (totalRows === 0) {
+    throw new ApiError('Nenhuma linha para importar.', 400);
+  }
+
+  const totalChunks = Math.ceil(totalRows / chunkSize);
+  let importId: number | undefined;
+  let novos = 0;
+  let atualizados = 0;
+  let rejeitados = 0;
+  let totalAnalisados = 0;
+  const erros: ImportRowError[] = [];
+  let last: ImportResultSummary | null = null;
+
+  for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
+    if (options?.signal?.aborted) {
+      throw new ApiError('Importação cancelada pelo usuário.', 499);
+    }
+
+    const start = chunkIndex * chunkSize;
+    const end = Math.min(start + chunkSize, totalRows);
+    const chunkRows = allRows.slice(start, end);
+
+    options?.onProgress?.({
+      sheetLabel: options.sheetLabel,
+      chunkIndex,
+      totalChunks,
+      rowsInChunk: chunkRows.length,
+      rowsDone: start,
+      rowsTotal: totalRows,
+      // Mostra progresso “em andamento” do lote atual (metade do lote).
+      percent: Math.min(99, Math.round(((start + chunkRows.length * 0.35) / totalRows) * 100)),
+    });
+
+    const result = await request<ImportResultSummary>('/imports', {
+      method: 'POST',
+      timeoutMs: IMPORT_API_TIMEOUT_MS,
+      signal: options?.signal,
+      body: JSON.stringify({
+        tipo: params.tipo,
+        dataReferencia: params.dataReferencia,
+        arquivo: params.arquivo,
+        usuarioNome: params.usuarioNome,
+        usuarioEmail: params.usuarioEmail,
+        mapping: params.mapping,
+        rows: chunkRows,
+        chunkIndex,
+        totalChunks,
+        importId,
+        rowOffset: start,
+      } satisfies SubmitImportParams),
+    });
+
+    importId = result.importId;
+    novos += result.novos;
+    atualizados += result.atualizados;
+    rejeitados += result.rejeitados;
+    totalAnalisados += result.totalAnalisados;
+    erros.push(...(result.erros || []));
+    last = result;
+
+    options?.onProgress?.({
+      sheetLabel: options.sheetLabel,
+      chunkIndex,
+      totalChunks,
+      rowsInChunk: chunkRows.length,
+      rowsDone: end,
+      rowsTotal: totalRows,
+      percent: Math.round((end / totalRows) * 100),
+    });
+  }
+
+  const status: ImportResultSummary['status'] =
+    rejeitados === 0 ? 'CONCLUIDO' : totalAnalisados - rejeitados > 0 ? 'CONCLUIDO_COM_AVISOS' : 'FALHA';
+
+  return {
+    importId: importId ?? last!.importId,
+    tipo: last!.tipo,
+    tipoLabel: last!.tipoLabel,
+    arquivo: last!.arquivo,
+    dataReferencia: last!.dataReferencia,
+    totalAnalisados,
+    novos,
+    atualizados,
+    rejeitados,
+    status,
+    erros,
+    chunkIndex: totalChunks - 1,
+    totalChunks,
+    done: true,
+  };
 }
 
 export function submitImport(params: SubmitImportParams): Promise<ImportResultSummary> {
+  // Compat: um único POST (ainda respeita timeout de importação).
   return request<ImportResultSummary>('/imports', {
     method: 'POST',
+    timeoutMs: IMPORT_API_TIMEOUT_MS,
     body: JSON.stringify(params),
   });
 }

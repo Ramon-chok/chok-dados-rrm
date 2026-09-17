@@ -15,9 +15,31 @@ import {
   XCircle,
   Layers,
   Trash2,
+  Loader2,
+  ShieldCheck,
+  Split,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
-import { submitImport, fetchImportHistory, clearImportHistory, ImportLogEntry, ApiError } from '../../lib/api';
+import {
+  submitImportChunked,
+  fetchImportHistory,
+  clearImportHistory,
+  ImportLogEntry,
+  ApiError,
+  IMPORT_CHUNK_SIZE,
+} from '../../lib/api';
+
+interface ImportProgressState {
+  sheetLabel: string;
+  sheetIndex: number;
+  sheetTotal: number;
+  chunkIndex: number;
+  totalChunks: number;
+  rowsDone: number;
+  rowsTotal: number;
+  percent: number;
+  phase: 'preparing' | 'uploading' | 'finishing';
+}
 
 export type ImportType = 'sortimento' | 'top_clientes' | 'dados_app' | 'nao_positivados';
 
@@ -397,6 +419,7 @@ export const ImportacaoPage: React.FC = () => {
   const [columnMappings, setColumnMappings] = useState<Record<string, Record<string, string>>>({});
   const [fileError, setFileError] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
+  const [importProgress, setImportProgress] = useState<ImportProgressState | null>(null);
   const [resultSummary, setResultSummary] = useState<any | null>(null);
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState<boolean>(true);
@@ -604,6 +627,17 @@ export const ImportacaoPage: React.FC = () => {
 
     setIsProcessing(true);
     setSubmitError(null);
+    setImportProgress({
+      sheetLabel: 'Preparando lotes…',
+      sheetIndex: 0,
+      sheetTotal: currentTypeConfig.sheets.length,
+      chunkIndex: 0,
+      totalChunks: 1,
+      rowsDone: 0,
+      rowsTotal: 0,
+      percent: 0,
+      phase: 'preparing',
+    });
 
     try {
       const combined = {
@@ -614,19 +648,43 @@ export const ImportacaoPage: React.FC = () => {
         erros: [] as { linha: number; motivo: string }[],
       };
 
-      for (const sheetCfg of currentTypeConfig.sheets) {
+      const sheetsWithData = currentTypeConfig.sheets.filter(
+        (s) => (sheetsData[s.key]?.rows.length || 0) > 0
+      );
+
+      for (let sheetIdx = 0; sheetIdx < sheetsWithData.length; sheetIdx++) {
+        const sheetCfg = sheetsWithData[sheetIdx];
         const sheetData = sheetsData[sheetCfg.key];
         if (!sheetData || sheetData.rows.length === 0) continue;
 
-        const result = await submitImport({
-          tipo: isMultiSheet ? `${selectedType}__${sheetCfg.key}` : selectedType,
-          dataReferencia,
-          arquivo: uploadedFile?.name,
-          usuarioNome: currentUser?.name,
-          usuarioEmail: currentUser?.email,
-          mapping: columnMappings[sheetCfg.key] || {},
-          rows: sheetData.rows,
-        });
+        const result = await submitImportChunked(
+          {
+            tipo: isMultiSheet ? `${selectedType}__${sheetCfg.key}` : selectedType,
+            dataReferencia,
+            arquivo: uploadedFile?.name,
+            usuarioNome: currentUser?.name,
+            usuarioEmail: currentUser?.email,
+            mapping: columnMappings[sheetCfg.key] || {},
+            rows: sheetData.rows,
+          },
+          {
+            sheetLabel: sheetCfg.label,
+            chunkSize: IMPORT_CHUNK_SIZE,
+            onProgress: (p) => {
+              setImportProgress({
+                sheetLabel: sheetCfg.label,
+                sheetIndex: sheetIdx + 1,
+                sheetTotal: sheetsWithData.length,
+                chunkIndex: p.chunkIndex + 1,
+                totalChunks: p.totalChunks,
+                rowsDone: p.rowsDone,
+                rowsTotal: p.rowsTotal,
+                percent: p.percent,
+                phase: p.percent >= 100 ? 'finishing' : 'uploading',
+              });
+            },
+          }
+        );
 
         combined.totalAnalisados += result.totalAnalisados;
         combined.novos += result.novos;
@@ -639,6 +697,17 @@ export const ImportacaoPage: React.FC = () => {
           }))
         );
       }
+
+      setImportProgress((prev) =>
+        prev
+          ? {
+              ...prev,
+              percent: 100,
+              phase: 'finishing',
+              rowsDone: prev.rowsTotal,
+            }
+          : prev
+      );
 
       setResultSummary({
         totalAnalysados: combined.totalAnalisados,
@@ -660,6 +729,7 @@ export const ImportacaoPage: React.FC = () => {
       );
     } finally {
       setIsProcessing(false);
+      setImportProgress(null);
     }
   };
 
@@ -671,18 +741,162 @@ export const ImportacaoPage: React.FC = () => {
     setFileError(null);
     setResultSummary(null);
     setSubmitError(null);
+    setImportProgress(null);
     setDataReferencia(new Date().toISOString().slice(0, 10));
   };
 
   return (
-    <div>
+    <div style={{ position: 'relative' }}>
+      {/* Overlay de progresso — importação fatiada em lotes seguros */}
+      {isProcessing && importProgress && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Importação em andamento"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 9999,
+            background: 'rgba(8, 12, 24, 0.72)',
+            backdropFilter: 'blur(6px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '24px',
+          }}
+        >
+          <div
+            style={{
+              width: 'min(520px, 100%)',
+              background: t.surface,
+              border: `1px solid ${t.border}`,
+              borderRadius: '16px',
+              padding: '28px 26px 24px',
+              boxShadow: '0 24px 64px rgba(0,0,0,0.35)',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '18px' }}>
+              <div
+                style={{
+                  width: 48,
+                  height: 48,
+                  borderRadius: '14px',
+                  background: `${t.primary}18`,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                }}
+              >
+                <Loader2 size={26} color={t.primary} className="spin" style={{ animation: 'importSpin 0.9s linear infinite' }} />
+              </div>
+              <div>
+                <div style={{ fontSize: '17px', fontWeight: 700, color: t.text, marginBottom: 2 }}>
+                  Carregando importação…
+                </div>
+                <div style={{ fontSize: '12.5px', color: t.textSecondary }}>
+                  {importProgress.phase === 'preparing'
+                    ? 'Organizando lotes da planilha'
+                    : importProgress.phase === 'finishing'
+                      ? 'Finalizando gravação e auditoria'
+                      : `Enviando aba "${importProgress.sheetLabel}"`}
+                </div>
+              </div>
+            </div>
+
+            <div
+              style={{
+                height: 10,
+                borderRadius: 999,
+                background: t.surfaceElevated,
+                border: `1px solid ${t.border}`,
+                overflow: 'hidden',
+                marginBottom: 10,
+              }}
+            >
+              <div
+                style={{
+                  height: '100%',
+                  width: `${Math.max(4, Math.min(100, importProgress.percent))}%`,
+                  background: `linear-gradient(90deg, ${t.primary}, #ff6b6b)`,
+                  borderRadius: 999,
+                  transition: 'width 0.35s ease',
+                }}
+              />
+            </div>
+
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                gap: 12,
+                fontSize: '12px',
+                color: t.textMuted,
+                marginBottom: 16,
+                flexWrap: 'wrap',
+              }}
+            >
+              <span>
+                Lote {importProgress.chunkIndex}/{importProgress.totalChunks}
+                {importProgress.sheetTotal > 1
+                  ? ` · Aba ${importProgress.sheetIndex}/${importProgress.sheetTotal}`
+                  : ''}
+              </span>
+              <span className="num" style={{ fontWeight: 600, color: t.text }}>
+                {importProgress.percent}%
+                {importProgress.rowsTotal > 0
+                  ? ` · ${importProgress.rowsDone.toLocaleString('pt-BR')}/${importProgress.rowsTotal.toLocaleString('pt-BR')} linhas`
+                  : ''}
+              </span>
+            </div>
+
+            <div
+              style={{
+                display: 'flex',
+                gap: 10,
+                alignItems: 'flex-start',
+                background: `${t.primary}0D`,
+                border: `1px solid ${t.border}`,
+                borderRadius: 10,
+                padding: '12px 14px',
+                marginBottom: 10,
+              }}
+            >
+              <Split size={16} color={t.primary} style={{ flexShrink: 0, marginTop: 1 }} />
+              <div style={{ fontSize: '12.5px', color: t.textSecondary, lineHeight: 1.45 }}>
+                A planilha está sendo <strong style={{ color: t.text }}>importada em partes</strong> (lotes de até{' '}
+              </div>
+            </div>
+
+            <div
+              style={{
+                display: 'flex',
+                gap: 10,
+                alignItems: 'flex-start',
+                background: t.surfaceElevated,
+                border: `1px solid ${t.border}`,
+                borderRadius: 10,
+                padding: '12px 14px',
+              }}
+            >
+              <ShieldCheck size={16} color={t.primary} style={{ flexShrink: 0, marginTop: 1 }} />
+              <div style={{ fontSize: '12.5px', color: t.textSecondary, lineHeight: 1.45 }}>
+                Não feche esta aba até o fim do processo.
+              </div>
+            </div>
+
+            <style>{`@keyframes importSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+          </div>
+        </div>
+      )}
+
       <div style={{ marginBottom: '22px' }}>
         <h1 className="num" style={{ margin: '0 0 6px', fontSize: '24px', fontWeight: 700, color: t.text }}>
           Módulo de Importação & Carga de Dados
         </h1>
         <p style={{ margin: 0, fontSize: '13px', color: t.textSecondary }}>
           Central administrativa para processamento, validação e atualização de sortimento, top clientes, dados do
-          app e não positivados.
+          app e não positivados. Planilhas pesadas são enviadas em lotes seguros automaticamente.
         </p>
       </div>
 

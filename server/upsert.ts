@@ -21,14 +21,16 @@ const CHUNK_SIZE = 500;
 export function mapAndValidateRows(
   cfg: ImportTypeConfig,
   mapping: Record<string, string>,
-  rawRows: Record<string, unknown>[]
+  rawRows: Record<string, unknown>[],
+  rowOffset = 0
 ): { valid: MappedRow[]; errors: RowError[] } {
   const valid: MappedRow[] = [];
   const errors: RowError[] = [];
   const mappedHeaders = new Set(Object.values(mapping).filter(Boolean));
 
   rawRows.forEach((raw, idx) => {
-    const linha = idx + 1;
+    // rowOffset permite lotes fatiados reportarem o nº real da linha no arquivo.
+    const linha = rowOffset + idx + 1;
     const values: Record<string, unknown> = {};
     let rowError: string | null = null;
 
@@ -170,9 +172,12 @@ async function replaceSnapshotRows(
   rows: MappedRow[],
   importacaoId: number,
   dataImportacao: Date,
-  snapshot: SnapshotContext
+  snapshot: SnapshotContext,
+  clearBefore = true
 ): Promise<UpsertOutcome> {
-  await client.query(`DELETE FROM ${cfg.table} WHERE data_referencia = $1`, [snapshot.dataReferencia]);
+  if (clearBefore) {
+    await client.query(`DELETE FROM ${cfg.table} WHERE data_referencia = $1`, [snapshot.dataReferencia]);
+  }
   return bulkInsertAll(client, cfg, rows, importacaoId, dataImportacao, snapshot);
 }
 
@@ -182,9 +187,12 @@ async function replaceAllRows(
   rows: MappedRow[],
   importacaoId: number,
   dataImportacao: Date,
-  snapshot: SnapshotContext | null
+  snapshot: SnapshotContext | null,
+  clearBefore = true
 ): Promise<UpsertOutcome> {
-  await client.query(`DELETE FROM ${cfg.table}`);
+  if (clearBefore) {
+    await client.query(`DELETE FROM ${cfg.table}`);
+  }
   return bulkInsertAll(client, cfg, rows, importacaoId, dataImportacao, snapshot);
 }
 
@@ -194,17 +202,19 @@ export async function upsertRows(
   rows: MappedRow[],
   importacaoId: number,
   dataImportacao: Date,
-  snapshot: SnapshotContext | null
+  snapshot: SnapshotContext | null,
+  options?: { clearBefore?: boolean }
 ): Promise<UpsertOutcome> {
   if (rows.length === 0) return { novos: 0, atualizados: 0 };
+  const clearBefore = options?.clearBefore ?? true;
 
   if (cfg.replaceAllRows) {
-    return replaceAllRows(client, cfg, rows, importacaoId, dataImportacao, snapshot);
+    return replaceAllRows(client, cfg, rows, importacaoId, dataImportacao, snapshot, clearBefore);
   }
 
   if (cfg.replaceSnapshotRows) {
     if (!snapshot) throw new Error('replaceSnapshotRows requer snapshot');
-    return replaceSnapshotRows(client, cfg, rows, importacaoId, dataImportacao, snapshot);
+    return replaceSnapshotRows(client, cfg, rows, importacaoId, dataImportacao, snapshot, clearBefore);
   }
 
   const tracksImport = cfg.tracksImport ?? true;
