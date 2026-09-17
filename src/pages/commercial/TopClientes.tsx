@@ -1,5 +1,6 @@
 ﻿import React, { useEffect, useMemo, useState } from 'react';
 import { useTheme } from '../../context/ThemeContext';
+import { useAuth } from '../../context/AuthContext';
 import { useGlobalFilter } from '../../context/GlobalFilterContext';
 import { ExportExcelButton } from '../../components/common/ExportExcelButton';
 import { EmptyBlock, ErrorBlock, LoadingBlock } from '../../components/common/DataState';
@@ -10,6 +11,7 @@ const fmt = (v: number) => `R$ ${v.toLocaleString('pt-BR', { maximumFractionDigi
 
 export const TopClientesPage: React.FC = () => {
   const { t, mode } = useTheme();
+  const { currentUser } = useAuth();
   const { selectedPeriod, startDate, endDate } = useGlobalFilter();
   const [rows, setRows] = useState<TopCustomerRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -17,6 +19,13 @@ export const TopClientesPage: React.FC = () => {
   const [topN, setTopN] = useState(20);
   const [selectedEquipe, setSelectedEquipe] = useState('');
   const [selectedVendedor, setSelectedVendedor] = useState('');
+
+  const role = currentUser?.role;
+  // Supervisor já vê apenas a própria equipe (escopo travado no backend) —
+  // não faz sentido oferecer o filtro de Equipe. Vendedor já vê só os
+  // próprios dados, então nem Equipe nem Vendedor fazem sentido para ele.
+  const canFilterEquipe = role === 'ADMIN' || role === 'GERENTE';
+  const canFilterVendedor = role === 'ADMIN' || role === 'GERENTE' || role === 'SUPERVISOR';
 
   useEffect(() => {
     let mounted = true;
@@ -88,22 +97,26 @@ export const TopClientesPage: React.FC = () => {
             onChange={(v) => setTopN(Number(v) || 20)}
             allowClear={false}
           />
-          <SingleSelectFilter
-            label="Equipe"
-            options={equipeOptions.map((eq) => ({ value: eq, label: eq }))}
-            value={selectedEquipe}
-            onChange={setSelectedEquipe}
-            placeholder="Todas as equipes"
-            allLabel="Todas as equipes"
-          />
-          <SingleSelectFilter
-            label="Vendedor"
-            options={vendedorOptions.map(([code, nome]) => ({ value: code, label: nome }))}
-            value={selectedVendedor}
-            onChange={setSelectedVendedor}
-            placeholder="Todos os vendedores"
-            allLabel="Todos os vendedores"
-          />
+          {canFilterEquipe && (
+            <SingleSelectFilter
+              label="Equipe"
+              options={equipeOptions.map((eq) => ({ value: eq, label: eq }))}
+              value={selectedEquipe}
+              onChange={setSelectedEquipe}
+              placeholder="Todas as equipes"
+              allLabel="Todas as equipes"
+            />
+          )}
+          {canFilterVendedor && (
+            <SingleSelectFilter
+              label="Vendedor"
+              options={vendedorOptions.map(([code, nome]) => ({ value: code, label: nome }))}
+              value={selectedVendedor}
+              onChange={setSelectedVendedor}
+              placeholder="Todos os vendedores"
+              allLabel="Todos os vendedores"
+            />
+          )}
           <ExportExcelButton getSheets={handleExport} fileName="top-clientes" />
         </div>
       </div>

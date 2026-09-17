@@ -1,18 +1,28 @@
 ﻿import React, { useEffect, useMemo, useState } from 'react';
 import { useTheme } from '../../context/ThemeContext';
+import { useAuth } from '../../context/AuthContext';
 import { useGlobalFilter } from '../../context/GlobalFilterContext';
 import { ExportExcelButton } from '../../components/common/ExportExcelButton';
 import { EmptyBlock, ErrorBlock, LoadingBlock } from '../../components/common/DataState';
+import { SingleSelectFilter } from '../../components/common/SingleSelectFilter';
 import { fetchSarPositivacao, SarPositivacaoRow } from '../../lib/api';
 import { Activity } from 'lucide-react';
 
 export const RaioXPage: React.FC = () => {
   const { t } = useTheme();
+  const { currentUser } = useAuth();
   const { ano, mes, periodType } = useGlobalFilter();
   const [rows, setRows] = useState<SarPositivacaoRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
+  const [selectedVendedor, setSelectedVendedor] = useState('');
+
+  const role = currentUser?.role;
+  // Supervisor (e Admin/Gerência) enxergam vários vendedores na mesma
+  // listagem — o filtro deixa a visão focada em um vendedor específico da
+  // equipe. Vendedor já vê só a própria linha (recorte travado no backend).
+  const canFilterVendedor = role === 'ADMIN' || role === 'GERENTE' || role === 'SUPERVISOR';
 
   useEffect(() => {
     let mounted = true;
@@ -33,15 +43,30 @@ export const RaioXPage: React.FC = () => {
     return () => { mounted = false; };
   }, [ano, mes, periodType]);
 
+  const vendedorOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    rows.forEach((r) => map.set(r.codigo, r.nome || r.codigo));
+    return Array.from(map.entries()).sort((a, b) => a[1].localeCompare(b[1], 'pt-BR'));
+  }, [rows]);
+
+  useEffect(() => {
+    if (selectedVendedor && !vendedorOptions.some(([code]) => code === selectedVendedor)) {
+      setSelectedVendedor('');
+    }
+  }, [vendedorOptions, selectedVendedor]);
+
   const filtered = useMemo(() => {
     const q = query.toLowerCase();
-    if (!q) return rows;
-    return rows.filter((r) =>
-      (r.nome || '').toLowerCase().includes(q) ||
-      (r.codigo || '').toLowerCase().includes(q) ||
-      (r.equipe || '').toLowerCase().includes(q)
-    );
-  }, [rows, query]);
+    return rows.filter((r) => {
+      const matchesVendedor = !selectedVendedor || r.codigo === selectedVendedor;
+      const matchesQuery =
+        !q ||
+        (r.nome || '').toLowerCase().includes(q) ||
+        (r.codigo || '').toLowerCase().includes(q) ||
+        (r.equipe || '').toLowerCase().includes(q);
+      return matchesVendedor && matchesQuery;
+    });
+  }, [rows, query, selectedVendedor]);
 
   const totals = useMemo(() => filtered.reduce((acc, r) => ({
     visitasPrevistas: acc.visitasPrevistas + (r.visitasPrevistas || 0),
@@ -68,7 +93,19 @@ export const RaioXPage: React.FC = () => {
           <h1 className="num" style={{ margin: '0 0 4px', fontSize: 24, fontWeight: 700, color: t.text }}>Raio-X SAR</h1>
           <p style={{ margin: 0, fontSize: 13, color: t.textSecondary }}>Indicadores de positivação a partir de indicadores_positivacao.</p>
         </div>
-        <ExportExcelButton getSheets={handleExport} fileName="raio-x-sar" />
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          {canFilterVendedor && (
+            <SingleSelectFilter
+              label="Vendedor"
+              options={vendedorOptions.map(([code, nome]) => ({ value: code, label: nome }))}
+              value={selectedVendedor}
+              onChange={setSelectedVendedor}
+              placeholder="Todos os vendedores"
+              allLabel="Todos os vendedores"
+            />
+          )}
+          <ExportExcelButton getSheets={handleExport} fileName="raio-x-sar" />
+        </div>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(140px,1fr))', gap: 10, marginBottom: 14 }}>
         {[

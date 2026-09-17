@@ -182,13 +182,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       case 'sar-verba-indenizatoria':
         return true;
       case 'analytics':
-        return hasPermission('analytics.view');
+        return currentUser.role !== 'VENDEDOR' && hasPermission('analytics.view');
       case 'studies':
         return hasPermission('studies.view');
       case 'targets':
         return hasPermission('targets.view');
       case 'history':
-        return hasPermission('history.view');
+        return currentUser.role !== 'VENDEDOR' && hasPermission('history.view');
       case 'insights':
         return hasPermission('analytics.view') || hasPermission('dashboard.view');
       case 'reports':
