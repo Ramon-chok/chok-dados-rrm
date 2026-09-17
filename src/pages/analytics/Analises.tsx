@@ -10,12 +10,13 @@ const fmt = (v: number) => `R$ ${v.toLocaleString('pt-BR', { maximumFractionDigi
 const fmtInt = (v: number) => v.toLocaleString('pt-BR', { maximumFractionDigits: 0 });
 
 export const AnalisesPage: React.FC = () => {
-  const { t } = useTheme();
+  const { mode, t } = useTheme();
   const { ano, mes, startDate, endDate, periodType } = useGlobalFilter();
   const [tree, setTree] = useState<AnalyticsTreeNode[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [hoveredRow, setHoveredRow] = useState<string | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -81,31 +82,97 @@ export const AnalisesPage: React.FC = () => {
             </ResponsiveContainer>
           </div>
           <div style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 12, overflow: 'hidden' }}>
-            {tree.map((fab) => (
-              <div key={fab.nome} style={{ borderBottom: `1px solid ${t.border}` }}>
-                <button onClick={() => setExpanded((s) => ({ ...s, [fab.nome]: !s[fab.nome] }))} style={{ width: '100%', textAlign: 'left', padding: '12px 14px', background: 'transparent', border: 'none', color: t.text, cursor: 'pointer', display: 'flex', justifyContent: 'space-between' }}>
-                  <strong>{fab.nome}</strong>
-                  <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2, color: t.textSecondary }}>
-                    <span>{fmt(fab.realizado)} / {fmt(fab.meta)}</span>
-                    <span style={{ fontSize: 11 }}>Cobertura: {fmtInt(fab.realizadoCobertura)} / {fmtInt(fab.metaCobertura)}</span>
-                  </span>
-                </button>
-                {expanded[fab.nome] && (fab.equipes || []).map((eq) => (
-                  <div key={eq.nome} style={{ padding: '8px 14px 12px 28px', borderTop: `1px solid ${t.border}` }}>
-                    <div style={{ fontWeight: 600, marginBottom: 6 }}>{eq.nome}</div>
-                    {(eq.vendedores || []).map((v) => (
-                      <div key={v.nome} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, color: t.textSecondary, padding: '4px 0' }}>
-                        <span>{v.nome}</span>
-                        <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
-                          <span>{fmt(v.realizado)} / {fmt(v.meta)}</span>
-                          <span style={{ fontSize: 11 }}>Cobertura: {fmtInt(v.realizadoCobertura)} / {fmtInt(v.metaCobertura)}</span>
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                ))}
-              </div>
-            ))}
+            {tree.map((fab) => {
+              const isSelected = !!expanded[fab.nome];
+              const isHovered = hoveredRow === fab.nome;
+              const selectedBg = mode === 'dark' ? `${t.primary}22` : `${t.primary}14`;
+              const selectedHoverBg = mode === 'dark' ? `${t.primary}30` : `${t.primary}20`;
+              const rowBg = isSelected
+                ? isHovered
+                  ? selectedHoverBg
+                  : selectedBg
+                : isHovered
+                  ? t.hover
+                  : 'transparent';
+
+              return (
+                <div key={fab.nome} style={{ borderBottom: `1px solid ${t.border}` }}>
+                  <button
+                    onClick={() => setExpanded((s) => ({ ...s, [fab.nome]: !s[fab.nome] }))}
+                    onMouseEnter={() => setHoveredRow(fab.nome)}
+                    onMouseLeave={() => setHoveredRow(null)}
+                    style={{
+                      width: '100%',
+                      textAlign: 'left',
+                      padding: '12px 14px',
+                      background: rowBg,
+                      border: 'none',
+                      borderLeft: `3px solid ${isSelected ? t.primary : isHovered ? t.borderActive : 'transparent'}`,
+                      color: isSelected ? t.primary : t.text,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      transition: 'background 0.15s ease, color 0.15s ease, border-color 0.15s ease',
+                      boxShadow: isSelected
+                        ? mode === 'dark'
+                          ? `inset 0 0 0 1px ${t.primary}33`
+                          : `inset 0 0 0 1px ${t.primary}28`
+                        : 'none',
+                    }}
+                  >
+                    <strong style={{ color: isSelected ? t.primary : t.text }}>{fab.nome}</strong>
+                    <span
+                      style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'flex-end',
+                        gap: 2,
+                        color: isSelected ? t.primaryHover : t.textSecondary,
+                      }}
+                    >
+                      <span>{fmt(fab.realizado)} / {fmt(fab.meta)}</span>
+                      <span style={{ fontSize: 11 }}>
+                        Cobertura: {fmtInt(fab.realizadoCobertura)} / {fmtInt(fab.metaCobertura)}
+                      </span>
+                    </span>
+                  </button>
+                  {isSelected && (fab.equipes || []).map((eq) => (
+                    <div
+                      key={eq.nome}
+                      style={{
+                        padding: '8px 14px 12px 28px',
+                        borderTop: `1px solid ${t.border}`,
+                        background: mode === 'dark' ? `${t.primary}0D` : `${t.primary}08`,
+                        borderLeft: `3px solid ${t.primary}`,
+                      }}
+                    >
+                      <div style={{ fontWeight: 600, marginBottom: 6, color: t.text }}>{eq.nome}</div>
+                      {(eq.vendedores || []).map((v) => (
+                        <div
+                          key={v.nome}
+                          style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            fontSize: 12.5,
+                            color: t.textSecondary,
+                            padding: '4px 0',
+                          }}
+                        >
+                          <span>{v.nome}</span>
+                          <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
+                            <span>{fmt(v.realizado)} / {fmt(v.meta)}</span>
+                            <span style={{ fontSize: 11 }}>
+                              Cobertura: {fmtInt(v.realizadoCobertura)} / {fmtInt(v.metaCobertura)}
+                            </span>
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              );
+            })}
           </div>
         </>
       )}
