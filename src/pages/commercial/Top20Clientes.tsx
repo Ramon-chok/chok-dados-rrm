@@ -192,9 +192,6 @@ export const Top20ClientesPage: React.FC = () => {
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr>
-                  <th style={thStyle}>Data Referência</th>
-                  <th style={thStyle}>Nível</th>
-                  <th style={thStyle}>Gerência</th>
                   <th style={thStyle}>Equipe</th>
                   <th style={thStyle}>Vendedor</th>
                   <th style={thStyle}>Pasta</th>
@@ -215,9 +212,6 @@ export const Top20ClientesPage: React.FC = () => {
                     onMouseEnter={(e) => (e.currentTarget.style.background = t.surfaceElevated)}
                     onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                   >
-                    <td style={{ ...tdStyle, color: t.textMuted }}>{fmtDate(r.dataReferencia)}</td>
-                    <td style={tdStyle}>{r.nivel || '—'}</td>
-                    <td style={{ ...tdStyle, color: t.textSecondary }}>{r.gerencia || '—'}</td>
                     <td style={{ ...tdStyle, color: t.textSecondary }}>{r.equipe || '—'}</td>
                     <td style={{ ...tdStyle, fontWeight: 600 }}>{r.nomeVendedor || r.codVendedor}</td>
                     <td style={tdStyle}>{r.pasta || '—'}</td>

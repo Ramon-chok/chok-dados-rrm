@@ -125,13 +125,13 @@ export const AnalisesPage: React.FC = () => {
                     <span
                       style={{
                         display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'flex-end',
-                        gap: 2,
+                        alignItems: 'center',
+                        gap: 14,
                         color: isSelected ? t.primaryHover : t.textSecondary,
                       }}
                     >
                       <span>{fmt(fab.realizado)} / {fmt(fab.meta)}</span>
+                      <span style={{ width: 1, height: 14, background: t.border }} />
                       <span style={{ fontSize: 11 }}>
                         Cobertura: {fmtInt(fab.realizadoCobertura)} / {fmtInt(fab.metaCobertura)}
                       </span>
@@ -160,8 +160,9 @@ export const AnalisesPage: React.FC = () => {
                           }}
                         >
                           <span>{v.nome}</span>
-                          <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
                             <span>{fmt(v.realizado)} / {fmt(v.meta)}</span>
+                            <span style={{ width: 1, height: 14, background: t.border }} />
                             <span style={{ fontSize: 11 }}>
                               Cobertura: {fmtInt(v.realizadoCobertura)} / {fmtInt(v.metaCobertura)}
                             </span>

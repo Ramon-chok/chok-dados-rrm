@@ -5,6 +5,7 @@ import { useGlobalFilter } from '../../context/GlobalFilterContext';
 import { ExportExcelButton } from '../../components/common/ExportExcelButton';
 import { EmptyBlock, ErrorBlock, LoadingBlock } from '../../components/common/DataState';
 import { SingleSelectFilter } from '../../components/common/SingleSelectFilter';
+import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 import {
   fetchTargets,
   fetchObjetivosFaseamento,
@@ -16,9 +17,10 @@ import {
 
 const fmt = (v: number) => `R$ ${v.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}`;
 const fmtPct = (v: number) => `${v.toFixed(1)}%`;
+const SUCCESS_GREEN = { light: '#0EA968', dark: '#1FAE6E' };
 
 export const ObjetivosPage: React.FC = () => {
-  const { t } = useTheme();
+  const { t, mode } = useTheme();
   const { currentUser } = useAuth();
   const { ano, mes, startDate, endDate, periodType } = useGlobalFilter();
   const [rows, setRows] = useState<TargetRow[]>([]);
@@ -139,25 +141,72 @@ export const ObjetivosPage: React.FC = () => {
     })),
   }];
 
-  const faseamentoCard = (title: string, block: { meta: number; realizado: number; pct: number } | undefined) => (
-    <div style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 10, padding: '14px 16px', width: '100%' }}>
-      <div style={{ fontSize: 11.5, fontWeight: 600, color: t.textMuted, marginBottom: 10 }}>{title}</div>
-      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', justifyContent: 'space-between' }}>
-        <div>
-          <div style={{ fontSize: 10.5, color: t.textMuted }}>Meta</div>
-          <div className="num" style={{ fontSize: 15, fontWeight: 700, color: t.text }}>{fmt(block?.meta || 0)}</div>
-        </div>
-        <div>
-          <div style={{ fontSize: 10.5, color: t.textMuted }}>Realizado</div>
-          <div className="num" style={{ fontSize: 15, fontWeight: 700, color: t.text }}>{fmt(block?.realizado || 0)}</div>
-        </div>
-        <div>
-          <div style={{ fontSize: 10.5, color: t.textMuted }}>Ating.</div>
-          <div className="num" style={{ fontSize: 15, fontWeight: 700, color: t.primary }}>{fmtPct(block?.pct || 0)}</div>
+  const faseamentoCard = (title: string, block: { meta: number; realizado: number; pct: number } | undefined) => {
+    const pct = block?.pct || 0;
+    const atingiu = pct >= 100;
+    const progressColor = atingiu ? SUCCESS_GREEN[mode] : t.primary;
+    const donutData = [
+      { name: 'realizado', value: Math.min(100, Math.max(0, pct)) },
+      { name: 'restante', value: Math.max(0, 100 - pct) },
+    ];
+
+    return (
+      <div style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 10, padding: '18px 20px', width: '100%' }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: t.text, marginBottom: 16 }}>{title}</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 24, flexWrap: 'wrap' }}>
+          <div style={{ position: 'relative', width: 76, height: 76, flexShrink: 0 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={donutData}
+                  dataKey="value"
+                  innerRadius={26}
+                  outerRadius={36}
+                  startAngle={90}
+                  endAngle={-270}
+                  stroke="none"
+                >
+                  <Cell fill={progressColor} />
+                  <Cell fill={t.border} />
+                </Pie>
+              </PieChart>
+            </ResponsiveContainer>
+            <div
+              style={{
+                position: 'absolute',
+                inset: 0,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: 12,
+                fontWeight: 700,
+                color: progressColor,
+              }}
+              className="num"
+            >
+              {fmtPct(pct)}
+            </div>
+          </div>
+          <div style={{ display: 'flex', flex: 1, minWidth: 220, gap: 28, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <div style={{ fontSize: 11, color: t.textMuted }}>Meta</div>
+              <div className="num" style={{ fontSize: 16, fontWeight: 700, color: t.text }}>{fmt(block?.meta || 0)}</div>
+            </div>
+            <div style={{ width: 1, alignSelf: 'stretch', background: t.border }} />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <div style={{ fontSize: 11, color: t.textMuted }}>Realizado</div>
+              <div className="num" style={{ fontSize: 16, fontWeight: 700, color: t.text }}>{fmt(block?.realizado || 0)}</div>
+            </div>
+            <div style={{ width: 1, alignSelf: 'stretch', background: t.border }} />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <div style={{ fontSize: 11, color: t.textMuted }}>Atingimento</div>
+              <div className="num" style={{ fontSize: 16, fontWeight: 700, color: progressColor }}>{fmtPct(pct)}</div>
+            </div>
+          </div>
         </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <div>
@@ -194,7 +243,13 @@ export const ObjetivosPage: React.FC = () => {
       {/* Metas de Faseamento / Faseamento II / Desconcentração / Desafio — aba "Mês" do Dados App.
           Cards empilhados, cada um ocupando toda a largura disponível. */}
       <div style={{ marginBottom: 20 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: t.text, marginBottom: 10 }}>Faseamento &amp; Desafios</div>
+        <div style={{ fontSize: 13, fontWeight: 700, color: t.text, marginBottom: 2 }}>Faseamento &amp; Desafios</div>
+        {canFilterVendedor && (
+          <div style={{ fontSize: 11.5, color: t.textMuted, marginBottom: 10 }}>
+            Use o filtro de Vendedor acima para visualizar a meta e o realizado individualmente.
+          </div>
+        )}
+        {!canFilterVendedor && <div style={{ marginBottom: 10 }} />}
         {faseamentoLoading && <LoadingBlock />}
         {faseamentoError && <ErrorBlock message={faseamentoError} />}
         {!faseamentoLoading && !faseamentoError && (

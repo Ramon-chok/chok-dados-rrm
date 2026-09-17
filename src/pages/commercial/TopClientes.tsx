@@ -9,7 +9,7 @@ import { SingleSelectFilter } from '../../components/common/SingleSelectFilter';
 const fmt = (v: number) => `R$ ${v.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}`;
 
 export const TopClientesPage: React.FC = () => {
-  const { t } = useTheme();
+  const { t, mode } = useTheme();
   const { selectedPeriod, startDate, endDate } = useGlobalFilter();
   const [rows, setRows] = useState<TopCustomerRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -65,6 +65,8 @@ export const TopClientesPage: React.FC = () => {
       }),
     [rows, selectedEquipe, selectedVendedor]
   );
+
+  const maxPart = useMemo(() => Math.max(1, ...filteredRows.map((c) => c.part)), [filteredRows]);
 
   const handleExport = () => [{
     sheetName: `Top ${topN}`,
@@ -125,7 +127,7 @@ export const TopClientesPage: React.FC = () => {
                   <td>{c.vendedor || '—'}</td>
                   <td>{c.equipe || '—'}</td>
                   <td>{fmt(c.faturamento)}</td>
-                  <td>{c.part.toFixed(1)}%</td>
+                  <td><PartBadge value={c.part} max={maxPart} theme={t} mode={mode} /></td>
                 </tr>
               ))}
             </tbody>
@@ -133,5 +135,29 @@ export const TopClientesPage: React.FC = () => {
         </div>
       )}
     </div>
+  );
+};
+
+// Selo de Part.% com intensidade de cor proporcional ao valor na listagem
+// atual — mesma cor da marca (respeitando claro/escuro), só a intensidade varia.
+const PartBadge: React.FC<{ value: number; max: number; theme: any; mode: 'light' | 'dark' }> = ({ value, max, theme: t, mode }) => {
+  const ratio = Math.max(0, Math.min(1, value / max));
+  const alpha = Math.round(24 + ratio * 90);
+  const bg = `${t.primary}${alpha.toString(16).padStart(2, '0')}`;
+  return (
+    <span
+      className="num"
+      style={{
+        display: 'inline-block',
+        padding: '3px 10px',
+        borderRadius: 6,
+        fontWeight: 700,
+        fontSize: 12,
+        background: bg,
+        color: mode === 'dark' ? t.text : t.primaryDark,
+      }}
+    >
+      {value.toFixed(1)}%
+    </span>
   );
 };

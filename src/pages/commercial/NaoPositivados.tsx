@@ -24,8 +24,10 @@ const NIVEL_LABELS: Record<NaoPositivadoNivel, string> = {
 
 const fmtValor = (v: number) => `R$ ${v.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}`;
 
+const SUCCESS_GREEN = { light: '#0EA968', dark: '#1FAE6E' };
+
 export const NaoPositivadosPage: React.FC = () => {
-  const { t } = useTheme();
+  const { t, mode } = useTheme();
   const { currentUser } = useAuth();
   const { selectedPeriod, startDate, endDate, ano, mes, periodType } = useGlobalFilter();
 
@@ -145,12 +147,6 @@ export const NaoPositivadosPage: React.FC = () => {
   const lastColLabel = selectedCategoria || 'Valor Total';
   const lastColValue = (c: NaoPositivadoRow) =>
     selectedCategoria ? Number(c.fabricantes?.[selectedCategoria]) || 0 : totalValor(c);
-  const maxLastColValue = useMemo(
-    () => Math.max(1, ...filtered.map((c) => lastColValue(c))),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [filtered, selectedCategoria]
-  );
-
   const handleExport = () => [
     {
       sheetName: 'Não Positivados',
@@ -266,7 +262,7 @@ export const NaoPositivadosPage: React.FC = () => {
                     {effectiveNivel === 'vendedor' && <td>{c.vendedor || c.codVendedor || '—'}</td>}
                     {(effectiveNivel === 'vendedor' || effectiveNivel === 'equipe') && <td>{c.equipe || '—'}</td>}
                     <td style={{ textAlign: 'right', padding: '10px 12px' }}>
-                      <ValueWithBar value={lastColValue(c)} max={maxLastColValue} theme={t} formatter={fmtValor} />
+                      <ValueStatus value={lastColValue(c)} theme={t} mode={mode} formatter={fmtValor} />
                     </td>
                   </tr>
                 ))}
@@ -279,27 +275,22 @@ export const NaoPositivadosPage: React.FC = () => {
   );
 };
 
-// Valor + barra de progressão relativa ao maior valor da coluna na listagem
-// filtrada atual (mesmo padrão visual usado no Dashboard para percentuais).
-const ValueWithBar: React.FC<{ value: number; max: number; theme: any; formatter: (v: number) => string }> = ({
+// Valor com sinalização de cor: verde quando houve venda no período/categoria
+// exibida, vermelho quando o valor é zero (sem venda).
+const ValueStatus: React.FC<{ value: number; theme: any; mode: 'light' | 'dark'; formatter: (v: number) => string }> = ({
   value,
-  max,
   theme: t,
+  mode,
   formatter,
-}) => (
-  <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
-    <span className="num" style={{ fontSize: 12.5, fontWeight: 700, color: t.text }}>
-      {formatter(value)}
-    </span>
-    <div style={{ width: 90, height: 5, borderRadius: 3, background: t.border, overflow: 'hidden' }}>
-      <div
-        style={{
-          width: `${Math.max(0, Math.min(100, (value / max) * 100))}%`,
-          height: '100%',
-          background: t.primary,
-          borderRadius: 3,
-        }}
-      />
+}) => {
+  const hasSale = value > 0;
+  const color = hasSale ? SUCCESS_GREEN[mode] : t.complementaryRed;
+  return (
+    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+      <span style={{ width: 8, height: 8, borderRadius: '50%', background: color, flexShrink: 0 }} />
+      <span className="num" style={{ fontSize: 12.5, fontWeight: 700, color }}>
+        {formatter(value)}
+      </span>
     </div>
-  </div>
-);
+  );
+};
