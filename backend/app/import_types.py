@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-ColumnKind = Literal["text", "numeric", "integer", "date", "boolean", "jsonb"]
+ColumnKind = Literal["text", "numeric", "integer", "date", "boolean", "jsonb", "time", "duration"]
 
 
 @dataclass(frozen=True)
@@ -448,8 +448,68 @@ IMPORT_TYPE_CONFIGS: dict[str, ImportTypeConfig] = {
             ImportColumn("fabricantes", "jsonb"),
         ),
     ),
+    # Raio-X — aba "Acompanhamento" (planilha diária fornecida pelo SAR).
+    # Uma linha por (data_referencia, cod_vendedor); igual em espírito aos
+    # demais indicadores_* (snapshot diário, nunca sobrescreve outro período).
+    # Nomes alinhados com src/pages/admin/Importacao.tsx e server/importTypes.ts.
+    "raiox": ImportTypeConfig(
+        id="raiox",
+        label="Raio-X — Acompanhamento",
+        table="Acompanhamento",
+        key_columns=("data_referencia", "cod_vendedor"),
+        snapshot=True,
+        columns=(
+            ImportColumn("cod_vendedor", "text"),
+            ImportColumn("vendedor", "text"),
+            ImportColumn("equipe", "text"),
+            ImportColumn("visitas_previstas", "integer"),
+            ImportColumn("visitas_realizadas", "integer"),
+            ImportColumn("visitas_fora_rota", "integer"),
+            ImportColumn("perc_gps", "numeric"),
+            ImportColumn("apontamentos_inconsistencia", "integer"),
+            ImportColumn("positiva_prevista", "integer"),
+            ImportColumn("pedidos", "integer"),
+            ImportColumn("perc_positivacao", "numeric"),
+            ImportColumn("fora_rota_positivacao", "integer"),
+            ImportColumn("perc_fora_rota", "numeric"),
+            ImportColumn("produtividade", "numeric"),
+            ImportColumn("hora_inicio", "time"),
+            ImportColumn("hora_check_in", "time"),
+            ImportColumn("hora_check_out", "time"),
+            ImportColumn("hora_fim", "time"),
+            ImportColumn("tempo_campo", "duration"),
+            ImportColumn("acumulado_prevista", "integer"),
+            ImportColumn("acumulado_realizadas", "integer"),
+            ImportColumn("acumulado_porcentagem", "numeric"),
+            ImportColumn("acumulado_fora_rota", "integer"),
+            ImportColumn("perc_fora_rota_acumulado", "numeric"),
+            ImportColumn("acumulado_positivacao_visitas", "integer"),
+            ImportColumn("acumulado_positivacao_pedidos", "integer"),
+            ImportColumn("perc_positivacao_acumulado", "numeric"),
+            ImportColumn("acumulado_positivacao_fora_rota", "integer"),
+            ImportColumn("perc_positivacao_fora_rota", "numeric"),
+        ),
+    ),
 }
 
 
 def get_import_type_config(tipo_id: str) -> ImportTypeConfig | None:
-    return IMPORT_TYPE_CONFIGS.get(tipo_id)
+    if not tipo_id:
+        return None
+    normalized = tipo_id.strip()
+    # exact match
+    if normalized in IMPORT_TYPE_CONFIGS:
+        return IMPORT_TYPE_CONFIGS[normalized]
+    # case-insensitive
+    lower = normalized.lower()
+    for k in IMPORT_TYPE_CONFIGS:
+        if k.lower() == lower:
+            return IMPORT_TYPE_CONFIGS[k]
+    # composite like 'dados_app__mes' or 'raiox__Acompanhamento' -> try base
+    base = normalized.split("__")[0].strip()
+    if base in IMPORT_TYPE_CONFIGS:
+        return IMPORT_TYPE_CONFIGS[base]
+    for k in IMPORT_TYPE_CONFIGS:
+        if k.lower() == base.lower():
+            return IMPORT_TYPE_CONFIGS[k]
+    return None

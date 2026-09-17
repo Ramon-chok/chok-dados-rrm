@@ -15,7 +15,15 @@ from psycopg import Connection
 from psycopg.types.json import Jsonb
 
 from app.import_types import ImportTypeConfig
-from app.parse import parse_boolean, parse_date_only, parse_integer, parse_numeric, parse_text
+from app.parse import (
+    parse_boolean,
+    parse_date_only,
+    parse_duration,
+    parse_integer,
+    parse_numeric,
+    parse_text,
+    parse_time_of_day,
+)
 
 CHUNK_SIZE = 500
 
@@ -94,6 +102,10 @@ def map_and_validate_rows(
                     parsed_ok, parsed_val = True, None
             elif col.kind == "boolean":
                 parsed_ok, parsed_val = parse_boolean(raw_value)
+            elif col.kind == "time":
+                parsed_ok, parsed_val = parse_time_of_day(raw_value)
+            elif col.kind == "duration":
+                parsed_ok, parsed_val = parse_duration(raw_value)
             elif col.kind == "jsonb":
                 parsed_ok, parsed_val = True, raw_value if isinstance(raw_value, dict) else {}
             else:

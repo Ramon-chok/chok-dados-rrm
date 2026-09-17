@@ -269,18 +269,54 @@ export interface TargetRow {
   metaCobertura: number;
 }
 
-export interface SarPositivacaoRow {
-  codigo: string;
-  nome: string;
+/**
+ * Uma linha por vendedor vinda de GET /sar/raiox — já agregada no servidor
+ * (SOMA para contagens, MÉDIA para percentuais) quando `mode` é "periodo";
+ * valores exatos do dia quando `mode` é "dia" (ver backend/app/routers/catalog.py).
+ */
+export interface RaioXRow {
+  codVendedor: string;
+  vendedor: string;
   equipe: string | null;
+  /** Quantos dias de dados entraram na agregação desta linha (1 em modo "dia"). */
+  diasComDados: number;
   visitasPrevistas: number;
   visitasRealizadas: number;
-  vendasPrevistas: number;
-  vendasRealizadas: number;
-  foraDeRota: number;
-  gpsOk: number;
+  visitasForaRota: number;
+  percGps: number;
+  apontamentosInconsistencia: number;
+  positivaPrevista: number;
   pedidos: number;
-  apontamentos: number;
+  percPositivacao: number;
+  foraRotaPositivacao: number;
+  percForaRota: number;
+  produtividade: number;
+  /** "HH:MM:SS" — só fazem sentido olhar em modo "dia" (ver comentário no componente). */
+  horaInicio: string | null;
+  horaCheckIn: string | null;
+  horaCheckOut: string | null;
+  horaFim: string | null;
+  tempoCampo: string | null;
+  acumuladoPrevista: number;
+  acumuladoRealizadas: number;
+  acumuladoPorcentagem: number;
+  acumuladoForaRota: number;
+  percForaRotaAcumulado: number;
+  acumuladoPositivacaoVisitas: number;
+  acumuladoPositivacaoPedidos: number;
+  percPositivacaoAcumulado: number;
+  acumuladoPositivacaoForaRota: number;
+  percPositivacaoForaRota: number;
+}
+
+export interface RaioXResponse {
+  mode: 'dia' | 'periodo';
+  ano: number;
+  mes: number | null;
+  dia: string | null;
+  /** Anos com dados na tabela raiox (para popular o filtro de Ano). */
+  anosDisponiveis: number[];
+  rows: RaioXRow[];
 }
 
 export interface LoginApiResponse {
@@ -739,11 +775,15 @@ export function fetchNotPositivated(params?: {
   return request<NotPositivatedResponse>(`/commercial/not-positivated${qs(params)}`);
 }
 
-export function fetchSarPositivacao(params?: {
-  ano?: number;
-  mes?: number;
-}): Promise<SarPositivacaoRow[]> {
-  return request<SarPositivacaoRow[]>(`/sar/positivacao${qs(params)}`);
+/**
+ * Dados da importação Raio-X (tabela `raiox`) para a tela sar/RaioX.tsx.
+ * `dia` (YYYY-MM-DD) tem prioridade sobre `mes`/`ano` — quando informado, os
+ * demais são ignorados no servidor e a resposta vem com mode: "dia" (valores
+ * exatos daquele dia, sem agregação). Sem `dia`, agrega por `ano` (+ `mes`
+ * opcional) e a resposta vem com mode: "periodo".
+ */
+export function fetchRaioX(params?: { ano?: number; mes?: number; dia?: string }): Promise<RaioXResponse> {
+  return request<RaioXResponse>(`/sar/raiox${qs(params)}`);
 }
 
 export interface SubmitImportParams {
@@ -758,6 +798,7 @@ export interface SubmitImportParams {
   totalChunks?: number;
   importId?: number;
   rowOffset?: number;
+  useMacro?: boolean;
 }
 
 export interface SubmitImportChunkedProgress {
@@ -835,6 +876,7 @@ export async function submitImportChunked(
         arquivo: params.arquivo,
         usuarioNome: params.usuarioNome,
         usuarioEmail: params.usuarioEmail,
+        useMacro: params.useMacro,
         mapping: params.mapping,
         rows: chunkRows,
         chunkIndex,

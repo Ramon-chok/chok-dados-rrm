@@ -104,3 +104,65 @@ def parse_boolean(raw: object) -> ParseResult[bool]:
     if s in FALSE_VALUES:
         return True, False
     return False, f'valor booleano inválido: "{raw}" (use sim/não)'
+
+
+def _format_hms(total_seconds: float) -> str:
+    s = round(total_seconds)
+    hh, rem = divmod(s, 3600)
+    mm, ss = divmod(rem, 60)
+    return f"{hh:02d}:{mm:02d}:{ss:02d}"
+
+
+_TIME_RE = re.compile(r"^(\d{1,2}):(\d{2})(?::(\d{2}))?$")
+_DURATION_RE = re.compile(r"^(\d{1,3}):(\d{2})(?::(\d{2}))?$")
+
+
+def parse_time_of_day(raw: object) -> ParseResult[str]:
+    """Hora-do-dia (ex.: check-in) — aceita "HH:MM[:SS]" e a hora serial do
+    Excel (fração do dia: 0.5 = 12:00). Sempre normalizada para <24h, pois
+    representa um instante do dia, não uma duração."""
+    if raw is None or raw == "":
+        return True, None
+
+    if isinstance(raw, (int, float)) and not isinstance(raw, bool):
+        if not math.isfinite(raw):
+            return False, f'hora inválida: "{raw}"'
+        frac = (raw % 1 + 1) % 1
+        return True, _format_hms(frac * 86400)
+
+    s = str(raw).strip()
+    if s == "":
+        return True, None
+    m = _TIME_RE.match(s)
+    if m:
+        hh, mm = int(m.group(1)), int(m.group(2))
+        ss = int(m.group(3)) if m.group(3) else 0
+        if hh > 23 or mm > 59 or ss > 59:
+            return False, f'hora inválida: "{raw}"'
+        return True, f"{hh:02d}:{mm:02d}:{ss:02d}"
+    return False, f'hora inválida: "{raw}"'
+
+
+def parse_duration(raw: object) -> ParseResult[str]:
+    """Duração (ex.: tempo em campo) — mesmo formato, mas SEM normalizar para
+    24h: uma jornada pode ultrapassar meia-noite quando somada (ex.:
+    26:15:00), por isso é gravada como texto, não TIME."""
+    if raw is None or raw == "":
+        return True, None
+
+    if isinstance(raw, (int, float)) and not isinstance(raw, bool):
+        if not math.isfinite(raw) or raw < 0:
+            return False, f'duração inválida: "{raw}"'
+        return True, _format_hms(raw * 86400)
+
+    s = str(raw).strip()
+    if s == "":
+        return True, None
+    m = _DURATION_RE.match(s)
+    if m:
+        hh, mm = int(m.group(1)), int(m.group(2))
+        ss = int(m.group(3)) if m.group(3) else 0
+        if mm > 59 or ss > 59:
+            return False, f'duração inválida: "{raw}"'
+        return True, f"{hh:02d}:{mm:02d}:{ss:02d}"
+    return False, f'duração inválida: "{raw}"'

@@ -41,7 +41,7 @@ interface ImportProgressState {
   phase: 'preparing' | 'uploading' | 'finishing';
 }
 
-export type ImportType = 'sortimento' | 'top_clientes' | 'dados_app' | 'nao_positivados';
+export type ImportType = 'sortimento' | 'top_clientes' | 'dados_app' | 'nao_positivados' | 'raiox';
 
 interface ImportSheetOption {
   /** Identificador interno da aba dentro do tipo de importação. */
@@ -362,17 +362,20 @@ const IMPORT_TYPES: ImportTypeOption[] = [
     templateFile: '/templates/importacao/raiox.xlsx',
     sheets: [
       {
-        key: 'raiox',
+        key: 'Acompanhamento',
         sheetName: 'Acompanhamento',
         label: 'Acompanhamento',
 
+        // Nomes de sistema (devem bater com server/importTypes.ts, entrada
+        // "raiox"). A planilha real repete alguns rótulos de coluna entre a
+        // seção diária e a seção "acumulado" (ex.: "% FORA ROTA" e
+        // "% POSITIVAÇÃO") — por isso as colunas do acumulado usam nomes de
+        // sistema próprios (…_acumulado) em vez de reaproveitar o mesmo nome
+        // da seção diária, que faria as duas colunas colidirem no mapeamento.
         columns: [
           'cod_vendedor',
           'vendedor',
           'equipe',
-
-          'semanas_ativas',
-          'dia_semana',
 
           'visitas_previstas',
           'visitas_realizadas',
@@ -380,23 +383,31 @@ const IMPORT_TYPES: ImportTypeOption[] = [
           'perc_gps',
 
           'apontamentos_inconsistencia',
-          'revistas_pedidos',
-          'positivacao',
+          'positiva_prevista',
+          'pedidos',
           'perc_positivacao',
 
-          'vendas',
-          'faturamento',
+          'fora_rota_positivacao',
+          'perc_fora_rota',
+          'produtividade',
 
           'hora_inicio',
           'hora_check_in',
           'hora_check_out',
-          'hora_ultimo_pedido',
           'hora_fim',
+          'tempo_campo',
 
-          'acumulado_visitas',
-          'acumulado_visitas_realizadas',
-          'acumulado_positivacao',
-          'acumulado_pedidos'
+          'acumulado_prevista',
+          'acumulado_realizadas',
+          'acumulado_porcentagem',
+          'acumulado_fora_rota',
+          'perc_fora_rota_acumulado',
+
+          'acumulado_positivacao_visitas',
+          'acumulado_positivacao_pedidos',
+          'perc_positivacao_acumulado',
+          'acumulado_positivacao_fora_rota',
+          'perc_positivacao_fora_rota',
         ],
 
         headerHints: {
@@ -404,33 +415,44 @@ const IMPORT_TYPES: ImportTypeOption[] = [
           vendedor: 'VENDEDOR',
           equipe: 'EQUIPE',
 
-          semanas_ativas: 'Semanas Ativas',
-          dia_semana: 'Dia Semana',
-
-          visitas_previstas: 'REVIST.',
+          visitas_previstas: 'VISITAS PREVISTA',
           visitas_realizadas: 'REALIZADA',
-          visitas_fora_rota: 'DE ROTA',
+          visitas_fora_rota: 'FORA DE ROTA VISITAS',
           perc_gps: '% GPS',
 
-          apontamentos_inconsistencia: 'APONTAMENTOS/INCONSISTÊNCIA',
-          revistas_pedidos: 'REVIST./PEDIDOS',
-          positivacao: 'POSITIVAÇÃO',
-          perc_positivacao: '%',
+          apontamentos_inconsistencia: 'APONTAMENTOS',
+          // A planilha real repete "PREVISTA" (visitas e positivação) — o
+          // parser desambigua a 2ª ocorrência com " (2)" (ver dedup de
+          // cabeçalhos em handleFileChange), então o mesmo texto de dica
+          // funciona para os dois, na ordem em que aparecem nas colunas.
+          positiva_prevista: 'PREVISTA',
+          pedidos: 'PEDIDOS',
+          perc_positivacao: '% POSITIVAÇÃO',
 
-          vendas: 'VENDAS',
-          faturamento: 'R$',
+          fora_rota_positivacao: 'FORA DE ROTA',
+          perc_fora_rota: '% FORA ROTA',
+          produtividade: 'PRODUTIVIDADE',
 
-          hora_inicio: 'Início',
-          hora_check_in: 'Check-in',
-          hora_check_out: 'Check-out',
-          hora_ultimo_pedido: 'Último pedido',
-          hora_fim: 'EM PONTO',
+          hora_inicio: 'PRIMEIRO PONTO',
+          hora_check_in: 'CHECK-IN',
+          hora_check_out: 'CHECK-OUT',
+          hora_fim: 'FIM',
+          tempo_campo: 'T. EM CAMPO',
 
-          acumulado_visitas: 'VISITAS',
-          acumulado_visitas_realizadas: 'REALIZADA',
-          acumulado_positivacao: 'POSITIVAÇÃO',
-          acumulado_pedidos: 'PEDIDOS'
-        }
+          acumulado_prevista: 'ACUMULADO PREVISTA',
+          acumulado_realizadas: 'ACUMULADO REALIZADAS',
+          acumulado_porcentagem: 'ACUMULADO PORCENTAGEM',
+          acumulado_fora_rota: 'ACUMULADO FORA ROTA',
+          perc_fora_rota_acumulado: '% FORA ROTA ACUMULADO',
+
+          acumulado_positivacao_visitas: 'ACUMULADO VISITAS',
+          acumulado_positivacao_pedidos: 'ACUMULADO PEDIDOS',
+          // Mesmo texto real de "% POSITIVAÇÃO" repetido — desambiguado pelo
+          // mesmo mecanismo de sufixo " (2)".
+          perc_positivacao_acumulado: '% POSITIVAÇÃO',
+          acumulado_positivacao_fora_rota: 'POSITIVACAO FORA ROTA',
+          perc_positivacao_fora_rota: '% FORA ROTA POSITIVACAO',
+        },
       },
     ],
   },
@@ -508,6 +530,7 @@ export const ImportacaoPage: React.FC = () => {
   // Data que os dados REPRESENTAM (regra 10) — pode ser diferente do dia do
   // upload, por isso é sempre editável e nunca assumida silenciosamente.
   const [dataReferencia, setDataReferencia] = useState<string>(() => new Date().toISOString().slice(0, 10));
+  const [useMacro, setUseMacro] = useState<boolean>(false);
 
   const currentTypeConfig = IMPORT_TYPES.find((item) => item.id === selectedType)!;
   const isMultiSheet = currentTypeConfig.sheets.length > 1;
@@ -744,6 +767,7 @@ export const ImportacaoPage: React.FC = () => {
             usuarioNome: currentUser?.name,
             usuarioEmail: currentUser?.email,
             mapping: columnMappings[sheetCfg.key] || {},
+            useMacro,
             rows: sheetData.rows,
           },
           {
@@ -1206,6 +1230,15 @@ export const ImportacaoPage: React.FC = () => {
               Período que os dados representam — não precisa ser hoje. Ex.: um arquivo enviado dia 12 pode conter o
               fechamento do dia 11.
             </div>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, fontSize: '13px' }}>
+              <input
+                type="checkbox"
+                checked={useMacro}
+                onChange={(e) => setUseMacro(e.target.checked)}
+              />
+              <span style={{ color: t.text, fontWeight: 600 }}>Importar com macro</span>
+              <span style={{ fontSize: '12px', color: t.textMuted, marginLeft: 8 }}>Preserve processamento especial da planilha (.xlsm)</span>
+            </label>
           </div>
 
           {fileError && (

@@ -437,3 +437,56 @@ ALTER TABLE nao_positivados_chok_total ADD COLUMN IF NOT EXISTS nome_fantasia TE
 ALTER TABLE nao_positivados_chok_total ADD COLUMN IF NOT EXISTS municipio TEXT;
 ALTER TABLE nao_positivados_chok_total ADD COLUMN IF NOT EXISTS fabricantes JSONB NOT NULL DEFAULT '{}'::jsonb;
 CREATE INDEX IF NOT EXISTS idx_nao_pos_total_periodo ON nao_positivados_chok_total(ano_referencia, mes_referencia);
+
+-- Raio-X — aba "Acompanhamento" (planilha diária fornecida pelo SAR, ver
+-- tipo "raiox" em app.import_types e a configuração de colunas em
+-- src/pages/admin/Importacao.tsx). Snapshot diário: uma linha por
+-- (data_referencia, cod_vendedor); reenviar o mesmo dia atualiza (UPDATE),
+-- um novo dia sempre cria uma linha nova. Espelho de server/schema.sql.
+CREATE TABLE IF NOT EXISTS raiox (
+  data_referencia               DATE NOT NULL,
+  cod_vendedor                  TEXT NOT NULL,
+  vendedor                      TEXT,
+  equipe                        TEXT,
+
+  visitas_previstas             INT,
+  visitas_realizadas            INT,
+  visitas_fora_rota             INT,
+  perc_gps                      NUMERIC(6,2),
+
+  apontamentos_inconsistencia   INT,
+  positiva_prevista             INT,
+  pedidos                       INT,
+  perc_positivacao              NUMERIC(6,2),
+
+  fora_rota_positivacao         INT,
+  perc_fora_rota                NUMERIC(6,2),
+  produtividade                 NUMERIC(10,2),
+
+  hora_inicio                   TIME,
+  hora_check_in                 TIME,
+  hora_check_out                TIME,
+  hora_fim                      TIME,
+  -- Duração (não hora-do-dia) — pode passar de 24h somada, por isso é TEXT
+  -- ("HH:MM:SS"), não TIME (ver parse_duration em app.parse).
+  tempo_campo                   TEXT,
+
+  acumulado_prevista            INT,
+  acumulado_realizadas          INT,
+  acumulado_porcentagem         NUMERIC(6,2),
+  acumulado_fora_rota           INT,
+  perc_fora_rota_acumulado      NUMERIC(6,2),
+
+  acumulado_positivacao_visitas INT,
+  acumulado_positivacao_pedidos INT,
+  perc_positivacao_acumulado    NUMERIC(6,2),
+  acumulado_positivacao_fora_rota INT,
+  perc_positivacao_fora_rota    NUMERIC(6,2),
+
+  mes_referencia      INT NOT NULL,
+  ano_referencia       INT NOT NULL,
+  data_importacao      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  importacao_id        BIGINT,
+  PRIMARY KEY (data_referencia, cod_vendedor)
+);
+CREATE INDEX IF NOT EXISTS idx_raiox_periodo ON raiox(ano_referencia, mes_referencia);

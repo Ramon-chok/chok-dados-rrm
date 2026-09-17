@@ -436,36 +436,138 @@ CREATE TABLE IF NOT EXISTS importacoes_erros (
 );
 CREATE INDEX IF NOT EXISTS idx_importacoes_erros_importacao ON importacoes_erros(importacao_id);
 
+-- Raio-X — aba "Acompanhamento" (planilha diária fornecida pelo SAR, ver
+-- tipo "raiox" em server/importTypes.ts e a configuração de colunas em
+-- src/pages/admin/Importacao.tsx). Snapshot diário: uma linha por
+-- (data_referencia, cod_vendedor); reenviar o mesmo dia atualiza (UPDATE),
+-- um novo dia sempre cria uma linha nova.
 CREATE TABLE IF NOT EXISTS raiox (
-  data_referencia     DATE NOT NULL,
-  cod_vendedor        TEXT NOT NULL,
-  vendedor            TEXT,
-  equipe              TEXT,
-  semanas_ativas      INT,
-  dia_semana          TEXT,
-  visitas_previstas   INT,
-  visitas_realizadas  INT,
-  visitas_fora_rota   INT,
-  perc_gps            NUMERIC,
-  apontamentos_inconsistencia INT,
-  revistas_pedidos    INT,
-  positivacao         INT,
-  perc_positivacao    NUMERIC,
-  vendas              INT,
-  faturamento         NUMERIC,
-  hora_inicio         TIME,
-  hora_check_in       TIME,
-  hora_check_out      TIME,
-  hora_ultimo_pedido  TIME,
-  hora_fim            TIME,
-  acumulado_visitas   INT,
-  acumulado_visitas_realizadas INT,
-  acumulado_positivacao INT,
-  acumulado_pedidos   INT,
+  data_referencia               DATE NOT NULL,
+  cod_vendedor                  TEXT NOT NULL,
+  vendedor                      TEXT,
+  equipe                        TEXT,
+
+  visitas_previstas             INT,
+  visitas_realizadas            INT,
+  visitas_fora_rota             INT,
+  perc_gps                      NUMERIC(6,2),
+
+  apontamentos_inconsistencia   INT,
+  positiva_prevista             INT,
+  pedidos                       INT,
+  perc_positivacao              NUMERIC(6,2),
+
+  fora_rota_positivacao         INT,
+  perc_fora_rota                NUMERIC(6,2),
+  produtividade                 NUMERIC(10,2),
+
+  hora_inicio                   TIME,
+  hora_check_in                 TIME,
+  hora_check_out                TIME,
+  hora_fim                      TIME,
+  -- Duração (não hora-do-dia) — pode passar de 24h somada, por isso é TEXT
+  -- ("HH:MM:SS"), não TIME (ver parseDuration em server/parse.ts).
+  tempo_campo                   TEXT,
+
+  acumulado_prevista            INT,
+  acumulado_realizadas          INT,
+  acumulado_porcentagem         NUMERIC(6,2),
+  acumulado_fora_rota           INT,
+  perc_fora_rota_acumulado      NUMERIC(6,2),
+
+  acumulado_positivacao_visitas INT,
+  acumulado_positivacao_pedidos INT,
+  perc_positivacao_acumulado    NUMERIC(6,2),
+  acumulado_positivacao_fora_rota INT,
+  perc_positivacao_fora_rota    NUMERIC(6,2),
+
   mes_referencia      INT NOT NULL,
-  ano_referencia      INT NOT NULL,
-  data_importacao     TIMESTAMPTZ NOT NULL DEFAULT now(),
-  importacao_id       BIGINT,
-  PRIMARY KEY (data_referencia, cod_vendedor, mes_referencia, ano_referencia)
+  ano_referencia       INT NOT NULL,
+  data_importacao      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  importacao_id        BIGINT,
+  PRIMARY KEY (data_referencia, cod_vendedor)
 );
+-- Colunas abaixo garantem a atualização de instalações que já tinham a
+-- versão antiga (e incompatível) desta tabela criada por CREATE TABLE IF
+-- NOT EXISTS antes desta revisão.
+ALTER TABLE raiox ADD COLUMN IF NOT EXISTS vendedor TEXT;
+ALTER TABLE raiox ADD COLUMN IF NOT EXISTS equipe TEXT;
+ALTER TABLE raiox ADD COLUMN IF NOT EXISTS visitas_previstas INT;
+ALTER TABLE raiox ADD COLUMN IF NOT EXISTS visitas_realizadas INT;
+ALTER TABLE raiox ADD COLUMN IF NOT EXISTS visitas_fora_rota INT;
+ALTER TABLE raiox ADD COLUMN IF NOT EXISTS perc_gps NUMERIC(6,2);
+ALTER TABLE raiox ADD COLUMN IF NOT EXISTS apontamentos_inconsistencia INT;
+ALTER TABLE raiox ADD COLUMN IF NOT EXISTS positiva_prevista INT;
+ALTER TABLE raiox ADD COLUMN IF NOT EXISTS pedidos INT;
+ALTER TABLE raiox ADD COLUMN IF NOT EXISTS perc_positivacao NUMERIC(6,2);
+ALTER TABLE raiox ADD COLUMN IF NOT EXISTS fora_rota_positivacao INT;
+ALTER TABLE raiox ADD COLUMN IF NOT EXISTS perc_fora_rota NUMERIC(6,2);
+ALTER TABLE raiox ADD COLUMN IF NOT EXISTS produtividade NUMERIC(10,2);
+ALTER TABLE raiox ADD COLUMN IF NOT EXISTS hora_inicio TIME;
+ALTER TABLE raiox ADD COLUMN IF NOT EXISTS hora_check_in TIME;
+ALTER TABLE raiox ADD COLUMN IF NOT EXISTS hora_check_out TIME;
+ALTER TABLE raiox ADD COLUMN IF NOT EXISTS hora_fim TIME;
+ALTER TABLE raiox ADD COLUMN IF NOT EXISTS tempo_campo TEXT;
+ALTER TABLE raiox ADD COLUMN IF NOT EXISTS acumulado_prevista INT;
+ALTER TABLE raiox ADD COLUMN IF NOT EXISTS acumulado_realizadas INT;
+ALTER TABLE raiox ADD COLUMN IF NOT EXISTS acumulado_porcentagem NUMERIC(6,2);
+ALTER TABLE raiox ADD COLUMN IF NOT EXISTS acumulado_fora_rota INT;
+ALTER TABLE raiox ADD COLUMN IF NOT EXISTS perc_fora_rota_acumulado NUMERIC(6,2);
+ALTER TABLE raiox ADD COLUMN IF NOT EXISTS acumulado_positivacao_visitas INT;
+ALTER TABLE raiox ADD COLUMN IF NOT EXISTS acumulado_positivacao_pedidos INT;
+ALTER TABLE raiox ADD COLUMN IF NOT EXISTS perc_positivacao_acumulado NUMERIC(6,2);
+ALTER TABLE raiox ADD COLUMN IF NOT EXISTS acumulado_positivacao_fora_rota INT;
+ALTER TABLE raiox ADD COLUMN IF NOT EXISTS perc_positivacao_fora_rota NUMERIC(6,2);
+ALTER TABLE raiox ADD COLUMN IF NOT EXISTS mes_referencia INT;
+ALTER TABLE raiox ADD COLUMN IF NOT EXISTS ano_referencia INT;
+ALTER TABLE raiox ADD COLUMN IF NOT EXISTS data_importacao TIMESTAMPTZ DEFAULT now();
+ALTER TABLE raiox ADD COLUMN IF NOT EXISTS importacao_id BIGINT;
+-- Colunas da versão antiga que não existem mais na configuração atual.
+ALTER TABLE raiox DROP COLUMN IF EXISTS semanas_ativas;
+ALTER TABLE raiox DROP COLUMN IF EXISTS dia_semana;
+ALTER TABLE raiox DROP COLUMN IF EXISTS revistas_pedidos;
+ALTER TABLE raiox DROP COLUMN IF EXISTS positivacao;
+ALTER TABLE raiox DROP COLUMN IF EXISTS vendas;
+ALTER TABLE raiox DROP COLUMN IF EXISTS faturamento;
+ALTER TABLE raiox DROP COLUMN IF EXISTS hora_ultimo_pedido;
+ALTER TABLE raiox DROP COLUMN IF EXISTS acumulado_visitas;
+ALTER TABLE raiox DROP COLUMN IF EXISTS acumulado_visitas_realizadas;
+ALTER TABLE raiox DROP COLUMN IF EXISTS acumulado_positivacao;
+ALTER TABLE raiox DROP COLUMN IF EXISTS acumulado_pedidos;
+-- A versão antiga tinha PK (data_referencia, cod_vendedor, mes_referencia,
+-- ano_referencia) — mes/ano são derivados de data_referencia (mesmo padrão
+-- de indicadores_vendedor/indicadores_positivacao) e não deveriam fazer
+-- parte da chave. Corrige instalações que já tinham a PK antiga.
+DO $raiox_pk$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.table_constraints
+    WHERE table_schema = 'public'
+      AND table_name = 'raiox'
+      AND constraint_name = 'raiox_pkey'
+  ) AND NOT EXISTS (
+    SELECT 1
+    FROM information_schema.key_column_usage
+    WHERE table_schema = 'public'
+      AND table_name = 'raiox'
+      AND constraint_name = 'raiox_pkey'
+      AND column_name = 'mes_referencia'
+  ) THEN
+    -- PK já está no formato correto (data_referencia, cod_vendedor).
+    NULL;
+  ELSIF EXISTS (
+    SELECT 1
+    FROM information_schema.table_constraints
+    WHERE table_schema = 'public'
+      AND table_name = 'raiox'
+      AND constraint_name = 'raiox_pkey'
+  ) THEN
+    ALTER TABLE raiox DROP CONSTRAINT raiox_pkey;
+    ALTER TABLE raiox ADD PRIMARY KEY (data_referencia, cod_vendedor);
+  ELSE
+    ALTER TABLE raiox ADD PRIMARY KEY (data_referencia, cod_vendedor);
+  END IF;
+END
+$raiox_pk$;
 CREATE INDEX IF NOT EXISTS idx_raiox_periodo ON raiox(ano_referencia, mes_referencia);

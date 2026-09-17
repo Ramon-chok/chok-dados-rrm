@@ -9,7 +9,7 @@
 // chave, então o mesmo período é atualizado (UPDATE) e um novo período sempre
 // cria uma linha nova (INSERT) — nunca se sobrescreve o passado.
 
-export type ColumnKind = 'text' | 'numeric' | 'integer' | 'date' | 'boolean' | 'jsonb';
+export type ColumnKind = 'text' | 'numeric' | 'integer' | 'date' | 'boolean' | 'jsonb' | 'time' | 'duration';
 
 export interface ImportColumn {
   name: string;
@@ -445,8 +445,71 @@ export const IMPORT_TYPE_CONFIGS: Record<string, ImportTypeConfig> = {
       { name: 'dias_sem_comprar', kind: 'integer' },
     ],
   },
+
+  // Raio-X — aba "Acompanhamento" (planilha diária fornecida pelo SAR).
+  // Uma linha por (data_referencia, cod_vendedor); igual em espírito às
+  // demais tabelas indicadores_* (snapshot diário, nunca sobrescreve o
+  // histórico de outro período).
+  raiox: {
+    id: 'raiox',
+    label: 'Raio-X — Acompanhamento',
+    table: 'Acompanhamento',
+    keyColumns: ['data_referencia', 'cod_vendedor'],
+    snapshot: true,
+    columns: [
+      { name: 'cod_vendedor', kind: 'text' },
+      { name: 'vendedor', kind: 'text' },
+      { name: 'equipe', kind: 'text' },
+
+      { name: 'visitas_previstas', kind: 'integer' },
+      { name: 'visitas_realizadas', kind: 'integer' },
+      { name: 'visitas_fora_rota', kind: 'integer' },
+      { name: 'perc_gps', kind: 'numeric' },
+
+      { name: 'apontamentos_inconsistencia', kind: 'integer' },
+      { name: 'positiva_prevista', kind: 'integer' },
+      { name: 'pedidos', kind: 'integer' },
+      { name: 'perc_positivacao', kind: 'numeric' },
+
+      { name: 'fora_rota_positivacao', kind: 'integer' },
+      { name: 'perc_fora_rota', kind: 'numeric' },
+      { name: 'produtividade', kind: 'numeric' },
+
+      { name: 'hora_inicio', kind: 'time' },
+      { name: 'hora_check_in', kind: 'time' },
+      { name: 'hora_check_out', kind: 'time' },
+      { name: 'hora_fim', kind: 'time' },
+      { name: 'tempo_campo', kind: 'duration' },
+
+      { name: 'acumulado_prevista', kind: 'integer' },
+      { name: 'acumulado_realizadas', kind: 'integer' },
+      { name: 'acumulado_porcentagem', kind: 'numeric' },
+      { name: 'acumulado_fora_rota', kind: 'integer' },
+      { name: 'perc_fora_rota_acumulado', kind: 'numeric' },
+
+      { name: 'acumulado_positivacao_visitas', kind: 'integer' },
+      { name: 'acumulado_positivacao_pedidos', kind: 'integer' },
+      { name: 'perc_positivacao_acumulado', kind: 'numeric' },
+      { name: 'acumulado_positivacao_fora_rota', kind: 'integer' },
+      { name: 'perc_positivacao_fora_rota', kind: 'numeric' },
+    ],
+  },
 };
 
 export function getImportTypeConfig(id: string): ImportTypeConfig | undefined {
-  return IMPORT_TYPE_CONFIGS[id];
+  if (!id) return undefined;
+  const normalized = id.trim();
+  // lookup exact
+  if (IMPORT_TYPE_CONFIGS[normalized]) return IMPORT_TYPE_CONFIGS[normalized];
+  // try case-insensitive match
+  const lower = normalized.toLowerCase();
+  const foundKey = Object.keys(IMPORT_TYPE_CONFIGS).find((k) => k.toLowerCase() === lower);
+  if (foundKey) return IMPORT_TYPE_CONFIGS[foundKey];
+  // if it's a composite tipo like 'dados_app__mes' or 'raiox__Acompanhamento',
+  // try the base id before '__'
+  const base = normalized.split('__')[0].trim();
+  if (base && IMPORT_TYPE_CONFIGS[base]) return IMPORT_TYPE_CONFIGS[base];
+  const foundBase = Object.keys(IMPORT_TYPE_CONFIGS).find((k) => k.toLowerCase() === base.toLowerCase());
+  if (foundBase) return IMPORT_TYPE_CONFIGS[foundBase];
+  return undefined;
 }

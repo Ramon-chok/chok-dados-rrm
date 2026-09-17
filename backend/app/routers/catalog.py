@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+from datetime import date as date_cls
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.db import get_connection
+from app.parse import parse_date_only
 from app.security import get_current_user
 from app.services import iso, num, scope_filters
 
@@ -701,3 +703,146 @@ def sar_positivacao(
                 item[key] = num(value)
         out.append(item)
     return out
+
+
+@router.get("/sar/raiox")
+def sar_raiox(
+    ano: int | None = None,
+    mes: int | None = None,
+    dia: str | None = None,
+    user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Dados da tabela raiox (importação "Raio-X — Acompanhamento") para a
+    tela sar/RaioX.tsx: filtráveis por dia exato (`dia`) ou por período
+    (`ano` + `mes` opcional). Quando `dia` não é informado, os valores são
+    agregados por vendedor (SOMA para contagens, MÉDIA para percentuais) no
+    período pedido. O recorte RBAC segue o mesmo padrão de /sar/positivacao."""
+    if mes is not None and not (1 <= mes <= 12):
+        raise HTTPException(status_code=400, detail='Parâmetro "mes" deve estar entre 1 e 12.')
+
+    dia_ok: str | None = None
+    if dia:
+        ok, parsed = parse_date_only(dia)
+        if not ok or not parsed:
+            raise HTTPException(status_code=400, detail=f'Data inválida em "dia": "{dia}".')
+        dia_ok = parsed
+
+    ano_efetivo = ano or date_cls.today().year
+    scope = scope_filters(user)
+
+    params: list[Any] = []
+    parts = ["1=1"]
+    if dia_ok:
+        parts.append("r.data_referencia = %s")
+        params.append(dia_ok)
+    else:
+        parts.append("r.ano_referencia = %s")
+        params.append(ano_efetivo)
+        if mes:
+            parts.append("r.mes_referencia = %s")
+            params.append(mes)
+    if scope.get("equipe"):
+        parts.append("r.equipe = %s")
+        params.append(scope["equipe"])
+    if scope.get("vendedor"):
+        parts.append("r.cod_vendedor = %s")
+        params.append(scope["vendedor"])
+
+    with get_connection() as conn:
+        rows = conn.execute(
+            f"""
+            SELECT
+              r.cod_vendedor,
+              COALESCE(MAX(r.vendedor), MAX(v.nome), r.cod_vendedor) AS vendedor,
+              MAX(r.equipe) AS equipe,
+              COUNT(DISTINCT r.data_referencia) AS dias_com_dados,
+              COALESCE(SUM(r.visitas_previstas), 0) AS visitas_previstas,
+              COALESCE(SUM(r.visitas_realizadas), 0) AS visitas_realizadas,
+              COALESCE(SUM(r.visitas_fora_rota), 0) AS visitas_fora_rota,
+              AVG(r.perc_gps) AS perc_gps,
+              COALESCE(SUM(r.apontamentos_inconsistencia), 0) AS apontamentos_inconsistencia,
+              COALESCE(SUM(r.positiva_prevista), 0) AS positiva_prevista,
+              COALESCE(SUM(r.pedidos), 0) AS pedidos,
+              AVG(r.perc_positivacao) AS perc_positivacao,
+              COALESCE(SUM(r.fora_rota_positivacao), 0) AS fora_rota_positivacao,
+              AVG(r.perc_fora_rota) AS perc_fora_rota,
+              AVG(r.produtividade) AS produtividade,
+              MIN(r.hora_inicio) AS hora_inicio,
+              MIN(r.hora_check_in) AS hora_check_in,
+              MAX(r.hora_check_out) AS hora_check_out,
+              MAX(r.hora_fim) AS hora_fim,
+              MAX(r.tempo_campo::interval)::text AS tempo_campo,
+              COALESCE(SUM(r.acumulado_prevista), 0) AS acumulado_prevista,
+              COALESCE(SUM(r.acumulado_realizadas), 0) AS acumulado_realizadas,
+              AVG(r.acumulado_porcentagem) AS acumulado_porcentagem,
+              COALESCE(SUM(r.acumulado_fora_rota), 0) AS acumulado_fora_rota,
+              AVG(r.perc_fora_rota_acumulado) AS perc_fora_rota_acumulado,
+              COALESCE(SUM(r.acumulado_positivacao_visitas), 0) AS acumulado_positivacao_visitas,
+              COALESCE(SUM(r.acumulado_positivacao_pedidos), 0) AS acumulado_positivacao_pedidos,
+              AVG(r.perc_positivacao_acumulado) AS perc_positivacao_acumulado,
+              COALESCE(SUM(r.acumulado_positivacao_fora_rota), 0) AS acumulado_positivacao_fora_rota,
+              AVG(r.perc_positivacao_fora_rota) AS perc_positivacao_fora_rota
+            FROM raiox r
+            LEFT JOIN vendedores v ON v.cod_vendedor = r.cod_vendedor
+            WHERE {" AND ".join(parts)}
+            GROUP BY r.cod_vendedor
+            ORDER BY equipe, vendedor
+            """,
+            params,
+        ).fetchall()
+
+        anos_rows = conn.execute(
+            "SELECT DISTINCT ano_referencia FROM raiox ORDER BY ano_referencia DESC"
+        ).fetchall()
+
+    def hora(value: Any) -> str | None:
+        return value.isoformat() if value else None
+
+    out_rows = [
+        {
+            "codVendedor": r["cod_vendedor"],
+            "vendedor": r["vendedor"],
+            "equipe": r["equipe"],
+            "diasComDados": int(r["dias_com_dados"] or 0),
+            "visitasPrevistas": num(r["visitas_previstas"]),
+            "visitasRealizadas": num(r["visitas_realizadas"]),
+            "visitasForaRota": num(r["visitas_fora_rota"]),
+            "percGps": round(num(r["perc_gps"]), 4),
+            "apontamentosInconsistencia": num(r["apontamentos_inconsistencia"]),
+            "positivaPrevista": num(r["positiva_prevista"]),
+            "pedidos": num(r["pedidos"]),
+            "percPositivacao": round(num(r["perc_positivacao"]), 4),
+            "foraRotaPositivacao": num(r["fora_rota_positivacao"]),
+            "percForaRota": round(num(r["perc_fora_rota"]), 4),
+            "produtividade": round(num(r["produtividade"]), 4),
+            "horaInicio": hora(r["hora_inicio"]),
+            "horaCheckIn": hora(r["hora_check_in"]),
+            "horaCheckOut": hora(r["hora_check_out"]),
+            "horaFim": hora(r["hora_fim"]),
+            "tempoCampo": r["tempo_campo"],
+            "acumuladoPrevista": num(r["acumulado_prevista"]),
+            "acumuladoRealizadas": num(r["acumulado_realizadas"]),
+            "acumuladoPorcentagem": round(num(r["acumulado_porcentagem"]), 4),
+            "acumuladoForaRota": num(r["acumulado_fora_rota"]),
+            "percForaRotaAcumulado": round(num(r["perc_fora_rota_acumulado"]), 4),
+            "acumuladoPositivacaoVisitas": num(r["acumulado_positivacao_visitas"]),
+            "acumuladoPositivacaoPedidos": num(r["acumulado_positivacao_pedidos"]),
+            "percPositivacaoAcumulado": round(num(r["perc_positivacao_acumulado"]), 4),
+            "acumuladoPositivacaoForaRota": num(r["acumulado_positivacao_fora_rota"]),
+            "percPositivacaoForaRota": round(num(r["perc_positivacao_fora_rota"]), 4),
+        }
+        for r in rows
+    ]
+
+    anos_disponiveis = [int(a["ano_referencia"]) for a in anos_rows]
+    if ano_efetivo not in anos_disponiveis:
+        anos_disponiveis = sorted({*anos_disponiveis, ano_efetivo}, reverse=True)
+
+    return {
+        "mode": "dia" if dia_ok else "periodo",
+        "ano": ano_efetivo,
+        "mes": mes if not dia_ok else None,
+        "dia": dia_ok,
+        "anosDisponiveis": anos_disponiveis,
+        "rows": out_rows,
+    }

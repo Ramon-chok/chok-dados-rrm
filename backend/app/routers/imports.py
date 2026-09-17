@@ -28,6 +28,14 @@ def create_import(
 ) -> ImportResultSummary:
     cfg = get_import_type_config(body.tipo)
     if not cfg:
+        # Log for diagnosis
+        try:
+            import logging
+            logging.getLogger('uvicorn.error').error('Unknown import tipo received: %s', body.tipo)
+            logging.getLogger('uvicorn.error').error('Available import types: %s', list(IMPORT_TYPE_CONFIGS.keys()))
+            logging.getLogger('uvicorn.error').error('Received useMacro: %s', getattr(body, 'useMacro', None))
+        except Exception:
+            pass
         raise HTTPException(status_code=400, detail=f'Tipo de importação desconhecido: "{body.tipo}".')
 
     ok, data_referencia = parse_date_only(body.dataReferencia)

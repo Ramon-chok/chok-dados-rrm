@@ -1,22 +1,52 @@
-﻿import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  Bar,
+  CartesianGrid,
+  ComposedChart,
+  Legend,
+  Line,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
-import { useGlobalFilter } from '../../context/GlobalFilterContext';
 import { ExportExcelButton } from '../../components/common/ExportExcelButton';
 import { EmptyBlock, ErrorBlock, LoadingBlock } from '../../components/common/DataState';
 import { SingleSelectFilter } from '../../components/common/SingleSelectFilter';
-import { fetchSarPositivacao, SarPositivacaoRow } from '../../lib/api';
-import { Activity } from 'lucide-react';
+import { fetchRaioX, RaioXRow } from '../../lib/api';
+import { Activity, BarChart3, Calendar, Layers, X } from 'lucide-react';
+
+const MESES = [
+  'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+  'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro',
+];
+
+// Quantos vendedores o gráfico mostra de uma vez (a tabela abaixo sempre
+// mostra todos os que passaram no filtro) — evita um eixo X ilegível quando
+// a equipe/gerência tem muitos vendedores.
+const CHART_MAX_BARS = 20;
+
+function fmtPct(v: number | null | undefined): string {
+  if (v === null || v === undefined || Number.isNaN(v)) return '—';
+  return `${(v * 100).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%`;
+}
+
+function fmtNum(v: number | null | undefined): string {
+  if (v === null || v === undefined || Number.isNaN(v)) return '—';
+  return v.toLocaleString('pt-BR', { maximumFractionDigits: 1 });
+}
+
+function fmtHora(v: string | null | undefined): string {
+  if (!v) return '—';
+  // "HH:MM:SS" -> "HH:MM" (segundos não ajudam a leitura na tabela)
+  return v.slice(0, 5);
+}
 
 export const RaioXPage: React.FC = () => {
   const { t } = useTheme();
   const { currentUser } = useAuth();
-  const { ano, mes, periodType } = useGlobalFilter();
-  const [rows, setRows] = useState<SarPositivacaoRow[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [query, setQuery] = useState('');
-  const [selectedVendedor, setSelectedVendedor] = useState('');
 
   const role = currentUser?.role;
   // Supervisor (e Admin/Gerência) enxergam vários vendedores na mesma
@@ -24,28 +54,50 @@ export const RaioXPage: React.FC = () => {
   // equipe. Vendedor já vê só a própria linha (recorte travado no backend).
   const canFilterVendedor = role === 'ADMIN' || role === 'GERENTE' || role === 'SUPERVISOR';
 
+  const currentYear = new Date().getFullYear();
+  const [ano, setAno] = useState<number>(currentYear);
+  const [mes, setMes] = useState<number | ''>('');
+  const [dia, setDia] = useState<string>('');
+  const [anosDisponiveis, setAnosDisponiveis] = useState<number[]>([currentYear]);
+
+  const [rows, setRows] = useState<RaioXRow[]>([]);
+  const [mode, setMode] = useState<'dia' | 'periodo'>('periodo');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const [query, setQuery] = useState('');
+  const [selectedVendedor, setSelectedVendedor] = useState('');
+
   useEffect(() => {
     let mounted = true;
     (async () => {
-      setLoading(true); setError(null);
+      setLoading(true);
+      setError(null);
       try {
-        const data = await fetchSarPositivacao({
-          ano: periodType === 'personalizado' ? undefined : ano,
-          mes: periodType === 'mensal' ? mes : undefined,
+        const data = await fetchRaioX({
+          ano,
+          mes: dia ? undefined : mes || undefined,
+          dia: dia || undefined,
         });
-        if (mounted) setRows(data);
+        if (!mounted) return;
+        setRows(data.rows);
+        setMode(data.mode);
+        setAnosDisponiveis(data.anosDisponiveis.length ? data.anosDisponiveis : [currentYear]);
       } catch (e) {
         if (mounted) setError(e instanceof Error ? e.message : 'Falha ao carregar Raio-X');
       } finally {
         if (mounted) setLoading(false);
       }
     })();
-    return () => { mounted = false; };
-  }, [ano, mes, periodType]);
+    return () => {
+      mounted = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ano, mes, dia]);
 
   const vendedorOptions = useMemo(() => {
     const map = new Map<string, string>();
-    rows.forEach((r) => map.set(r.codigo, r.nome || r.codigo));
+    rows.forEach((r) => map.set(r.codVendedor, r.vendedor || r.codVendedor));
     return Array.from(map.entries()).sort((a, b) => a[1].localeCompare(b[1], 'pt-BR'));
   }, [rows]);
 
@@ -56,100 +108,447 @@ export const RaioXPage: React.FC = () => {
   }, [vendedorOptions, selectedVendedor]);
 
   const filtered = useMemo(() => {
-    const q = query.toLowerCase();
+    const q = query.trim().toLowerCase();
     return rows.filter((r) => {
-      const matchesVendedor = !selectedVendedor || r.codigo === selectedVendedor;
+      const matchesVendedor = !selectedVendedor || r.codVendedor === selectedVendedor;
       const matchesQuery =
         !q ||
-        (r.nome || '').toLowerCase().includes(q) ||
-        (r.codigo || '').toLowerCase().includes(q) ||
+        (r.vendedor || '').toLowerCase().includes(q) ||
+        (r.codVendedor || '').toLowerCase().includes(q) ||
         (r.equipe || '').toLowerCase().includes(q);
       return matchesVendedor && matchesQuery;
     });
   }, [rows, query, selectedVendedor]);
 
-  const totals = useMemo(() => filtered.reduce((acc, r) => ({
-    visitasPrevistas: acc.visitasPrevistas + (r.visitasPrevistas || 0),
-    visitasRealizadas: acc.visitasRealizadas + (r.visitasRealizadas || 0),
-    vendasPrevistas: acc.vendasPrevistas + (r.vendasPrevistas || 0),
-    vendasRealizadas: acc.vendasRealizadas + (r.vendasRealizadas || 0),
-    pedidos: acc.pedidos + (r.pedidos || 0),
-  }), { visitasPrevistas: 0, visitasRealizadas: 0, vendasPrevistas: 0, vendasRealizadas: 0, pedidos: 0 }), [filtered]);
+  const totals = useMemo(() => {
+    const n = filtered.length || 1;
+    return filtered.reduce(
+      (acc, r) => ({
+        visitasPrevistas: acc.visitasPrevistas + (r.visitasPrevistas || 0),
+        visitasRealizadas: acc.visitasRealizadas + (r.visitasRealizadas || 0),
+        pedidos: acc.pedidos + (r.pedidos || 0),
+        visitasForaRota: acc.visitasForaRota + (r.visitasForaRota || 0),
+        percPositivacao: acc.percPositivacao + (r.percPositivacao || 0) / n,
+        percForaRota: acc.percForaRota + (r.percForaRota || 0) / n,
+        percGps: acc.percGps + (r.percGps || 0) / n,
+        produtividade: acc.produtividade + (r.produtividade || 0) / n,
+      }),
+      {
+        visitasPrevistas: 0,
+        visitasRealizadas: 0,
+        pedidos: 0,
+        visitasForaRota: 0,
+        percPositivacao: 0,
+        percForaRota: 0,
+        percGps: 0,
+        produtividade: 0,
+      }
+    );
+  }, [filtered]);
 
-  const handleExport = () => [{
-    sheetName: 'RaioX',
-    data: filtered.map((r) => ({
-      Código: r.codigo, Nome: r.nome, Equipe: r.equipe,
-      'Visitas prev.': r.visitasPrevistas, 'Visitas real.': r.visitasRealizadas,
-      'Vendas prev.': r.vendasPrevistas, 'Vendas real.': r.vendasRealizadas,
-      'Fora de rota': r.foraDeRota, 'GPS OK': r.gpsOk, Pedidos: r.pedidos, Apontamentos: r.apontamentos,
-    })),
-  }];
+  const acumulado = useMemo(() => {
+    const n = filtered.length || 1;
+    return filtered.reduce(
+      (acc, r) => ({
+        prevista: acc.prevista + (r.acumuladoPrevista || 0),
+        realizadas: acc.realizadas + (r.acumuladoRealizadas || 0),
+        porcentagem: acc.porcentagem + (r.acumuladoPorcentagem || 0) / n,
+        percPositivacao: acc.percPositivacao + (r.percPositivacaoAcumulado || 0) / n,
+      }),
+      { prevista: 0, realizadas: 0, porcentagem: 0, percPositivacao: 0 }
+    );
+  }, [filtered]);
+
+  const chartData = useMemo(
+    () =>
+      [...filtered]
+        .sort((a, b) => (b.visitasPrevistas || 0) - (a.visitasPrevistas || 0))
+        .slice(0, CHART_MAX_BARS)
+        .map((r) => ({
+          vendedor: r.vendedor || r.codVendedor,
+          previstas: r.visitasPrevistas,
+          realizadas: r.visitasRealizadas,
+          percPositivacao: Math.round((r.percPositivacao || 0) * 1000) / 10,
+        })),
+    [filtered]
+  );
+
+  const handleExport = () => [
+    {
+      sheetName: 'RaioX',
+      data: filtered.map((r) => ({
+        Código: r.codVendedor,
+        Vendedor: r.vendedor,
+        Equipe: r.equipe,
+        Dias: r.diasComDados,
+        'Visitas Prev.': r.visitasPrevistas,
+        'Visitas Real.': r.visitasRealizadas,
+        'Fora de Rota': r.visitasForaRota,
+        '% Fora Rota': r.percForaRota,
+        '% GPS': r.percGps,
+        Pedidos: r.pedidos,
+        '% Positivação': r.percPositivacao,
+        Produtividade: r.produtividade,
+        Início: fmtHora(r.horaInicio),
+        Fim: fmtHora(r.horaFim),
+        'T. Campo': fmtHora(r.tempoCampo),
+        'Acumulado Prev.': r.acumuladoPrevista,
+        'Acumulado Real.': r.acumuladoRealizadas,
+        'Acumulado %': r.acumuladoPorcentagem,
+        '% Positivação Acumulada': r.percPositivacaoAcumulado,
+      })),
+    },
+  ];
+
+  const anoOptions = anosDisponiveis.map((a) => ({ value: String(a), label: String(a) }));
+  const mesOptions = MESES.map((label, idx) => ({ value: String(idx + 1), label }));
+
+  const kpiCards: [string, string, string?][] = [
+    ['Visitas Previstas', fmtNum(totals.visitasPrevistas)],
+    ['Visitas Realizadas', fmtNum(totals.visitasRealizadas)],
+    ['% Fora de Rota', fmtPct(totals.percForaRota)],
+    ['% GPS', fmtPct(totals.percGps)],
+    ['Pedidos', fmtNum(totals.pedidos)],
+    ['% Positivação', fmtPct(totals.percPositivacao)],
+    ['Produtividade', fmtNum(totals.produtividade)],
+  ];
+
+  const groupHeaderStyle: React.CSSProperties = {
+    padding: '8px 12px',
+    textAlign: 'center',
+    fontSize: 10.5,
+    fontWeight: 700,
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+    color: t.textMuted,
+    borderBottom: `1px solid ${t.border}`,
+  };
+  const colHeaderStyle: React.CSSProperties = {
+    padding: '8px 12px',
+    textAlign: 'left',
+    fontWeight: 600,
+    fontSize: 11.5,
+    color: t.textMuted,
+    borderBottom: `1px solid ${t.border}`,
+    whiteSpace: 'nowrap',
+  };
+  const cellStyle: React.CSSProperties = { padding: '10px 12px', whiteSpace: 'nowrap' };
 
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
         <div>
-          <h1 className="num" style={{ margin: '0 0 4px', fontSize: 24, fontWeight: 700, color: t.text }}>Raio-X SAR</h1>
-          <p style={{ margin: 0, fontSize: 13, color: t.textSecondary }}>Indicadores de positivação a partir de indicadores_positivacao.</p>
+          <h1 className="num" style={{ margin: '0 0 4px', fontSize: 24, fontWeight: 700, color: t.text }}>
+            Raio-X SAR
+          </h1>
+          <p style={{ margin: 0, fontSize: 13, color: t.textSecondary }}>
+            Acompanhamento diário de vendedores importado da planilha Raio-X (aba "Acompanhamento").
+          </p>
         </div>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-          {canFilterVendedor && (
-            <SingleSelectFilter
-              label="Vendedor"
-              options={vendedorOptions.map(([code, nome]) => ({ value: code, label: nome }))}
-              value={selectedVendedor}
-              onChange={setSelectedVendedor}
-              placeholder="Todos os vendedores"
-              allLabel="Todos os vendedores"
+        <ExportExcelButton onPrepareData={handleExport} filename="raio-x-sar.xlsx" />
+      </div>
+
+      {/* FILTROS: dia tem prioridade sobre mês/ano — ver comentário no fetch acima */}
+      <div
+        style={{
+          display: 'flex',
+          gap: 10,
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          marginBottom: 16,
+          background: t.surface,
+          border: `1px solid ${t.border}`,
+          borderRadius: 12,
+          padding: 12,
+        }}
+      >
+        <SingleSelectFilter
+          label="Ano"
+          options={anoOptions}
+          value={String(ano)}
+          onChange={(v) => setAno(Number(v) || currentYear)}
+          allowClear={false}
+        />
+        <SingleSelectFilter
+          label="Mês"
+          options={mesOptions}
+          value={mes ? String(mes) : ''}
+          onChange={(v) => setMes(v ? Number(v) : '')}
+          placeholder="Todos os meses"
+          allLabel="Todos os meses"
+        />
+
+        <div>
+          <label
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              fontSize: 11,
+              fontWeight: 600,
+              color: t.textMuted,
+              marginBottom: 4,
+            }}
+          >
+            <Calendar size={12} /> Dia específico
+          </label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <input
+              type="date"
+              value={dia}
+              onChange={(e) => setDia(e.target.value)}
+              style={{
+                padding: '8px 10px',
+                borderRadius: 8,
+                border: `1px solid ${t.border}`,
+                background: t.surfaceElevated,
+                color: t.text,
+                fontSize: 13,
+              }}
             />
-          )}
-          <ExportExcelButton getSheets={handleExport} fileName="raio-x-sar" />
+            {dia && (
+              <button
+                type="button"
+                onClick={() => setDia('')}
+                title="Voltar para visão por mês/ano"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: 30,
+                  height: 34,
+                  borderRadius: 8,
+                  border: `1px solid ${t.border}`,
+                  background: t.surfaceElevated,
+                  color: t.textSecondary,
+                  cursor: 'pointer',
+                }}
+              >
+                <X size={14} />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {canFilterVendedor && (
+          <SingleSelectFilter
+            label="Vendedor"
+            options={vendedorOptions.map(([code, nome]) => ({ value: code, label: nome }))}
+            value={selectedVendedor}
+            onChange={setSelectedVendedor}
+            placeholder="Todos os vendedores"
+            allLabel="Todos os vendedores"
+          />
+        )}
+
+        <div style={{ marginLeft: 'auto', minWidth: 220 }}>
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Buscar vendedor ou equipe..."
+            style={{
+              width: '100%',
+              padding: '9px 12px',
+              borderRadius: 8,
+              border: `1px solid ${t.border}`,
+              background: t.surfaceElevated,
+              color: t.text,
+              fontSize: 13,
+            }}
+          />
         </div>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(140px,1fr))', gap: 10, marginBottom: 14 }}>
-        {[
-          ['Visitas prev.', totals.visitasPrevistas],
-          ['Visitas real.', totals.visitasRealizadas],
-          ['Vendas prev.', totals.vendasPrevistas],
-          ['Vendas real.', totals.vendasRealizadas],
-          ['Fora de rota', totals.foraDeRota],
-        ].map(([l, v]) => (
-          <div key={String(l)} style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 10, padding: 12 }}>
-            <div style={{ fontSize: 11, color: t.textMuted, display: 'flex', alignItems: 'center', gap: 6 }}><Activity size={13} />{l}</div>
-            <div className="num" style={{ fontWeight: 700, color: t.text }}>{Number(v).toLocaleString('pt-BR')}</div>
-          </div>
-        ))}
-      </div>
-      <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar vendedor ou equipe..." style={{ width: '100%', maxWidth: 420, marginBottom: 14, padding: '10px 12px', borderRadius: 8, border: `1px solid ${t.border}`, background: t.surface, color: t.text }} />
+
+      {!dia && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: t.textMuted, marginBottom: 14 }}>
+          <Layers size={13} />
+          <span>
+            Valores agregados de {mes ? `${MESES[mes - 1]}/${ano}` : `todo o ano de ${ano}`} — soma para contagens
+            (visitas, pedidos), média para percentuais.
+          </span>
+        </div>
+      )}
+
       {loading && <LoadingBlock />}
       {error && <ErrorBlock message={error} />}
-      {!loading && !error && filtered.length === 0 && <EmptyBlock />}
-      {!loading && !error && filtered.length > 0 && (
-        <div style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 12, overflow: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
-            <thead>
-              <tr style={{ color: t.textMuted, textAlign: 'left', borderBottom: `1px solid ${t.border}` }}>
-                <th style={{ padding: 12 }}>Cód.</th><th>Vendedor</th><th>Equipe</th>
-                <th>Visitas</th><th>Vendas</th><th>Fora rota</th><th>GPS OK</th><th>Pedidos</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((r) => (
-                <tr key={r.codigo} style={{ borderTop: `1px solid ${t.border}`, color: t.text }}>
-                  <td style={{ padding: 12 }}>{r.codigo}</td>
-                  <td>{r.nome}</td>
-                  <td>{r.equipe || '—'}</td>
-                  <td>{r.visitasRealizadas}/{r.visitasPrevistas}</td>
-                  <td>{r.vendasRealizadas}/{r.vendasPrevistas}</td>
-                  <td>{r.foraDeRota}</td>
-                  <td>{r.gpsOk}</td>
-                  <td>{r.pedidos}</td>
-                </tr>
+
+      {!loading && !error && (
+        <>
+          {/* KPIs — período/dia selecionado */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(140px,1fr))', gap: 10, marginBottom: 14 }}>
+            {kpiCards.map(([label, value]) => (
+              <div key={label} style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 10, padding: 12 }}>
+                <div style={{ fontSize: 11, color: t.textMuted, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Activity size={13} />
+                  {label}
+                </div>
+                <div className="num" style={{ fontWeight: 700, color: t.text, fontSize: 16, marginTop: 4 }}>
+                  {value}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* KPIs — acumulado (campanha/período informado na própria planilha) */}
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ fontSize: 11.5, fontWeight: 700, color: t.textMuted, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 8 }}>
+              Indicadores acumulados (conforme planilha)
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 10 }}>
+              {[
+                ['Acumulado Previsto', fmtNum(acumulado.prevista)],
+                ['Acumulado Realizado', fmtNum(acumulado.realizadas)],
+                ['% Acumulado', fmtPct(acumulado.porcentagem)],
+                ['% Positivação Acumulada', fmtPct(acumulado.percPositivacao)],
+              ].map(([label, value]) => (
+                <div key={label} style={{ background: t.surfaceElevated, border: `1px solid ${t.border}`, borderRadius: 10, padding: 12 }}>
+                  <div style={{ fontSize: 11, color: t.textMuted }}>{label}</div>
+                  <div className="num" style={{ fontWeight: 700, color: t.text, fontSize: 15, marginTop: 4 }}>
+                    {value}
+                  </div>
+                </div>
               ))}
-            </tbody>
-          </table>
-        </div>
+            </div>
+          </div>
+
+          {filtered.length === 0 ? (
+            <EmptyBlock description="Nenhum registro de Raio-X encontrado para os filtros atuais. Importe a planilha em Admin → Importação ou ajuste dia/mês/ano." />
+          ) : (
+            <>
+              {/* GRÁFICO — visitas previstas x realizadas por vendedor, com % positivação */}
+              <div
+                style={{
+                  background: t.surface,
+                  border: `1px solid ${t.border}`,
+                  borderRadius: 12,
+                  padding: 16,
+                  marginBottom: 16,
+                  height: 340,
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                  <BarChart3 size={16} color={t.primary} />
+                  <div style={{ fontSize: 14, fontWeight: 700, color: t.text }}>Visitas Previstas x Realizadas por Vendedor</div>
+                  {chartData.length < filtered.length && (
+                    <span style={{ fontSize: 11, color: t.textMuted }}>
+                      (top {CHART_MAX_BARS} de {filtered.length} vendedores, por visitas previstas)
+                    </span>
+                  )}
+                </div>
+                <ResponsiveContainer width="100%" height="86%">
+                  <ComposedChart data={chartData} margin={{ top: 4, right: 8, left: -8, bottom: 24 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke={t.border} vertical={false} />
+                    <XAxis
+                      dataKey="vendedor"
+                      stroke={t.textMuted}
+                      fontSize={11}
+                      tickLine={false}
+                      axisLine={{ stroke: t.border }}
+                      angle={-20}
+                      textAnchor="end"
+                      interval={0}
+                      height={50}
+                    />
+                    <YAxis yAxisId="left" stroke={t.textMuted} fontSize={11} tickLine={false} axisLine={false} allowDecimals={false} />
+                    <YAxis
+                      yAxisId="right"
+                      orientation="right"
+                      stroke={t.textMuted}
+                      fontSize={11}
+                      tickLine={false}
+                      axisLine={false}
+                      tickFormatter={(v) => `${v}%`}
+                      domain={[0, 100]}
+                    />
+                    <Tooltip
+                      cursor={{ fill: `${t.primary}08` }}
+                      contentStyle={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 8, fontSize: 12 }}
+                      formatter={(value: number, name: string) =>
+                        name === '% Positivação' ? [`${value}%`, name] : [value.toLocaleString('pt-BR'), name]
+                      }
+                    />
+                    <Legend wrapperStyle={{ fontSize: 12 }} />
+                    <Bar yAxisId="left" dataKey="previstas" name="Previstas" fill={t.textMuted} radius={[4, 4, 0, 0]} maxBarSize={36} />
+                    <Bar yAxisId="left" dataKey="realizadas" name="Realizadas" fill={t.primary} radius={[4, 4, 0, 0]} maxBarSize={36} />
+                    <Line
+                      yAxisId="right"
+                      type="monotone"
+                      dataKey="percPositivacao"
+                      name="% Positivação"
+                      stroke="#3DD68C"
+                      strokeWidth={2.5}
+                      dot={{ r: 3, fill: '#3DD68C' }}
+                      activeDot={{ r: 5 }}
+                    />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </div>
+
+              {/* TABELA — todos os vendedores filtrados, agrupada como na planilha original */}
+              <div style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 12, overflow: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+                  <thead>
+                    <tr>
+                      <th colSpan={2} style={groupHeaderStyle}>Identificação</th>
+                      <th colSpan={4} style={{ ...groupHeaderStyle, borderLeft: `1px solid ${t.border}` }}>Visitas</th>
+                      <th colSpan={4} style={{ ...groupHeaderStyle, borderLeft: `1px solid ${t.border}` }}>Positivação</th>
+                      <th colSpan={3} style={{ ...groupHeaderStyle, borderLeft: `1px solid ${t.border}` }}>Horários</th>
+                      <th colSpan={4} style={{ ...groupHeaderStyle, borderLeft: `1px solid ${t.border}` }}>Acumulado</th>
+                    </tr>
+                    <tr>
+                      <th style={colHeaderStyle}>Vendedor</th>
+                      <th style={colHeaderStyle}>Equipe</th>
+                      <th style={{ ...colHeaderStyle, borderLeft: `1px solid ${t.border}` }}>Dias</th>
+                      <th style={colHeaderStyle}>Prev.</th>
+                      <th style={colHeaderStyle}>Real.</th>
+                      <th style={colHeaderStyle}>% Fora Rota</th>
+                      <th style={{ ...colHeaderStyle, borderLeft: `1px solid ${t.border}` }}>% GPS</th>
+                      <th style={colHeaderStyle}>Pedidos</th>
+                      <th style={colHeaderStyle}>% Positiv.</th>
+                      <th style={colHeaderStyle}>Produtiv.</th>
+                      <th style={{ ...colHeaderStyle, borderLeft: `1px solid ${t.border}` }}>Início</th>
+                      <th style={colHeaderStyle}>Fim</th>
+                      <th style={colHeaderStyle}>T. Campo</th>
+                      <th style={{ ...colHeaderStyle, borderLeft: `1px solid ${t.border}` }}>Prev.</th>
+                      <th style={colHeaderStyle}>Real.</th>
+                      <th style={colHeaderStyle}>%</th>
+                      <th style={colHeaderStyle}>% Positiv.</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filtered.map((r) => (
+                      <tr key={r.codVendedor} style={{ borderTop: `1px solid ${t.border}`, color: t.text }}>
+                        <td style={{ ...cellStyle, fontWeight: 600 }}>{r.vendedor || r.codVendedor}</td>
+                        <td style={{ ...cellStyle, color: t.textSecondary }}>{r.equipe || '—'}</td>
+                        <td className="num" style={{ ...cellStyle, borderLeft: `1px solid ${t.border}`, color: t.textMuted }}>
+                          {r.diasComDados}
+                        </td>
+                        <td className="num" style={cellStyle}>{fmtNum(r.visitasPrevistas)}</td>
+                        <td className="num" style={cellStyle}>{fmtNum(r.visitasRealizadas)}</td>
+                        <td className="num" style={cellStyle}>{fmtPct(r.percForaRota)}</td>
+                        <td className="num" style={{ ...cellStyle, borderLeft: `1px solid ${t.border}` }}>{fmtPct(r.percGps)}</td>
+                        <td className="num" style={cellStyle}>{fmtNum(r.pedidos)}</td>
+                        <td className="num" style={cellStyle}>{fmtPct(r.percPositivacao)}</td>
+                        <td className="num" style={cellStyle}>{fmtNum(r.produtividade)}</td>
+                        <td className="num" style={{ ...cellStyle, borderLeft: `1px solid ${t.border}`, color: t.textSecondary }}>
+                          {fmtHora(r.horaInicio)}
+                        </td>
+                        <td className="num" style={{ ...cellStyle, color: t.textSecondary }}>{fmtHora(r.horaFim)}</td>
+                        <td className="num" style={{ ...cellStyle, color: t.textSecondary }}>{fmtHora(r.tempoCampo)}</td>
+                        <td className="num" style={{ ...cellStyle, borderLeft: `1px solid ${t.border}`, color: t.textMuted }}>
+                          {fmtNum(r.acumuladoPrevista)}
+                        </td>
+                        <td className="num" style={{ ...cellStyle, color: t.textMuted }}>{fmtNum(r.acumuladoRealizadas)}</td>
+                        <td className="num" style={{ ...cellStyle, color: t.textMuted }}>{fmtPct(r.acumuladoPorcentagem)}</td>
+                        <td className="num" style={{ ...cellStyle, color: t.textMuted }}>{fmtPct(r.percPositivacaoAcumulado)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </>
       )}
     </div>
   );

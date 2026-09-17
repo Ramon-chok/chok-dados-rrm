@@ -105,6 +105,7 @@ class ImportRequest(BaseModel):
     # Deslocamento 0-based no arquivo original — corrige o número da linha
     # nos erros de validação quando o lote não é o primeiro.
     rowOffset: int | None = Field(default=None, ge=0)
+    useMacro: bool | None = Field(default=None)
 
 
 class ImportRowError(BaseModel):

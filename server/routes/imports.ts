@@ -52,6 +52,9 @@ importsRouter.post('/', requireApiKey, async (req: Request, res: Response) => {
 
   const cfg = getImportTypeConfig(body.tipo);
   if (!cfg) {
+    console.error('Unknown import tipo received:', { tipo: body.tipo });
+    console.error('Available import types:', Object.keys(require('../importTypes.js').IMPORT_TYPE_CONFIGS));
+    console.error('Received useMacro:', body.useMacro);
     return res.status(400).json({ error: `Tipo de importação desconhecido: "${body.tipo}".` });
   }
 

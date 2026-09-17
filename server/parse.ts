@@ -77,3 +77,64 @@ export function parseBoolean(raw: unknown): ParseResult<boolean> {
   if (FALSE_VALUES.has(s)) return { ok: true, value: false };
   return { ok: false, error: `valor booleano inválido: "${raw}" (use sim/não)` };
 }
+
+function formatHms(totalSeconds: number): string {
+  const s = Math.round(totalSeconds);
+  const hh = Math.floor(s / 3600);
+  const mm = Math.floor((s % 3600) / 60);
+  const ss = s % 60;
+  return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
+}
+
+/**
+ * Hora-do-dia (ex.: horário de check-in) — aceita "HH:MM"/"HH:MM:SS" e a hora
+ * serial do Excel (fração do dia: 0.5 = 12:00). Sempre normaliza para um
+ * horário dentro de 24h, pois representa um instante do dia, não uma duração.
+ */
+export function parseTimeOfDay(raw: unknown): ParseResult<string> {
+  if (raw === undefined || raw === null || raw === '') return { ok: true, value: null };
+
+  if (typeof raw === 'number') {
+    if (!Number.isFinite(raw)) return { ok: false, error: `hora inválida: "${raw}"` };
+    const frac = ((raw % 1) + 1) % 1; // usa só a parte fracionária (hora-do-dia)
+    return { ok: true, value: formatHms(frac * 86400) };
+  }
+
+  const s = String(raw).trim();
+  if (s === '') return { ok: true, value: null };
+  const m = s.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+  if (m) {
+    const hh = Number(m[1]);
+    const mm = Number(m[2]);
+    const ss = m[3] ? Number(m[3]) : 0;
+    if (hh > 23 || mm > 59 || ss > 59) return { ok: false, error: `hora inválida: "${raw}"` };
+    return { ok: true, value: `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}` };
+  }
+  return { ok: false, error: `hora inválida: "${raw}"` };
+}
+
+/**
+ * Duração (ex.: tempo em campo) — mesmo formato "HH:MM[:SS]"/hora serial do
+ * Excel, mas SEM normalizar para 24h: uma jornada pode ultrapassar meia-noite
+ * quando somada (ex.: 26:15:00), por isso é gravada como texto, não TIME.
+ */
+export function parseDuration(raw: unknown): ParseResult<string> {
+  if (raw === undefined || raw === null || raw === '') return { ok: true, value: null };
+
+  if (typeof raw === 'number') {
+    if (!Number.isFinite(raw) || raw < 0) return { ok: false, error: `duração inválida: "${raw}"` };
+    return { ok: true, value: formatHms(raw * 86400) };
+  }
+
+  const s = String(raw).trim();
+  if (s === '') return { ok: true, value: null };
+  const m = s.match(/^(\d{1,3}):(\d{2})(?::(\d{2}))?$/);
+  if (m) {
+    const hh = Number(m[1]);
+    const mm = Number(m[2]);
+    const ss = m[3] ? Number(m[3]) : 0;
+    if (mm > 59 || ss > 59) return { ok: false, error: `duração inválida: "${raw}"` };
+    return { ok: true, value: `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}` };
+  }
+  return { ok: false, error: `duração inválida: "${raw}"` };
+}
