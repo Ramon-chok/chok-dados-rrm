@@ -41,7 +41,7 @@ interface ImportProgressState {
   phase: 'preparing' | 'uploading' | 'finishing';
 }
 
-export type ImportType = 'sortimento' | 'top_clientes' | 'dados_app' | 'nao_positivados' | 'raiox';
+export type ImportType = 'sortimento' | 'top_clientes' | 'dados_app' | 'nao_positivados' | 'raiox' | 'vendedor_detalhado';
 
 interface ImportSheetOption {
   /** Identificador interno da aba dentro do tipo de importação. */
@@ -417,7 +417,7 @@ const IMPORT_TYPES: ImportTypeOption[] = [
           vendedor: 'VENDEDOR',
           equipe: 'EQUIPE',
 
-          visitas_previstas: 'VISITAS PREVISTA',
+          visitas_previstas: 'PREVISTA',
           visitas_realizadas: 'REALIZADA',
           visitas_fora_rota: 'FORA DE ROTA VISITAS',
           perc_gps: '% GPS',
@@ -454,6 +454,69 @@ const IMPORT_TYPES: ImportTypeOption[] = [
           perc_positivacao_acumulado: '% POSITIVAÇÃO',
           acumulado_positivacao_fora_rota: 'POSITIVACAO FORA ROTA',
           perc_positivacao_fora_rota: '% FORA ROTA POSITIVACAO',
+        },
+      },
+    ],
+  },
+  {
+    id: 'vendedor_detalhado',
+    label: 'Vendedor Detalhado',
+    description: 'Vendedor detalhado fornecido pelo SAR para acompanhamento diário de vendedores',
+    templateFile: '/templates/importacao/vendedor_detalhado.xlsx',
+    sheets: [
+      {
+        // key interna usada no payload (tipo = "raiox" ou "raiox__raiox").
+        // O nome da aba no Excel continua sendo "Acompanhamento".
+        key: 'vendedor_detalhado',
+        sheetName: 'Vendedor Detalhado',
+        label: 'Vendedor Detalhado',
+
+        // Nomes de sistema (devem bater com server/importTypes.ts, entrada
+        // "raiox"). A planilha real repete alguns rótulos de coluna entre a
+        // seção diária e a seção "acumulado" (ex.: "% FORA ROTA" e
+        // "% POSITIVAÇÃO") — por isso as colunas do acumulado usam nomes de
+        // sistema próprios (…_acumulado) em vez de reaproveitar o mesmo nome
+        // da seção diária, que faria as duas colunas colidirem no mapeamento.
+        columns: [
+          'gerencia',
+          'supervisao',
+          'codigo_vendedor',
+
+          'vendedor',
+          'codigo_cliente',
+          'nome_cliente',
+          'acao',
+
+          'data',
+          'dentro_rota',
+          'hora',
+          'permanencia',
+
+          'venda',
+          'valor_venda',
+          'motivo_nao_venda',
+          'motivo_nao_visita',
+        ],
+
+        headerHints: {
+          gerencia: 'GERENCIA',
+          supervisao: 'SUPERVISÃO',
+          codigo_vendedor: 'CODIGO VENDEDOR',
+          vendedor: 'VENDEDOR',
+
+          codigo_cliente: 'CODIGO CLIENTE',
+          nome_cliente: 'NOME CLIENTE',
+          acao: 'AÇÃO',
+
+          data: 'DATA',
+          dentro_rota: 'DENTRO ROTA',
+          hora: 'HORA',
+          permanencia: 'PERMANÊNCIA',
+
+          venda: 'VENDA',
+          valor_venda: 'VALOR VENDA',
+          motivo_nao_venda: 'MOTIVO NÃO VENDA',
+          motivo_nao_visita: 'MOTIVO NÃO VISITA',
         },
       },
     ],

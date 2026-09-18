@@ -6,7 +6,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.db import get_connection
-from app.import_types import IMPORT_TYPE_CONFIGS, get_import_type_config
+import app.import_types as import_types
 from app.parse import parse_date_only
 from app.schemas import ImportRequest, ImportResultSummary, ImportRowError
 from app.security import require_import_api_key, require_roles
@@ -26,9 +26,9 @@ def create_import(
     body: ImportRequest,
     _: None = Depends(require_import_api_key),
 ) -> ImportResultSummary:
-    cfg = get_import_type_config(body.tipo)
+    cfg = import_types.get_import_type_config(body.tipo)
     if not cfg:
-        available = ", ".join(sorted(IMPORT_TYPE_CONFIGS.keys()))
+        available = ", ".join(sorted(getattr(import_types, "IMPORT_TYPE_CONFIGS", {}).keys()))
         try:
             import logging
 

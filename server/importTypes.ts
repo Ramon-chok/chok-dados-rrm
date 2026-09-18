@@ -495,6 +495,33 @@ export const IMPORT_TYPE_CONFIGS: Record<string, ImportTypeConfig> = {
       { name: 'perc_positivacao_fora_rota', kind: 'numeric' },
     ],
   },
+
+  // Vendedor Detalhado — planilha visita a visita (ver backend/app/import_types.py).
+  vendedor_detalhado: {
+    id: 'vendedor_detalhado',
+    label: 'Vendedor Detalhado',
+    table: 'vendedor_detalhado',
+    keyColumns: ['data_referencia', 'codigo_vendedor'],
+    snapshot: true,
+    replaceSnapshotRows: true,
+    columns: [
+      { name: 'gerencia', kind: 'text' },
+      { name: 'supervisao', kind: 'text' },
+      { name: 'codigo_vendedor', kind: 'text' },
+      { name: 'vendedor', kind: 'text' },
+      { name: 'codigo_cliente', kind: 'text' },
+      { name: 'nome_cliente', kind: 'text' },
+      { name: 'acao', kind: 'text' },
+      { name: 'data', kind: 'date' },
+      { name: 'dentro_rota', kind: 'boolean' },
+      { name: 'hora', kind: 'time' },
+      { name: 'permanencia', kind: 'duration' },
+      { name: 'venda', kind: 'boolean' },
+      { name: 'valor_venda', kind: 'numeric' },
+      { name: 'motivo_nao_venda', kind: 'text' },
+      { name: 'motivo_nao_visita', kind: 'text' },
+    ],
+  },
 };
 
 export function getImportTypeConfig(id: string): ImportTypeConfig | undefined {

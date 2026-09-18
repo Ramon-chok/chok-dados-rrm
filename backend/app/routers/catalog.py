@@ -854,3 +854,118 @@ def sar_raiox(
         "anosDisponiveis": anos_disponiveis,
         "rows": out_rows,
     }
+
+
+@router.get("/sar/raiox/detalhe")
+def sar_raiox_detalhe(
+    ano: int | None = None,
+    mes: int | None = None,
+    dia: str | None = None,
+    cod_vendedor: str | None = None,
+    user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Vendedor Detalhado (importação "Vendedor Detalhado", tabela
+    vendedor_detalhado): uma linha por visita/ação do vendedor, sem agregação,
+    para a tabela e o gráfico de sar/RaioX.tsx. Filtra por dia exato (`dia`) ou
+    período (`ano` + `mes` opcional). O recorte RBAC segue /sar/raiox; a equipe
+    vem de vendedores (a planilha só traz "supervisão")."""
+    if mes is not None and not (1 <= mes <= 12):
+        raise HTTPException(status_code=400, detail='Parâmetro "mes" deve estar entre 1 e 12.')
+
+    dia_ok: str | None = None
+    if dia:
+        ok, parsed = parse_date_only(dia)
+        if not ok or not parsed:
+            raise HTTPException(status_code=400, detail=f'Data inválida em "dia": "{dia}".')
+        dia_ok = parsed
+
+    ano_efetivo = ano or date_cls.today().year
+    scope = scope_filters(user)
+
+    params: list[Any] = []
+    parts = ["1=1"]
+    if dia_ok:
+        parts.append("d.data_referencia = %s")
+        params.append(dia_ok)
+    else:
+        parts.append("d.ano_referencia = %s")
+        params.append(ano_efetivo)
+        if mes:
+            parts.append("d.mes_referencia = %s")
+            params.append(mes)
+    if scope.get("equipe"):
+        parts.append("v.equipe = %s")
+        params.append(scope["equipe"])
+    if scope.get("vendedor"):
+        parts.append("d.codigo_vendedor = %s")
+        params.append(scope["vendedor"])
+    where_base = " AND ".join(parts)
+    params_base = list(params)
+    if cod_vendedor:
+        parts.append("d.codigo_vendedor = %s")
+        params.append(cod_vendedor)
+
+    with get_connection() as conn:
+        vendedores_rows = conn.execute(
+            f"""
+            SELECT d.codigo_vendedor,
+                   COALESCE(MAX(d.vendedor), MAX(v.nome), d.codigo_vendedor) AS vendedor
+            FROM vendedor_detalhado d
+            LEFT JOIN vendedores v ON v.cod_vendedor = d.codigo_vendedor
+            WHERE {where_base}
+            GROUP BY d.codigo_vendedor
+            ORDER BY 2
+            """,
+            params_base,
+        ).fetchall()
+        rows = conn.execute(
+            f"""
+            SELECT
+              d.data_referencia, d.gerencia, d.supervisao, d.codigo_vendedor,
+              COALESCE(d.vendedor, v.nome, d.codigo_vendedor) AS vendedor,
+              d.codigo_cliente, d.nome_cliente, d.acao, d.data, d.dentro_rota,
+              d.hora, d.permanencia, d.venda, d.valor_venda,
+              d.motivo_nao_venda, d.motivo_nao_visita
+            FROM vendedor_detalhado d
+            LEFT JOIN vendedores v ON v.cod_vendedor = d.codigo_vendedor
+            WHERE {" AND ".join(parts)}
+            ORDER BY COALESCE(d.data, d.data_referencia), d.hora NULLS LAST, d.id
+            LIMIT 5000
+            """,
+            params,
+        ).fetchall()
+
+    def txt(value: Any) -> str | None:
+        return str(value).strip() or None if value is not None else None
+
+    return {
+        "mode": "dia" if dia_ok else "periodo",
+        "ano": ano_efetivo,
+        "mes": mes if not dia_ok else None,
+        "dia": dia_ok,
+        "vendedores": [
+            {"codVendedor": r["codigo_vendedor"], "vendedor": r["vendedor"]}
+            for r in vendedores_rows
+        ],
+        "rows": [
+            {
+                # Data da visita; cai para a data de referência se a célula veio vazia.
+                "data": (r["data"] or r["data_referencia"]).isoformat(),
+                "gerencia": txt(r["gerencia"]),
+                "supervisao": txt(r["supervisao"]),
+                "codigoVendedor": r["codigo_vendedor"],
+                "vendedor": r["vendedor"],
+                "codigoCliente": txt(r["codigo_cliente"]),
+                "nomeCliente": txt(r["nome_cliente"]),
+                "acao": txt(r["acao"]),
+                "dentroRota": bool(r["dentro_rota"]),
+                "hora": r["hora"].isoformat() if r["hora"] else None,
+                "permanencia": r["permanencia"],
+                "venda": bool(r["venda"]),
+                "valorVenda": round(num(r["valor_venda"]), 2),
+                "motivoNaoVenda": txt(r["motivo_nao_venda"]),
+                "motivoNaoVisita": txt(r["motivo_nao_visita"]),
+            }
+            for r in rows
+        ],
+    }

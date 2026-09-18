@@ -450,15 +450,15 @@ CREATE TABLE IF NOT EXISTS raiox (
   visitas_previstas             INT,
   visitas_realizadas            INT,
   visitas_fora_rota             INT,
-  perc_gps                      NUMERIC(6,2),
+  perc_gps                      NUMERIC(8,4),
 
   apontamentos_inconsistencia   TEXT,
   positiva_prevista             INT,
   pedidos                       INT,
-  perc_positivacao              NUMERIC(6,2),
+  perc_positivacao              NUMERIC(8,4),
 
   fora_rota_positivacao         INT,
-  perc_fora_rota                NUMERIC(6,2),
+  perc_fora_rota                NUMERIC(8,4),
   produtividade                 NUMERIC(10,2),
 
   hora_inicio                   TIME,
@@ -471,15 +471,15 @@ CREATE TABLE IF NOT EXISTS raiox (
 
   acumulado_prevista            INT,
   acumulado_realizadas          INT,
-  acumulado_porcentagem         NUMERIC(6,2),
+  acumulado_porcentagem         NUMERIC(8,4),
   acumulado_fora_rota           INT,
-  perc_fora_rota_acumulado      NUMERIC(6,2),
+  perc_fora_rota_acumulado      NUMERIC(8,4),
 
   acumulado_positivacao_visitas INT,
   acumulado_positivacao_pedidos INT,
-  perc_positivacao_acumulado    NUMERIC(6,2),
+  perc_positivacao_acumulado    NUMERIC(8,4),
   acumulado_positivacao_fora_rota INT,
-  perc_positivacao_fora_rota    NUMERIC(6,2),
+  perc_positivacao_fora_rota    NUMERIC(8,4),
 
   mes_referencia      INT NOT NULL,
   ano_referencia       INT NOT NULL,
@@ -495,7 +495,7 @@ ALTER TABLE raiox ADD COLUMN IF NOT EXISTS equipe TEXT;
 ALTER TABLE raiox ADD COLUMN IF NOT EXISTS visitas_previstas INT;
 ALTER TABLE raiox ADD COLUMN IF NOT EXISTS visitas_realizadas INT;
 ALTER TABLE raiox ADD COLUMN IF NOT EXISTS visitas_fora_rota INT;
-ALTER TABLE raiox ADD COLUMN IF NOT EXISTS perc_gps NUMERIC(6,2);
+ALTER TABLE raiox ADD COLUMN IF NOT EXISTS perc_gps NUMERIC(8,4);
 ALTER TABLE raiox ADD COLUMN IF NOT EXISTS apontamentos_inconsistencia TEXT;
 -- Instalações antigas podem ter criado a coluna como INT — converte para TEXT.
 DO $$
@@ -514,9 +514,9 @@ BEGIN
 END $$;
 ALTER TABLE raiox ADD COLUMN IF NOT EXISTS positiva_prevista INT;
 ALTER TABLE raiox ADD COLUMN IF NOT EXISTS pedidos INT;
-ALTER TABLE raiox ADD COLUMN IF NOT EXISTS perc_positivacao NUMERIC(6,2);
+ALTER TABLE raiox ADD COLUMN IF NOT EXISTS perc_positivacao NUMERIC(8,4);
 ALTER TABLE raiox ADD COLUMN IF NOT EXISTS fora_rota_positivacao INT;
-ALTER TABLE raiox ADD COLUMN IF NOT EXISTS perc_fora_rota NUMERIC(6,2);
+ALTER TABLE raiox ADD COLUMN IF NOT EXISTS perc_fora_rota NUMERIC(8,4);
 ALTER TABLE raiox ADD COLUMN IF NOT EXISTS produtividade NUMERIC(10,2);
 ALTER TABLE raiox ADD COLUMN IF NOT EXISTS hora_inicio TIME;
 ALTER TABLE raiox ADD COLUMN IF NOT EXISTS hora_check_in TIME;
@@ -525,14 +525,14 @@ ALTER TABLE raiox ADD COLUMN IF NOT EXISTS hora_fim TIME;
 ALTER TABLE raiox ADD COLUMN IF NOT EXISTS tempo_campo TEXT;
 ALTER TABLE raiox ADD COLUMN IF NOT EXISTS acumulado_prevista INT;
 ALTER TABLE raiox ADD COLUMN IF NOT EXISTS acumulado_realizadas INT;
-ALTER TABLE raiox ADD COLUMN IF NOT EXISTS acumulado_porcentagem NUMERIC(6,2);
+ALTER TABLE raiox ADD COLUMN IF NOT EXISTS acumulado_porcentagem NUMERIC(8,4);
 ALTER TABLE raiox ADD COLUMN IF NOT EXISTS acumulado_fora_rota INT;
-ALTER TABLE raiox ADD COLUMN IF NOT EXISTS perc_fora_rota_acumulado NUMERIC(6,2);
+ALTER TABLE raiox ADD COLUMN IF NOT EXISTS perc_fora_rota_acumulado NUMERIC(8,4);
 ALTER TABLE raiox ADD COLUMN IF NOT EXISTS acumulado_positivacao_visitas INT;
 ALTER TABLE raiox ADD COLUMN IF NOT EXISTS acumulado_positivacao_pedidos INT;
-ALTER TABLE raiox ADD COLUMN IF NOT EXISTS perc_positivacao_acumulado NUMERIC(6,2);
+ALTER TABLE raiox ADD COLUMN IF NOT EXISTS perc_positivacao_acumulado NUMERIC(8,4);
 ALTER TABLE raiox ADD COLUMN IF NOT EXISTS acumulado_positivacao_fora_rota INT;
-ALTER TABLE raiox ADD COLUMN IF NOT EXISTS perc_positivacao_fora_rota NUMERIC(6,2);
+ALTER TABLE raiox ADD COLUMN IF NOT EXISTS perc_positivacao_fora_rota NUMERIC(8,4);
 ALTER TABLE raiox ADD COLUMN IF NOT EXISTS mes_referencia INT;
 ALTER TABLE raiox ADD COLUMN IF NOT EXISTS ano_referencia INT;
 ALTER TABLE raiox ADD COLUMN IF NOT EXISTS data_importacao TIMESTAMPTZ DEFAULT now();
@@ -586,3 +586,80 @@ BEGIN
 END
 $raiox_pk$;
 CREATE INDEX IF NOT EXISTS idx_raiox_periodo ON raiox(ano_referencia, mes_referencia);
+
+-- Percentuais do Raio-X são frações (0.8567): NUMERIC(6,2) perdia precisão.
+ALTER TABLE raiox ALTER COLUMN perc_gps TYPE NUMERIC(8,4);
+ALTER TABLE raiox ALTER COLUMN perc_positivacao TYPE NUMERIC(8,4);
+ALTER TABLE raiox ALTER COLUMN perc_fora_rota TYPE NUMERIC(8,4);
+ALTER TABLE raiox ALTER COLUMN acumulado_porcentagem TYPE NUMERIC(8,4);
+ALTER TABLE raiox ALTER COLUMN perc_fora_rota_acumulado TYPE NUMERIC(8,4);
+ALTER TABLE raiox ALTER COLUMN perc_positivacao_acumulado TYPE NUMERIC(8,4);
+ALTER TABLE raiox ALTER COLUMN perc_positivacao_fora_rota TYPE NUMERIC(8,4);
+
+-- Vendedor Detalhado — planilha visita a visita (ver tipo "vendedor_detalhado"
+-- em app.import_types e a configuração de colunas em
+-- src/pages/admin/Importacao.tsx). Várias linhas por vendedor/dia: id próprio
+-- e cada importação substitui o snapshot inteiro da data_referencia.
+CREATE TABLE IF NOT EXISTS vendedor_detalhado (
+  id                BIGSERIAL PRIMARY KEY,
+  data_referencia   DATE NOT NULL,
+  gerencia          TEXT,
+  supervisao        TEXT,
+  codigo_vendedor   TEXT NOT NULL,
+  vendedor          TEXT,
+  codigo_cliente    TEXT,
+  nome_cliente      TEXT,
+  acao              TEXT,
+  data              DATE,
+  dentro_rota       BOOLEAN,
+  hora              TIME,
+  -- Duração ("HH:MM:SS"), não hora-do-dia — mesmo motivo de raiox.tempo_campo.
+  permanencia       TEXT,
+  venda             BOOLEAN,
+  valor_venda       NUMERIC(14,2),
+  motivo_nao_venda  TEXT,
+  motivo_nao_visita TEXT,
+  mes_referencia    INT NOT NULL,
+  ano_referencia    INT NOT NULL,
+  data_importacao   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  importacao_id     BIGINT
+);
+CREATE INDEX IF NOT EXISTS idx_vend_det_data ON vendedor_detalhado(data_referencia);
+CREATE INDEX IF NOT EXISTS idx_vend_det_periodo ON vendedor_detalhado(ano_referencia, mes_referencia);
+
+-- Bancos que já tinham vendedor_detalhado de uma versão anterior da
+-- importação (colunas cod_vendedor / valor): alinha ao layout atual de
+-- src/pages/admin/Importacao.tsx sem perder as linhas existentes.
+ALTER TABLE vendedor_detalhado ADD COLUMN IF NOT EXISTS gerencia TEXT;
+ALTER TABLE vendedor_detalhado ADD COLUMN IF NOT EXISTS supervisao TEXT;
+ALTER TABLE vendedor_detalhado ADD COLUMN IF NOT EXISTS codigo_vendedor TEXT;
+ALTER TABLE vendedor_detalhado ADD COLUMN IF NOT EXISTS vendedor TEXT;
+ALTER TABLE vendedor_detalhado ADD COLUMN IF NOT EXISTS codigo_cliente TEXT;
+ALTER TABLE vendedor_detalhado ADD COLUMN IF NOT EXISTS nome_cliente TEXT;
+ALTER TABLE vendedor_detalhado ADD COLUMN IF NOT EXISTS acao TEXT;
+ALTER TABLE vendedor_detalhado ADD COLUMN IF NOT EXISTS data DATE;
+ALTER TABLE vendedor_detalhado ADD COLUMN IF NOT EXISTS dentro_rota BOOLEAN;
+ALTER TABLE vendedor_detalhado ADD COLUMN IF NOT EXISTS hora TIME;
+ALTER TABLE vendedor_detalhado ADD COLUMN IF NOT EXISTS permanencia TEXT;
+ALTER TABLE vendedor_detalhado ADD COLUMN IF NOT EXISTS venda BOOLEAN;
+ALTER TABLE vendedor_detalhado ADD COLUMN IF NOT EXISTS motivo_nao_venda TEXT;
+ALTER TABLE vendedor_detalhado ADD COLUMN IF NOT EXISTS motivo_nao_visita TEXT;
+DO $vd_valor$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns
+              WHERE table_schema = current_schema() AND table_name = 'vendedor_detalhado' AND column_name = 'valor')
+     AND NOT EXISTS (SELECT 1 FROM information_schema.columns
+              WHERE table_schema = current_schema() AND table_name = 'vendedor_detalhado' AND column_name = 'valor_venda') THEN
+    ALTER TABLE vendedor_detalhado RENAME COLUMN valor TO valor_venda;
+  END IF;
+END $vd_valor$;
+ALTER TABLE vendedor_detalhado ADD COLUMN IF NOT EXISTS valor_venda NUMERIC(14,2);
+-- cod_vendedor (versão antiga) virou codigo_vendedor; copia onde faltar.
+DO $vd_cod$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns
+              WHERE table_schema = current_schema() AND table_name = 'vendedor_detalhado' AND column_name = 'cod_vendedor') THEN
+    UPDATE vendedor_detalhado SET codigo_vendedor = cod_vendedor WHERE codigo_vendedor IS NULL;
+  END IF;
+END $vd_cod$;
+CREATE INDEX IF NOT EXISTS idx_vend_det_vendedor ON vendedor_detalhado(codigo_vendedor, data_referencia);

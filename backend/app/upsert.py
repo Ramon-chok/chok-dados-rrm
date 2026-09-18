@@ -53,6 +53,9 @@ class UpsertOutcome:
     atualizados: int
 
 
+EMPTY_DASHES = {"-", "–", "—"}
+
+
 def map_and_validate_rows(
     cfg: ImportTypeConfig,
     mapping: dict[str, str],
@@ -86,6 +89,10 @@ def map_and_validate_rows(
 
             source_header = mapping.get(col.name)
             raw_value = raw.get(source_header) if source_header else None
+            # Planilhas do SAR usam "-" como "vazio" em colunas não-texto
+            # (ex.: hora/valor de uma visita sem venda) — vira célula vazia.
+            if col.kind != "text" and isinstance(raw_value, str) and raw_value.strip() in EMPTY_DASHES:
+                raw_value = None
 
             if col.kind == "numeric":
                 parsed_ok, parsed_val = parse_numeric(raw_value)

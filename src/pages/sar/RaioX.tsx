@@ -15,7 +15,7 @@ import { useAuth } from '../../context/AuthContext';
 import { ExportExcelButton } from '../../components/common/ExportExcelButton';
 import { EmptyBlock, ErrorBlock, LoadingBlock } from '../../components/common/DataState';
 import { SingleSelectFilter } from '../../components/common/SingleSelectFilter';
-import { fetchRaioX, RaioXRow } from '../../lib/api';
+import { fetchRaioX, fetchRaioXDetalhe, RaioXDetalheRow, RaioXRow } from '../../lib/api';
 import { Activity, BarChart3, Calendar, Layers, X } from 'lucide-react';
 
 const MESES = [
@@ -101,11 +101,88 @@ export const RaioXPage: React.FC = () => {
     return Array.from(map.entries()).sort((a, b) => a[1].localeCompare(b[1], 'pt-BR'));
   }, [rows]);
 
+  // Vendedor Detalhado (tabela vendedor_detalhado): busca e filtro próprios,
+  // independentes do Raio-X original — a planilha pode ser importada sozinha.
+  // Vendedor logado só recebe as próprias visitas (recorte no backend).
+  // O vendedor escolhido no Raio-X (filtro ou clique na linha) é o mesmo do detalhado.
+  const detalheSel = selectedVendedor;
+  const [detalhe, setDetalhe] = useState<RaioXDetalheRow[]>([]);
+  const [detalheVendedores, setDetalheVendedores] = useState<{ codVendedor: string; vendedor: string }[]>([]);
+  const [detalheLoading, setDetalheLoading] = useState(true);
+  const [detalheError, setDetalheError] = useState<string | null>(null);
+
   useEffect(() => {
-    if (selectedVendedor && !vendedorOptions.some(([code]) => code === selectedVendedor)) {
+    let mounted = true;
+    (async () => {
+      setDetalheLoading(true);
+      setDetalheError(null);
+      try {
+        const data = await fetchRaioXDetalhe({
+          ano,
+          mes: dia ? undefined : mes || undefined,
+          dia: dia || undefined,
+          codVendedor: detalheSel || undefined,
+        });
+        if (!mounted) return;
+        setDetalhe(data.rows);
+        setDetalheVendedores(data.vendedores);
+      } catch (e) {
+        if (mounted) setDetalheError(e instanceof Error ? e.message : 'Falha ao carregar vendedor detalhado');
+      } finally {
+        if (mounted) setDetalheLoading(false);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [detalheSel, ano, mes, dia]);
+
+  // Opções do filtro: vendedores do Raio-X + vendedores que só existem no detalhado.
+  const vendedorOptionsAll = useMemo(() => {
+    const map = new Map<string, string>(vendedorOptions);
+    detalheVendedores.forEach((v) => {
+      if (!map.has(v.codVendedor)) map.set(v.codVendedor, v.vendedor || v.codVendedor);
+    });
+    return Array.from(map.entries()).sort((x, y) => x[1].localeCompare(y[1], 'pt-BR'));
+  }, [vendedorOptions, detalheVendedores]);
+
+  // Agrega as visitas por dia para o gráfico (visitas, vendas e valor vendido).
+  const detalheChart = useMemo(() => {
+    const byDay = new Map<string, { visitas: number; vendas: number; valor: number }>();
+    detalhe.forEach((r) => {
+      const d = byDay.get(r.data) || { visitas: 0, vendas: 0, valor: 0 };
+      d.visitas += 1;
+      if (r.venda) d.vendas += 1;
+      d.valor += r.valorVenda || 0;
+      byDay.set(r.data, d);
+    });
+    return Array.from(byDay.entries())
+      .sort((x, y) => x[0].localeCompare(y[0]))
+      .map(([data, d]) => ({
+        dia: `${data.slice(8, 10)}/${data.slice(5, 7)}`,
+        visitas: d.visitas,
+        vendas: d.vendas,
+        valor: Math.round(d.valor * 100) / 100,
+      }));
+  }, [detalhe]);
+
+  const detalheResumo = useMemo(
+    () => ({
+      visitas: detalhe.length,
+      vendas: detalhe.filter((r) => r.venda).length,
+      valor: detalhe.reduce((acc, r) => acc + (r.valorVenda || 0), 0),
+      foraRota: detalhe.filter((r) => !r.dentroRota).length,
+    }),
+    [detalhe]
+  );
+
+  const detalheNome = detalheSel ? vendedorOptionsAll.find(([c]) => c === detalheSel)?.[1] || '' : '';
+
+  useEffect(() => {
+    if (!loading && !detalheLoading && selectedVendedor && !vendedorOptionsAll.some(([code]) => code === selectedVendedor)) {
       setSelectedVendedor('');
     }
-  }, [vendedorOptions, selectedVendedor]);
+  }, [vendedorOptionsAll, selectedVendedor, loading, detalheLoading]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -335,7 +412,7 @@ export const RaioXPage: React.FC = () => {
         {canFilterVendedor && (
           <SingleSelectFilter
             label="Vendedor"
-            options={vendedorOptions.map(([code, nome]) => ({ value: code, label: nome }))}
+            options={vendedorOptionsAll.map(([code, nome]) => ({ value: code, label: nome }))}
             value={selectedVendedor}
             onChange={setSelectedVendedor}
             placeholder="Todos os vendedores"
@@ -521,7 +598,17 @@ export const RaioXPage: React.FC = () => {
                   </thead>
                   <tbody>
                     {filtered.map((r) => (
-                      <tr key={r.codVendedor} style={{ borderTop: `1px solid ${t.border}`, color: t.text }}>
+                      <tr
+                        key={r.codVendedor}
+                        onClick={() => setSelectedVendedor(selectedVendedor === r.codVendedor ? '' : r.codVendedor)}
+                        title="Clique para ver o Vendedor Detalhado"
+                        style={{
+                          borderTop: `1px solid ${t.border}`,
+                          color: t.text,
+                          cursor: 'pointer',
+                          background: selectedVendedor === r.codVendedor ? `${t.primary}14` : undefined,
+                        }}
+                      >
                         <td style={{ ...cellStyle, fontWeight: 600 }}>{r.vendedor || r.codVendedor}</td>
                         <td style={{ ...cellStyle, color: t.textSecondary }}>{r.equipe || '—'}</td>
                         <td className="num" style={{ ...cellStyle, borderLeft: `1px solid ${t.border}`, color: t.textMuted }}>
@@ -568,6 +655,98 @@ export const RaioXPage: React.FC = () => {
           )}
         </>
       )}
+
+      {/* VENDEDOR DETALHADO — visita a visita (tabela vendedor_detalhado) */}
+              <div style={{ marginTop: 16 }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: t.text, marginBottom: 8 }}>
+                  Vendedor Detalhado{detalheNome ? ` — ${detalheNome}` : ''}
+                  {!detalheSel && <span style={{ fontWeight: 400, fontSize: 12, color: t.textMuted }}> (todos — clique em um vendedor da tabela para filtrar)</span>}
+                </div>
+                {detalheLoading ? (
+                  <LoadingBlock />
+                ) : detalheError ? (
+                  <ErrorBlock message={detalheError} />
+                ) : detalhe.length === 0 ? (
+                  <EmptyBlock description="Nenhuma visita detalhada para este vendedor no período. Importe a planilha Vendedor Detalhado em Admin → Importação." />
+                ) : (
+                  <>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(140px,1fr))', gap: 10, marginBottom: 14 }}>
+                      {([
+                        ['Visitas', fmtNum(detalheResumo.visitas)],
+                        ['Vendas', fmtNum(detalheResumo.vendas)],
+                        ['Valor Vendido', detalheResumo.valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })],
+                        ['Fora de Rota', fmtNum(detalheResumo.foraRota)],
+                      ] as [string, string][]).map(([label, value]) => (
+                        <div key={label} style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 10, padding: 12 }}>
+                          <div style={{ fontSize: 11, color: t.textMuted }}>{label}</div>
+                          <div className="num" style={{ fontWeight: 700, color: t.text, fontSize: 16, marginTop: 4 }}>{value}</div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 12, padding: 16, marginBottom: 16, height: 320 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                        <BarChart3 size={16} color={t.primary} />
+                        <div style={{ fontSize: 14, fontWeight: 700, color: t.text }}>Visitas, Vendas e Valor Vendido por Dia</div>
+                      </div>
+                      <ResponsiveContainer width="100%" height="86%">
+                        <ComposedChart data={detalheChart} margin={{ top: 4, right: 8, left: -8, bottom: 4 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke={t.border} vertical={false} />
+                          <XAxis dataKey="dia" stroke={t.textMuted} fontSize={11} tickLine={false} axisLine={{ stroke: t.border }} />
+                          <YAxis yAxisId="left" stroke={t.textMuted} fontSize={11} tickLine={false} axisLine={false} allowDecimals={false} />
+                          <YAxis yAxisId="right" orientation="right" stroke={t.textMuted} fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v) => v.toLocaleString('pt-BR')} />
+                          <Tooltip
+                            contentStyle={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 8, fontSize: 12 }}
+                            formatter={(value: number, name: string) =>
+                              name === 'Valor Vendido'
+                                ? [value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }), name]
+                                : [value.toLocaleString('pt-BR'), name]
+                            }
+                          />
+                          <Legend wrapperStyle={{ fontSize: 12 }} />
+                          <Bar yAxisId="left" dataKey="visitas" name="Visitas" fill={t.textMuted} radius={[4, 4, 0, 0]} maxBarSize={28} />
+                          <Bar yAxisId="left" dataKey="vendas" name="Vendas" fill={t.primary} radius={[4, 4, 0, 0]} maxBarSize={28} />
+                          <Line yAxisId="right" type="monotone" dataKey="valor" name="Valor Vendido" stroke="#3DD68C" strokeWidth={2.5} dot={{ r: 3, fill: '#3DD68C' }} />
+                        </ComposedChart>
+                      </ResponsiveContainer>
+                    </div>
+
+                    <div style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 12, overflow: 'auto' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+                        <thead>
+                          <tr>
+                            {['Data', 'Hora', ...(detalheSel ? [] : ['Vendedor']), 'Cliente', 'Ação', 'Dentro da Rota', 'Permanência', 'Venda', 'Valor', 'Motivo Não Venda', 'Motivo Não Visita'].map((h) => (
+                              <th key={h} style={colHeaderStyle}>{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {detalhe.map((r, i) => (
+                            <tr key={`${r.data}-${r.hora}-${r.codigoCliente}-${i}`} style={{ borderTop: `1px solid ${t.border}`, color: t.text }}>
+                              <td style={{ ...cellStyle, fontWeight: 600 }}>{r.data.slice(8, 10)}/{r.data.slice(5, 7)}/{r.data.slice(0, 4)}</td>
+                              <td className="num" style={{ ...cellStyle, color: t.textSecondary }}>{fmtHora(r.hora)}</td>
+                              {!detalheSel && <td style={{ ...cellStyle, fontWeight: 600 }}>{r.vendedor || r.codigoVendedor}</td>}
+                              <td style={{ ...cellStyle, whiteSpace: 'normal', minWidth: 160 }}>
+                                {r.nomeCliente || '—'}
+                                {r.codigoCliente && <span style={{ color: t.textMuted }}> ({r.codigoCliente})</span>}
+                              </td>
+                              <td style={{ ...cellStyle, color: t.textSecondary }}>{r.acao || '—'}</td>
+                              <td style={{ ...cellStyle, color: r.dentroRota ? t.text : '#F5A623' }}>{r.dentroRota ? 'Sim' : 'Não'}</td>
+                              <td className="num" style={{ ...cellStyle, color: t.textSecondary }}>{r.permanencia || '—'}</td>
+                              <td style={{ ...cellStyle, color: r.venda ? '#3DD68C' : t.textMuted }}>{r.venda ? 'Sim' : 'Não'}</td>
+                              <td className="num" style={cellStyle}>
+                                {r.valorVenda ? r.valorVenda.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : '—'}
+                              </td>
+                              <td style={{ ...cellStyle, whiteSpace: 'normal', minWidth: 140, color: r.motivoNaoVenda ? t.text : t.textMuted }}>{r.motivoNaoVenda || '—'}</td>
+                              <td style={{ ...cellStyle, whiteSpace: 'normal', minWidth: 140, color: r.motivoNaoVisita ? t.text : t.textMuted }}>{r.motivoNaoVisita || '—'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                )}
+              </div>
     </div>
   );
 };

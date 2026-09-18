@@ -48,7 +48,11 @@ export function mapAndValidateRows(
       }
 
       const sourceHeader = mapping[col.name];
-      const rawValue = sourceHeader ? raw[sourceHeader] : undefined;
+      let rawValue = sourceHeader ? raw[sourceHeader] : undefined;
+      // Planilhas do SAR usam "-" como "vazio" em colunas não-texto.
+      if (col.kind !== 'text' && typeof rawValue === 'string' && ['-', '–', '—'].includes(rawValue.trim())) {
+        rawValue = undefined;
+      }
 
       let parsed;
       switch (col.kind) {

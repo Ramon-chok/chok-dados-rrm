@@ -947,3 +947,42 @@ export function clearImportHistory(): Promise<{ ok: boolean; deleted: number; de
 }
 
 export { request, clearAuthToken };
+
+/** Uma visita/ação de GET /sar/raiox/detalhe (tabela vendedor_detalhado) — sem agregação. */
+export interface RaioXDetalheRow {
+  /** "YYYY-MM-DD" (data da visita) */
+  data: string;
+  gerencia: string | null;
+  supervisao: string | null;
+  codigoVendedor: string;
+  vendedor: string;
+  codigoCliente: string | null;
+  nomeCliente: string | null;
+  acao: string | null;
+  dentroRota: boolean;
+  /** "HH:MM:SS" */
+  hora: string | null;
+  /** Duração "HH:MM:SS" */
+  permanencia: string | null;
+  venda: boolean;
+  valorVenda: number;
+  motivoNaoVenda: string | null;
+  motivoNaoVisita: string | null;
+}
+
+export interface RaioXDetalheResponse {
+  mode: 'dia' | 'periodo';
+  ano: number;
+  mes: number | null;
+  dia: string | null;
+  /** Vendedores com visitas no período (para o filtro do bloco). */
+  vendedores: { codVendedor: string; vendedor: string }[];
+  rows: RaioXDetalheRow[];
+}
+
+/** Vendedor Detalhado (visita a visita) para sar/RaioX.tsx. */
+export function fetchRaioXDetalhe(params?: { ano?: number; mes?: number; dia?: string; codVendedor?: string }): Promise<RaioXDetalheResponse> {
+  return request<RaioXDetalheResponse>(
+    `/sar/raiox/detalhe${qs({ ano: params?.ano, mes: params?.mes, dia: params?.dia, cod_vendedor: params?.codVendedor })}`
+  );
+}
