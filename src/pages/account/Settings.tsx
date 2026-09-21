@@ -57,7 +57,7 @@ const METHOD_INFO: Record<TwoFAMethod, { icon: any; label: string; desc: string;
   authenticator: {
     icon: Smartphone,
     label: 'App Autenticador',
-    desc: 'Google Authenticator, Authy ou similar (TOTP)',
+    desc: 'Google Authenticator',
     color: '#8B5CF6',
   },
   email: {
@@ -739,59 +739,8 @@ export const SettingsPage: React.FC = () => {
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <div
-                  style={{
-                    background: mode === 'dark' ? 'rgba(245, 158, 11, 0.04)' : 'rgba(245, 158, 11, 0.02)',
-                    border: '1px solid rgba(245, 158, 11, 0.15)',
-                    borderRadius: '12px',
-                    padding: '16px',
-                    display: 'flex',
-                    alignItems: 'flex-start',
-                    gap: '12px',
-                  }}
-                >
-                  <Info size={18} color="#F59E0B" style={{ flexShrink: 0, marginTop: '1px' }} />
-                  <div style={{ fontSize: '12.5px', color: mode === 'dark' ? '#FBBF24' : '#D97706', lineHeight: 1.5 }}>
-                    <strong>Atenção:</strong> Ative o switch acima para configurar 2FA no servidor
-                    (QR code real + códigos de backup no banco).
-                  </div>
-                </div>
-
-                {/* Grid Visual de Métodos Disponíveis */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
-                  {(Object.keys(METHOD_INFO) as TwoFAMethod[]).map((key) => {
-                    const info = METHOD_INFO[key];
-                    const Icon = info.icon;
-                    return (
-                      <div
-                        key={key}
-                        style={{
-                          padding: '14px',
-                          borderRadius: '10px',
-                          border: `1px solid ${t.border}`,
-                          background: t.surfaceElevated,
-                          textAlign: 'center',
-                          opacity: 0.85,
-                        }}
-                      >
-                        <div
-                          style={{
-                            width: 32,
-                            height: 32,
-                            borderRadius: '8px',
-                            background: `${info.color}12`,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            margin: '0 auto 8px',
-                          }}
-                        >
-                          <Icon size={16} color={info.color} />
-                        </div>
-                        <div style={{ fontSize: '11.5px', fontWeight: 600, color: t.text }}>{info.label}</div>
-                      </div>
-                    );
-                  })}
+                <div style={{ fontSize: '13.5px', fontWeight: 700, color: t.text }}>
+                  Nenhum método de autenticação configurado.
                 </div>
               </div>
             )}
@@ -1022,7 +971,7 @@ export const SettingsPage: React.FC = () => {
               {twoFAStage === 'choose' && (
                 <div style={{ animation: 'rr-fadeIn 0.3s ease' }}>
                   <p style={{ margin: '0 0 20px', fontSize: '13.5px', color: t.textSecondary, lineHeight: 1.6 }}>
-                    Escolha o método OTP. A configuração será gravada no banco de dados.
+                    Escolha o método de autenticação:
                   </p>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -1084,26 +1033,6 @@ export const SettingsPage: React.FC = () => {
                       );
                     })}
                   </div>
-
-                  <div
-                    style={{
-                      marginTop: '20px',
-                      padding: '14px',
-                      borderRadius: '10px',
-                      background: 'rgba(139, 92, 246, 0.05)',
-                      border: '1px solid rgba(139, 92, 246, 0.15)',
-                      fontSize: '12px',
-                      color: '#8B5CF6',
-                      display: 'flex',
-                      alignItems: 'flex-start',
-                      gap: '10px',
-                    }}
-                  >
-                    <Sparkles size={16} style={{ flexShrink: 0, marginTop: '1px' }} />
-                    <span>
-                      <strong>Recomendado:</strong> App autenticador — QR code real gerado no backend (TOTP).
-                    </span>
-                  </div>
                 </div>
               )}
 
@@ -1114,7 +1043,7 @@ export const SettingsPage: React.FC = () => {
                     <>
                       <div style={{ textAlign: 'center', marginBottom: '24px' }}>
                         <p style={{ margin: '0 0 16px', fontSize: '13.5px', color: t.textSecondary, lineHeight: 1.6 }}>
-                          Escaneie o QR code com Google Authenticator / Authy ou use a chave manual.
+                          Escaneie o QR code com Google Authenticator.
                         </p>
                         {/* QR Code real (data URL do backend) */}
                         <div
