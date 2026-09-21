@@ -522,10 +522,388 @@ const IMPORT_TYPES: ImportTypeOption[] = [
     ],
   },
   {
-    id: 'historico_',
-    label: 'Historico',
-    description: 'Vendedor detalhado fornecido pelo SAR para acompanhamento diário de vendedores',
-    templateFile: '/templates/importacao/vendedor_detalhado.xlsx',
+    id: 'historico_vendedores',
+    label: 'Historico de vendedores',
+    description: 'Histórico de faturamento de vendedores',
+    templateFile: '/templates/importacao/historico_vendedores.xlsx',
+    sheets: [
+      {
+        // key interna usada no payload (tipo = "raiox" ou "raiox__raiox").
+        // O nome da aba no Excel continua sendo "Acompanhamento".
+        key: 'vendedor_detalhado',
+        sheetName: 'Vendedor Detalhado',
+        label: 'Vendedor Detalhado',
+
+        // Nomes de sistema (devem bater com server/importTypes.ts, entrada
+        // "raiox"). A planilha real repete alguns rótulos de coluna entre a
+        // seção diária e a seção "acumulado" (ex.: "% FORA ROTA" e
+        // "% POSITIVAÇÃO") — por isso as colunas do acumulado usam nomes de
+        // sistema próprios (…_acumulado) em vez de reaproveitar o mesmo nome
+        // da seção diária, que faria as duas colunas colidirem no mapeamento.
+        columns: [
+          'gerencia',
+          'supervisao',
+          'codigo_vendedor',
+
+          'vendedor',
+          'codigo_cliente',
+          'nome_cliente',
+          'acao',
+
+          'data',
+          'dentro_rota',
+          'hora',
+          'permanencia',
+
+          'venda',
+          'valor_venda',
+          'motivo_nao_venda',
+          'motivo_nao_visita',
+        ],
+
+        headerHints: {
+          gerencia: 'GERENCIA',
+          supervisao: 'SUPERVISÃO',
+          codigo_vendedor: 'CODIGO VENDEDOR',
+          vendedor: 'VENDEDOR',
+
+          codigo_cliente: 'CODIGO CLIENTE',
+          nome_cliente: 'NOME CLIENTE',
+          acao: 'AÇÃO',
+
+          data: 'DATA',
+          dentro_rota: 'DENTRO ROTA',
+          hora: 'HORA',
+          permanencia: 'PERMANÊNCIA',
+
+          venda: 'VENDA',
+          valor_venda: 'VALOR VENDA',
+          motivo_nao_venda: 'MOTIVO NÃO VENDA',
+          motivo_nao_visita: 'MOTIVO NÃO VISITA',
+        },
+      },
+    ],
+  },
+  {
+    id: 'historico_cobertura',
+    label: 'Historico de cobertura',
+    description: 'Histórico de cobertura',
+    templateFile: '/templates/importacao/historico_vendedores.xlsx',
+    sheets: [
+      {
+        // key interna usada no payload (tipo = "raiox" ou "raiox__raiox").
+        // O nome da aba no Excel continua sendo "Acompanhamento".
+        key: 'vendedor_detalhado',
+        sheetName: 'Vendedor Detalhado',
+        label: 'Vendedor Detalhado',
+
+        // Nomes de sistema (devem bater com server/importTypes.ts, entrada
+        // "raiox"). A planilha real repete alguns rótulos de coluna entre a
+        // seção diária e a seção "acumulado" (ex.: "% FORA ROTA" e
+        // "% POSITIVAÇÃO") — por isso as colunas do acumulado usam nomes de
+        // sistema próprios (…_acumulado) em vez de reaproveitar o mesmo nome
+        // da seção diária, que faria as duas colunas colidirem no mapeamento.
+        columns: [
+          'gerencia',
+          'supervisao',
+          'codigo_vendedor',
+
+          'vendedor',
+          'codigo_cliente',
+          'nome_cliente',
+          'acao',
+
+          'data',
+          'dentro_rota',
+          'hora',
+          'permanencia',
+
+          'venda',
+          'valor_venda',
+          'motivo_nao_venda',
+          'motivo_nao_visita',
+        ],
+
+        headerHints: {
+          gerencia: 'GERENCIA',
+          supervisao: 'SUPERVISÃO',
+          codigo_vendedor: 'CODIGO VENDEDOR',
+          vendedor: 'VENDEDOR',
+
+          codigo_cliente: 'CODIGO CLIENTE',
+          nome_cliente: 'NOME CLIENTE',
+          acao: 'AÇÃO',
+
+          data: 'DATA',
+          dentro_rota: 'DENTRO ROTA',
+          hora: 'HORA',
+          permanencia: 'PERMANÊNCIA',
+
+          venda: 'VENDA',
+          valor_venda: 'VALOR VENDA',
+          motivo_nao_venda: 'MOTIVO NÃO VENDA',
+          motivo_nao_visita: 'MOTIVO NÃO VISITA',
+        },
+      },
+    ],
+  },
+  {
+    id: 'historico_sortimento',
+    label: 'Historico de sortimento',
+    description: 'Histórico de sortimento',
+    templateFile: '/templates/importacao/historico_sortimento.xlsx',
+    sheets: [
+      {
+        // key interna usada no payload (tipo = "raiox" ou "raiox__raiox").
+        // O nome da aba no Excel continua sendo "Acompanhamento".
+        key: 'vendedor_detalhado',
+        sheetName: 'Vendedor Detalhado',
+        label: 'Vendedor Detalhado',
+
+        // Nomes de sistema (devem bater com server/importTypes.ts, entrada
+        // "raiox"). A planilha real repete alguns rótulos de coluna entre a
+        // seção diária e a seção "acumulado" (ex.: "% FORA ROTA" e
+        // "% POSITIVAÇÃO") — por isso as colunas do acumulado usam nomes de
+        // sistema próprios (…_acumulado) em vez de reaproveitar o mesmo nome
+        // da seção diária, que faria as duas colunas colidirem no mapeamento.
+        columns: [
+          'gerencia',
+          'supervisao',
+          'codigo_vendedor',
+
+          'vendedor',
+          'codigo_cliente',
+          'nome_cliente',
+          'acao',
+
+          'data',
+          'dentro_rota',
+          'hora',
+          'permanencia',
+
+          'venda',
+          'valor_venda',
+          'motivo_nao_venda',
+          'motivo_nao_visita',
+        ],
+
+        headerHints: {
+          gerencia: 'GERENCIA',
+          supervisao: 'SUPERVISÃO',
+          codigo_vendedor: 'CODIGO VENDEDOR',
+          vendedor: 'VENDEDOR',
+
+          codigo_cliente: 'CODIGO CLIENTE',
+          nome_cliente: 'NOME CLIENTE',
+          acao: 'AÇÃO',
+
+          data: 'DATA',
+          dentro_rota: 'DENTRO ROTA',
+          hora: 'HORA',
+          permanencia: 'PERMANÊNCIA',
+
+          venda: 'VENDA',
+          valor_venda: 'VALOR VENDA',
+          motivo_nao_venda: 'MOTIVO NÃO VENDA',
+          motivo_nao_visita: 'MOTIVO NÃO VISITA',
+        },
+      },
+    ],
+  },
+  {
+    id: 'historico_margem',
+    label: 'Historico de margem',
+    description: 'Histórico de porcentagem de margem',
+    templateFile: '/templates/importacao/historico_perc_margem.xlsx',
+    sheets: [
+      {
+        // key interna usada no payload (tipo = "raiox" ou "raiox__raiox").
+        // O nome da aba no Excel continua sendo "Acompanhamento".
+        key: 'vendedor_detalhado',
+        sheetName: 'Vendedor Detalhado',
+        label: 'Vendedor Detalhado',
+
+        // Nomes de sistema (devem bater com server/importTypes.ts, entrada
+        // "raiox"). A planilha real repete alguns rótulos de coluna entre a
+        // seção diária e a seção "acumulado" (ex.: "% FORA ROTA" e
+        // "% POSITIVAÇÃO") — por isso as colunas do acumulado usam nomes de
+        // sistema próprios (…_acumulado) em vez de reaproveitar o mesmo nome
+        // da seção diária, que faria as duas colunas colidirem no mapeamento.
+        columns: [
+          'gerencia',
+          'supervisao',
+          'codigo_vendedor',
+
+          'vendedor',
+          'codigo_cliente',
+          'nome_cliente',
+          'acao',
+
+          'data',
+          'dentro_rota',
+          'hora',
+          'permanencia',
+
+          'venda',
+          'valor_venda',
+          'motivo_nao_venda',
+          'motivo_nao_visita',
+        ],
+
+        headerHints: {
+          gerencia: 'GERENCIA',
+          supervisao: 'SUPERVISÃO',
+          codigo_vendedor: 'CODIGO VENDEDOR',
+          vendedor: 'VENDEDOR',
+
+          codigo_cliente: 'CODIGO CLIENTE',
+          nome_cliente: 'NOME CLIENTE',
+          acao: 'AÇÃO',
+
+          data: 'DATA',
+          dentro_rota: 'DENTRO ROTA',
+          hora: 'HORA',
+          permanencia: 'PERMANÊNCIA',
+
+          venda: 'VENDA',
+          valor_venda: 'VALOR VENDA',
+          motivo_nao_venda: 'MOTIVO NÃO VENDA',
+          motivo_nao_visita: 'MOTIVO NÃO VISITA',
+        },
+      },
+    ],
+  },
+  {
+    id: 'historico_mestas',
+    label: 'Historico de metas',
+    description: 'Histórico de metas',
+    templateFile: '/templates/importacao/historico_perc_margem.xlsx',
+    sheets: [
+      {
+        // key interna usada no payload (tipo = "raiox" ou "raiox__raiox").
+        // O nome da aba no Excel continua sendo "Acompanhamento".
+        key: 'vendedor_detalhado',
+        sheetName: 'Vendedor Detalhado',
+        label: 'Vendedor Detalhado',
+
+        // Nomes de sistema (devem bater com server/importTypes.ts, entrada
+        // "raiox"). A planilha real repete alguns rótulos de coluna entre a
+        // seção diária e a seção "acumulado" (ex.: "% FORA ROTA" e
+        // "% POSITIVAÇÃO") — por isso as colunas do acumulado usam nomes de
+        // sistema próprios (…_acumulado) em vez de reaproveitar o mesmo nome
+        // da seção diária, que faria as duas colunas colidirem no mapeamento.
+        columns: [
+          'gerencia',
+          'supervisao',
+          'codigo_vendedor',
+
+          'vendedor',
+          'codigo_cliente',
+          'nome_cliente',
+          'acao',
+
+          'data',
+          'dentro_rota',
+          'hora',
+          'permanencia',
+
+          'venda',
+          'valor_venda',
+          'motivo_nao_venda',
+          'motivo_nao_visita',
+        ],
+
+        headerHints: {
+          gerencia: 'GERENCIA',
+          supervisao: 'SUPERVISÃO',
+          codigo_vendedor: 'CODIGO VENDEDOR',
+          vendedor: 'VENDEDOR',
+
+          codigo_cliente: 'CODIGO CLIENTE',
+          nome_cliente: 'NOME CLIENTE',
+          acao: 'AÇÃO',
+
+          data: 'DATA',
+          dentro_rota: 'DENTRO ROTA',
+          hora: 'HORA',
+          permanencia: 'PERMANÊNCIA',
+
+          venda: 'VENDA',
+          valor_venda: 'VALOR VENDA',
+          motivo_nao_venda: 'MOTIVO NÃO VENDA',
+          motivo_nao_visita: 'MOTIVO NÃO VISITA',
+        },
+      },
+    ],
+  },
+  {
+    id: 'historico_sar',
+    label: 'Historico fornecido pelo SAR',
+    description: 'Histórico do SAR',
+    templateFile: '/templates/importacao/historico_perc_margem.xlsx',
+    sheets: [
+      {
+        // key interna usada no payload (tipo = "raiox" ou "raiox__raiox").
+        // O nome da aba no Excel continua sendo "Acompanhamento".
+        key: 'vendedor_detalhado',
+        sheetName: 'Vendedor Detalhado',
+        label: 'Vendedor Detalhado',
+
+        // Nomes de sistema (devem bater com server/importTypes.ts, entrada
+        // "raiox"). A planilha real repete alguns rótulos de coluna entre a
+        // seção diária e a seção "acumulado" (ex.: "% FORA ROTA" e
+        // "% POSITIVAÇÃO") — por isso as colunas do acumulado usam nomes de
+        // sistema próprios (…_acumulado) em vez de reaproveitar o mesmo nome
+        // da seção diária, que faria as duas colunas colidirem no mapeamento.
+        columns: [
+          'gerencia',
+          'supervisao',
+          'codigo_vendedor',
+
+          'vendedor',
+          'codigo_cliente',
+          'nome_cliente',
+          'acao',
+
+          'data',
+          'dentro_rota',
+          'hora',
+          'permanencia',
+
+          'venda',
+          'valor_venda',
+          'motivo_nao_venda',
+          'motivo_nao_visita',
+        ],
+
+        headerHints: {
+          gerencia: 'GERENCIA',
+          supervisao: 'SUPERVISÃO',
+          codigo_vendedor: 'CODIGO VENDEDOR',
+          vendedor: 'VENDEDOR',
+
+          codigo_cliente: 'CODIGO CLIENTE',
+          nome_cliente: 'NOME CLIENTE',
+          acao: 'AÇÃO',
+
+          data: 'DATA',
+          dentro_rota: 'DENTRO ROTA',
+          hora: 'HORA',
+          permanencia: 'PERMANÊNCIA',
+
+          venda: 'VENDA',
+          valor_venda: 'VALOR VENDA',
+          motivo_nao_venda: 'MOTIVO NÃO VENDA',
+          motivo_nao_visita: 'MOTIVO NÃO VISITA',
+        },
+      },
+    ],
+  },
+  {
+    id: 'historico_categorias',
+    label: 'Historico de categorias',
+    description: 'Histórico de categorias',
+    templateFile: '/templates/importacao/historico_perc_margem.xlsx',
     sheets: [
       {
         // key interna usada no payload (tipo = "raiox" ou "raiox__raiox").

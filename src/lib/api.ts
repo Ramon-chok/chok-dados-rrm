@@ -3,7 +3,8 @@
 // Cliente HTTP único do frontend — só fala com o backend (/api/*).
 // Todas as páginas autenticadas enviam Authorization: Bearer <JWT>.
 
-const IMPORT_API_KEY = ((import.meta as any).env?.VITE_IMPORT_API_KEY as string) || '';
+// A chave de importação NÃO pode vir para o frontend (variáveis VITE_* vão para o bundle e
+// ficam públicas). A tela de Importação autentica pelo cookie HttpOnly do ADMIN logado.
 
 export interface ImportRowError {
   linha: number;
@@ -331,7 +332,7 @@ export interface LoginApiResponse {
 export interface LoginRequires2FAResponse {
   requires2FA: true;
   tempToken: string;
-  method?: 'authenticator' | 'sms' | 'email' | string;
+  method?: 'authenticator' | 'email' | string;
 }
 
 export type LoginResult = LoginApiResponse | LoginRequires2FAResponse;
@@ -340,7 +341,7 @@ export function isLoginRequires2FA(body: LoginResult): body is LoginRequires2FAR
   return !!(body as LoginRequires2FAResponse)?.requires2FA;
 }
 
-export type TwoFAMethodApi = 'authenticator' | 'sms' | 'email';
+export type TwoFAMethodApi = 'authenticator' | 'email';
 
 export interface TwoFAStatusResponse {
   enabled: boolean;
@@ -402,7 +403,7 @@ export const DEFAULT_API_TIMEOUT_MS = 45_000;
 /** Timeout maior para lotes de importação (ms) — planilhas pesadas. */
 export const IMPORT_API_TIMEOUT_MS = 120_000;
 
-async function request<T>(
+async function requestRaw<T>(
   path: string,
   options?: RequestInit & { skipAuth?: boolean; timeoutMs?: number }
 ): Promise<T> {
@@ -412,7 +413,6 @@ async function request<T>(
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    ...(IMPORT_API_KEY ? { 'x-api-key': IMPORT_API_KEY } : {}),
     ...(!skipAuth ? authHeader() : {}),
     ...((fetchOpts.headers as Record<string, string>) || {}),
   };
@@ -453,6 +453,7 @@ async function request<T>(
 
       if (res.status === 401 && !skipAuth) {
         clearAuthToken();
+        clearApiCache();
         onUnauthorized?.();
       }
 
@@ -477,6 +478,74 @@ async function request<T>(
     if (timer) clearTimeout(timer);
     if (externalSignal) externalSignal.removeEventListener('abort', onExternalAbort);
   }
+}
+
+/**
+ * Cache de leitura no navegador (só memória — dados de negócio nunca vão para localStorage):
+ *  - GETs de dados ficam frescos por CACHE_TTL_MS, então navegar entre telas não refaz a consulta;
+ *  - requisições idênticas em andamento são unificadas (1 chamada, N consumidores);
+ *  - qualquer escrita (POST/PATCH/DELETE), logout ou 401 limpa tudo, então nada fica velho após importar.
+ */
+const CACHE_TTL_MS = 60_000;
+const CACHE_MAX_ENTRIES = 200;
+const NO_CACHE_PREFIXES = ['/auth', '/users', '/2fa', '/twofa', '/imports'];
+const responseCache = new Map<string, { at: number; data: unknown }>();
+const inflight = new Map<string, Promise<unknown>>();
+let cacheEpoch = 0;
+
+/** Descarta o cache de leituras (chamar em logout, troca de usuário ou após importação). */
+export function clearApiCache(): void {
+  cacheEpoch++;
+  responseCache.clear();
+  inflight.clear();
+}
+
+function isCacheableGet(path: string, options?: RequestInit): boolean {
+  const method = (options?.method || 'GET').toUpperCase();
+  if (method !== 'GET' || options?.signal) return false;
+  return !NO_CACHE_PREFIXES.some((p) => path === p || path.startsWith(`${p}/`) || path.startsWith(`${p}?`));
+}
+
+async function request<T>(
+  path: string,
+  options?: RequestInit & { skipAuth?: boolean; timeoutMs?: number; noCache?: boolean }
+): Promise<T> {
+  const { noCache, ...rest } = options || {};
+  const method = (rest.method || 'GET').toUpperCase();
+
+  if (method !== 'GET') {
+    try {
+      return await requestRaw<T>(path, rest);
+    } finally {
+      clearApiCache();
+    }
+  }
+  if (noCache || !isCacheableGet(path, rest)) return requestRaw<T>(path, rest);
+
+  const hit = responseCache.get(path);
+  if (hit && Date.now() - hit.at < CACHE_TTL_MS) return structuredClone(hit.data) as T;
+
+  let pending = inflight.get(path) as Promise<T> | undefined;
+  if (!pending) {
+    const epoch = cacheEpoch;
+    pending = requestRaw<T>(path, rest)
+      .then((data) => {
+        if (epoch === cacheEpoch) {
+          responseCache.set(path, { at: Date.now(), data });
+          while (responseCache.size > CACHE_MAX_ENTRIES) {
+            const oldest = responseCache.keys().next().value;
+            if (oldest === undefined) break;
+            responseCache.delete(oldest);
+          }
+        }
+        return data;
+      })
+      .finally(() => {
+        if (epoch === cacheEpoch) inflight.delete(path);
+      });
+    inflight.set(path, pending);
+  }
+  return structuredClone(await pending) as T;
 }
 
 export async function apiLogin(
@@ -523,13 +592,17 @@ export function apiTwoFAStatus(): Promise<TwoFAStatusResponse> {
 
 export function apiTwoFAInit(payload: {
   method: TwoFAMethodApi;
-  phone?: string;
   email?: string;
 }): Promise<TwoFAInitResponse> {
   return request<TwoFAInitResponse>('/2fa/init', {
     method: 'POST',
     body: JSON.stringify(payload),
   });
+}
+
+/** 2FA por e-mail já ativo: envia um código para confirmar ações sensíveis (ex.: desativar). */
+export function apiTwoFASendCode(): Promise<{ ok: boolean; delivered: boolean; expiresIn: number }> {
+  return request('/2fa/send-code', { method: 'POST', body: JSON.stringify({}) });
 }
 
 export function apiTwoFAResend(): Promise<TwoFAInitResponse> {

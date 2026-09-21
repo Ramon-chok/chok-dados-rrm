@@ -17,8 +17,9 @@ if not logger.handlers:
     logger.setLevel(logging.INFO)
 
 
-def send_welcome_email(to_email: str, name: Optional[str], password: str) -> None:
-    """Envia um e-mail com as credenciais para um novo usuário.
+def send_welcome_email(to_email: str, name: Optional[str]) -> None:
+    """Avisa o novo usuário que a conta foi criada. NÃO envia a senha (e-mail é texto puro,
+    fica arquivado e pode ser encaminhado): o administrador repassa a senha por canal seguro.
 
     Não lança exceções em caso de falha: apenas registra o erro.
     """
@@ -37,10 +38,10 @@ def send_welcome_email(to_email: str, name: Optional[str], password: str) -> Non
     subject = "Bem-vindo(a) — Acesso à plataforma"
     body = (
         f"Olá {name or ''},\n\n"
-        "Seu usuário foi criado com sucesso. Abaixo estão suas credenciais de acesso:\n\n"
-        f"E-mail: {to_email}\n"
-        f"Senha: {password}\n\n"
-        "Recomendamos alterar sua senha após o primeiro acesso.\n\n"
+        "Seu usuário foi criado com sucesso.\n\n"
+        f"Usuário de acesso: {to_email}\n"
+        "A senha inicial foi definida pelo administrador, que a informará por um canal seguro. "
+        "Nunca compartilhe sua senha e, se possível, ative a verificação em duas etapas em Configurações.\n\n"
         "Atenciosamente,\n"
         "Equipe"
     )

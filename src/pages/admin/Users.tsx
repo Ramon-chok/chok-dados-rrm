@@ -745,7 +745,7 @@ export const UsersPage: React.FC = () => {
                     <div style={{ gridColumn: 'span 6' }}>
                       <label style={labelStyle}>Senha temporária</label>
                       <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                        <input required type={showPassword ? 'text' : 'password'} disabled={createLoading} value={createPassword} onChange={(e) => setCreatePassword(e.target.value)} style={{ ...inputStyle, flex: 1 }} placeholder="Mínimo 6 caracteres" />
+                        <input required type={showPassword ? 'text' : 'password'} disabled={createLoading} value={createPassword} onChange={(e) => setCreatePassword(e.target.value)} style={{ ...inputStyle, flex: 1 }} placeholder="Mínimo 8 caracteres" minLength={8} maxLength={72} />
                         <button type="button" disabled={createLoading} onClick={() => setCreatePassword(generateStrongPassword(12))} style={{ padding: '8px 10px', borderRadius: 8, border: `1px solid ${t.border}`, background: t.surfaceElevated, color: t.text, cursor: 'pointer', fontSize: '12.5px', whiteSpace: 'nowrap' }}>Gerar</button>
                         <button type="button" onClick={() => setShowPassword(s => !s)} style={{ padding: '8px', marginLeft: 6, borderRadius: 8, border: `1px solid ${t.border}`, background: t.surfaceElevated, color: t.text, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                           {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}

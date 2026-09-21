@@ -14,6 +14,7 @@ from qrcode.image.pil import PilImage
 
 from app.db import get_connection
 from app.mail import send_test_email
+from app.hardening import login_throttle
 from app.security import get_current_user
 
 router = APIRouter(prefix="/2fa", tags=["2fa"])
@@ -105,11 +106,11 @@ def _normalize_otp_code(code: str | None) -> str:
     return "".join(ch for ch in str(code).strip() if ch.isdigit())
 
 
-def _verify_totp(secret: str | None, code: str | None, *, window: int = 2) -> bool:
+def _verify_totp(secret: str | None, code: str | None, *, window: int = 1) -> bool:
     """
-    Validate a TOTP code with a wider window to tolerate small clock skew
-    between the server and the authenticator device.
-    window=2 => current ± 2 steps (about ±60s with 30s period).
+    Valida um TOTP tolerando pequena diferença de relógio.
+    window=1 => passo atual ± 1 (cerca de ±30s). Janelas maiores aumentam a
+    chance de acerto por adivinhação e a validade de códigos vazados.
     """
     sec = _normalize_totp_secret(secret)
     code_n = _normalize_otp_code(code)
@@ -119,6 +120,30 @@ def _verify_totp(secret: str | None, code: str | None, *, window: int = 2) -> bo
         return bool(pyotp.TOTP(sec).verify(code_n, valid_window=window))
     except Exception:
         return False
+
+
+def _check_current_2fa_code(conn, user_id: str, code: str) -> bool:
+    """Confere um código atual (TOTP, e-mail temporário ou backup) de quem JÁ tem 2FA ativo."""
+    row = conn.execute(
+        "SELECT metodo, segredo, codigo_temp, expira_temp, backup_codes FROM autenticacao_2fa WHERE user_id = %s",
+        (user_id,),
+    ).fetchone()
+    if not row:
+        return False
+    method = (row["metodo"] or "").lower().strip()
+    digits = _normalize_otp_code(code)
+    if method == "authenticator" and row.get("segredo") and _verify_totp(row["segredo"], digits):
+        return True
+    if method == "email" and row.get("codigo_temp") and row.get("expira_temp"):
+        exp = _aware(row["expira_temp"])
+        if exp and datetime.now(UTC) <= exp and digits:
+            if secrets.compare_digest(digits, _normalize_otp_code(str(row["codigo_temp"]))):
+                return True
+    candidate = str(code).upper().replace("-", "").replace(" ", "")
+    for backup in list(row.get("backup_codes") or []):
+        if candidate and secrets.compare_digest(str(backup).upper().replace("-", "").replace(" ", ""), candidate):
+            return True
+    return False
 
 
 @router.get("/status")
@@ -138,8 +163,8 @@ def twofa_status(user: dict[str, Any] = Depends(get_current_user)) -> dict[str, 
     activated = row["activated_at"]
     return {
         "enabled": True,
-        "method": row["metodo"],
-        "phone": row.get("telefone"),
+        # SMS descontinuado: contas antigas passam a ser tratadas como e-mail.
+        "method": "authenticator" if (row["metodo"] or "").lower() == "authenticator" else "email",
         "email": row.get("email"),
         "requireNextLogin": bool(row.get("require_next_login", True)),
         "activatedAt": activated.isoformat() if activated else None,
@@ -149,11 +174,22 @@ def twofa_status(user: dict[str, Any] = Depends(get_current_user)) -> dict[str, 
 @router.post("/init")
 def twofa_init(body: dict = Body(...), user: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
     method = (body.get("method") or "authenticator").lower().strip()
-    phone = (body.get("phone") or body.get("telefone") or "").strip() or None
     email = (body.get("email") or user.get("email") or "").strip() or None
 
     with get_connection() as conn:
         _ensure_table(conn)
+
+        # Reconfigurar um 2FA já ATIVO sem provar posse do fator atual permitiria
+        # a quem tem só a sessão trocar o segundo fator por um seu.
+        current = conn.execute(
+            "SELECT status FROM autenticacao_2fa WHERE user_id = %s", (str(user["id"]),)
+        ).fetchone()
+        if current and current["status"]:
+            if not _check_current_2fa_code(conn, str(user["id"]), str(body.get("currentCode") or "")):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="O 2FA já está ativo. Informe um código atual (ou desative-o primeiro).",
+                )
 
         if method == "authenticator":
             secret = _normalize_totp_secret(pyotp.random_base32())
@@ -182,7 +218,7 @@ def twofa_init(body: dict = Body(...), user: dict[str, Any] = Depends(get_curren
                     backup_codes = '{}',
                     activated_at = NULL
                 """,
-                (str(user["id"]), "authenticator", secret, phone, email),
+                (str(user["id"]), "authenticator", secret, None, email),
             )
             conn.commit()
             return {
@@ -193,13 +229,14 @@ def twofa_init(body: dict = Body(...), user: dict[str, Any] = Depends(get_curren
                 "qrCodeDataUrl": _qr_data_url(provisioning_uri),
             }
 
-        if method in ("email", "sms"):
-            if method == "sms" and not phone:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Telefone é obrigatório para 2FA por SMS.",
-                )
-            if method == "email" and not email:
+        if method == "sms":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="2FA por SMS está desativado. Use e-mail ou app autenticador.",
+            )
+
+        if method == "email":
+            if not email:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="E-mail é obrigatório para 2FA por e-mail.",
@@ -225,12 +262,12 @@ def twofa_init(body: dict = Body(...), user: dict[str, Any] = Depends(get_curren
                     backup_codes = '{}',
                     activated_at = NULL
                 """,
-                (user["id"], method, phone, email, code, expires),
+                (str(user["id"]), "email", None, email, code, expires),
             )
             conn.commit()
 
             delivered = False
-            if method == "email" and email:
+            if email:
                 try:
                     send_test_email(
                         email,
@@ -245,9 +282,8 @@ def twofa_init(body: dict = Body(...), user: dict[str, Any] = Depends(get_curren
                 "ok": True,
                 "method": method,
                 "delivery": method,
-                "delivered": delivered if method == "email" else False,
+                "delivered": delivered,
                 "expiresIn": 300,
-                **({"devCode": code} if method == "sms" else {}),
             }
 
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Método inválido")
@@ -264,8 +300,8 @@ def twofa_resend(body: dict = Body(default={}), user: dict[str, Any] = Depends(g
         if not row:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Configuração 2FA não encontrada")
         method = row["metodo"]
-        if method not in ("email", "sms"):
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Reenvio só para e-mail/SMS")
+        if method != "email":
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Reenvio disponível apenas para 2FA por e-mail")
         if row["status"]:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="2FA já está ativo")
 
@@ -278,7 +314,7 @@ def twofa_resend(body: dict = Body(default={}), user: dict[str, Any] = Depends(g
         conn.commit()
 
         delivered = False
-        if method == "email" and row.get("email"):
+        if row.get("email"):
             try:
                 send_test_email(
                     row["email"],
@@ -289,13 +325,37 @@ def twofa_resend(body: dict = Body(default={}), user: dict[str, Any] = Depends(g
             except Exception:
                 delivered = False
 
-        return {
-            "ok": True,
-            "delivery": method,
-            "delivered": delivered if method == "email" else False,
-            "expiresIn": 300,
-            **({"devCode": code} if method == "sms" else {}),
-        }
+        return {"ok": True, "delivery": "email", "delivered": delivered, "expiresIn": 300}
+
+
+@router.post("/send-code")
+def twofa_send_code(user: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
+    """Com o 2FA por e-mail JÁ ativo, envia um código para confirmar ações sensíveis
+    (ex.: desativar o 2FA). Sem isto, quem usa e-mail só desativaria com código de backup."""
+    with get_connection() as conn:
+        _ensure_table(conn)
+        row = conn.execute(
+            "SELECT metodo, email, status FROM autenticacao_2fa WHERE user_id = %s",
+            (str(user["id"]),),
+        ).fetchone()
+        if not row or not row["status"] or (row["metodo"] or "").lower() != "email":
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Envio disponível apenas para 2FA por e-mail ativo")
+        code = _generate_numeric_code(6)
+        expires = datetime.now(UTC) + timedelta(minutes=5)
+        conn.execute(
+            "UPDATE autenticacao_2fa SET codigo_temp = %s, expira_temp = %s WHERE user_id = %s",
+            (code, expires, str(user["id"])),
+        )
+        conn.commit()
+        dest = (row.get("email") or user.get("email") or "").strip()
+        delivered = False
+        if dest:
+            try:
+                send_test_email(dest, subject="Seu código CHOK 2FA", body=f"Seu código de verificação é: {code}\n\nVálido por 5 minutos.")
+                delivered = True
+            except Exception:
+                delivered = False
+        return {"ok": True, "delivered": delivered, "expiresIn": 300}
 
 
 @router.post("/verify")
@@ -307,6 +367,15 @@ def twofa_verify(body: dict = Body(...), user: dict[str, Any] = Depends(get_curr
     if require_next is None:
         require_next = True
     require_next = bool(require_next)
+
+    _throttle_key = f"2fa-verify:{user['id']}"
+    _retry = login_throttle.locked_for(_throttle_key)
+    if _retry:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Muitas tentativas. Tente novamente mais tarde.",
+            headers={"Retry-After": str(_retry)},
+        )
 
     if not code:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Código é obrigatório")
@@ -335,8 +404,8 @@ def twofa_verify(body: dict = Body(...), user: dict[str, Any] = Depends(get_curr
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Segredo não encontrado. Volte e gere o QR code novamente.",
                 )
-            ok = _verify_totp(secret, code, window=2)
-        elif method in ("email", "sms"):
+            ok = _verify_totp(secret, code)
+        elif method == "email":
             temp = row["codigo_temp"]
             exp = _aware(row["expira_temp"])
             if not temp or not exp:
@@ -351,6 +420,7 @@ def twofa_verify(body: dict = Body(...), user: dict[str, Any] = Depends(get_curr
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Método desconhecido")
 
         if not ok:
+            login_throttle.register_failure(_throttle_key)
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Código inválido. Confira o horário do celular e use o código atual do app (ou gere o QR de novo).",
@@ -385,39 +455,33 @@ def twofa_verify(body: dict = Body(...), user: dict[str, Any] = Depends(get_curr
 
 @router.post("/disable")
 def twofa_disable(body: dict = Body(default={}), user: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
-    code = str(body.get("code") or "").strip().replace(" ", "")
+    code = str(body.get("code") or "").strip()[:32]
+
+    _throttle_key = f"2fa-disable:{user['id']}"
+    _retry = login_throttle.locked_for(_throttle_key)
+    if _retry:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Muitas tentativas. Tente novamente mais tarde.",
+            headers={"Retry-After": str(_retry)},
+        )
 
     with get_connection() as conn:
         _ensure_table(conn)
         row = conn.execute(
-            "SELECT metodo, segredo, status, backup_codes FROM autenticacao_2fa WHERE user_id = %s",
-            (user["id"],),
+            "SELECT status FROM autenticacao_2fa WHERE user_id = %s",
+            (str(user["id"]),),
         ).fetchone()
-        if not row or not row["status"]:
-            conn.execute(
-                """
-                UPDATE autenticacao_2fa
-                SET status = false, segredo = NULL, codigo_temp = NULL, expira_temp = NULL,
-                    backup_codes = '{}', activated_at = NULL
-                WHERE user_id = %s
-                """,
-                (user["id"],),
-            )
-            conn.commit()
-            return {"ok": True, "enabled": False}
 
-        if code:
-            method = (row["metodo"] or "").lower().strip()
-            valid = False
-            if method == "authenticator" and row.get("segredo"):
-                valid = _verify_totp(row["segredo"], code, window=2)
-            if not valid and row.get("backup_codes"):
-                codes = list(row["backup_codes"] or [])
-                code_up = str(code).strip().upper().replace(" ", "")
-                if code_up in [str(c).upper().replace(" ", "") for c in codes]:
-                    valid = True
-            if not valid:
-                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Código inválido")
+        # Com 2FA ativo, desligar exige provar posse do segundo fator; caso
+        # contrário, uma sessão roubada removeria a proteção sem obstáculo.
+        if row and row["status"]:
+            if not code or not _check_current_2fa_code(conn, str(user["id"]), code):
+                login_throttle.register_failure(_throttle_key)
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Informe um código 2FA válido (ou código de backup) para desativar.",
+                )
 
         conn.execute(
             """
@@ -430,7 +494,8 @@ def twofa_disable(body: dict = Body(default={}), user: dict[str, Any] = Depends(
                 activated_at = NULL
             WHERE user_id = %s
             """,
-            (user["id"],),
+            (str(user["id"]),),
         )
         conn.commit()
+        login_throttle.reset(_throttle_key)
         return {"ok": True, "enabled": False}

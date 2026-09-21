@@ -44,6 +44,46 @@ interface ConsentData {
 const CONSENT_STORAGE_KEY = 'rr_mind_consent_v1';
 const CONSENT_VERSION = '1.0.0';
 
+// "Manter sessão conectada": guarda SÓ o identificador (e-mail/código) para
+// pré-preencher o login e a tela de 2FA. Nunca a senha nem o código 2FA.
+const REMEMBER_USER_KEY = 'rr_mind_remembered_user_v1';
+
+// Remove caracteres de controle e os que só servem para injeção (<>"'`\) — e-mails
+// e códigos de usuário legítimos nunca os contêm. A validação real é do backend.
+const sanitizeIdentifier = (value: string): string =>
+  value.replace(/[\u0000-\u001f\u007f<>"'`\\\s]/g, '').slice(0, 100);
+
+const loadRememberedUser = (): string => {
+  try {
+    const raw = localStorage.getItem(REMEMBER_USER_KEY);
+    if (!raw) return '';
+    const data = JSON.parse(raw) as { identifier?: unknown };
+    return typeof data.identifier === 'string' ? sanitizeIdentifier(data.identifier) : '';
+  } catch {
+    return '';
+  }
+};
+
+const saveRememberedUser = (identifier: string, remember: boolean) => {
+  try {
+    const clean = sanitizeIdentifier(identifier);
+    if (remember && clean) {
+      localStorage.setItem(REMEMBER_USER_KEY, JSON.stringify({ identifier: clean, savedAt: new Date().toISOString() }));
+    } else {
+      localStorage.removeItem(REMEMBER_USER_KEY);
+    }
+  } catch {
+    /* storage indisponível (modo privado etc.) */
+  }
+};
+
+// Mostra "jo***@empresa.com" na tela de 2FA sem expor o identificador completo.
+const maskIdentifier = (value: string): string => {
+  const at = value.indexOf('@');
+  if (at > 0) return `${value.slice(0, Math.min(2, at))}***${value.slice(at)}`;
+  return value.length > 3 ? `${value.slice(0, 2)}***` : value;
+};
+
 // ============================================
 // TYPING EFFECT HOOK
 // ============================================
@@ -80,7 +120,9 @@ export const LoginView: React.FC = () => {
   // ============================================
   // ESTADO — LOGIN
   // ============================================
-  const [email, setEmail] = useState('');
+  // Pré-preenche com o usuário lembrado (se "manter sessão conectada" foi usado antes).
+  const [rememberedUser, setRememberedUser] = useState<string>(() => loadRememberedUser());
+  const [email, setEmail] = useState(() => loadRememberedUser());
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
@@ -127,6 +169,7 @@ export const LoginView: React.FC = () => {
   // Refs
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const emailInputRef = useRef<HTMLInputElement>(null);
+  const passwordInputRef = useRef<HTMLInputElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
 
   // Typing
@@ -158,9 +201,10 @@ export const LoginView: React.FC = () => {
   // AUTO FOCUS
   // ============================================
   useEffect(() => {
-    if (consentGiven && emailInputRef.current) {
-      emailInputRef.current.focus();
-    }
+    if (!consentGiven) return;
+    if (rememberedUser && passwordInputRef.current) passwordInputRef.current.focus();
+    else if (emailInputRef.current) emailInputRef.current.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [consentGiven]);
 
   // ============================================
@@ -303,12 +347,17 @@ export const LoginView: React.FC = () => {
     e.preventDefault();
     setErrorMessage(null);
     if (!consentGiven) { setShowCookieBanner(true); setErrorMessage('Por favor, aceite os termos para continuar.'); return; }
-    if (!email.trim()) { setErrorMessage('Por favor, informe seu e-mail ou código.'); return; }
+    const identifier = sanitizeIdentifier(email);
+    if (!identifier) { setErrorMessage('Por favor, informe seu e-mail ou código.'); return; }
+    if (!password) { setErrorMessage('Por favor, informe sua senha.'); return; }
     setSubmitting(true);
     try {
-      const res = await login(email, password, rememberMe);
+      const res = await login(identifier, password, rememberMe);
       if ('requires2FA' in res && res.requires2FA) {
+        // O checkbox "manter sessão" já foi enviado ao servidor e viaja no tempToken:
+        // o 2FA conclui a sessão com a MESMA escolha. A senha não fica no estado.
         setPending2FA({ tempToken: res.tempToken, method: res.method });
+        setPassword('');
         setTwoFACode('');
         setErrorMessage(null);
         return;
@@ -316,6 +365,7 @@ export const LoginView: React.FC = () => {
       if (!res.success) {
         setErrorMessage(('error' in res && res.error) || 'Falha ao autenticar.');
       } else {
+        saveRememberedUser(identifier, rememberMe);
         setLoginSuccess(true);
       }
     } finally {
@@ -327,12 +377,18 @@ export const LoginView: React.FC = () => {
     e.preventDefault();
     if (!pending2FA?.tempToken) return;
     if (!twoFACode.trim()) { setErrorMessage('Informe o código 2FA.'); return; }
+    if (twoFACode.trim().length < 6) { setErrorMessage('O código deve ter ao menos 6 caracteres.'); return; }
     setTwoFASubmitting(true);
     setErrorMessage(null);
     try {
       const res = await complete2FALogin(pending2FA.tempToken, twoFACode.trim());
       if (!res.success) { setErrorMessage(('error' in res && res.error) || 'Código 2FA inválido.'); }
-      else { setPending2FA(null); setTwoFACode(''); }
+      else {
+        // Só grava o usuário depois do 2FA concluído (login completo).
+        saveRememberedUser(email, rememberMe);
+        setPending2FA(null);
+        setTwoFACode('');
+      }
     } finally { setTwoFASubmitting(false); }
   };
 
@@ -610,8 +666,11 @@ export const LoginView: React.FC = () => {
                   <LockIcon size={22} color="#fff" />
                 </div>
                 <h3 style={{ margin: '0 0 6px', fontSize: 18, fontWeight: 700, color: t.text }}>Verificação 2FA</h3>
+                <p style={{ margin: '0 0 6px', fontSize: 12.5, color: t.textMuted, wordBreak: 'break-all' }}>
+                  Usuário: <strong style={{ color: t.text }}>{maskIdentifier(email)}</strong>
+                </p>
                 <p style={{ margin: 0, fontSize: 13, color: t.textSecondary, lineHeight: 1.5 }}>
-                  {pending2FA.method === 'email' ? 'Código enviado ao seu e-mail.' : pending2FA.method === 'sms' ? 'Código enviado por SMS.' : 'Informe o código do app autenticador.'}
+                  {pending2FA.method === 'email' ? 'Código enviado ao seu e-mail.' : 'Informe o código do app autenticador.'}
                 </p>
               </div>
               <div style={{ marginBottom: '18px' }}>
@@ -619,13 +678,18 @@ export const LoginView: React.FC = () => {
                   Código 2FA
                 </label>
                 <input id="twofa-code" type="text" inputMode="numeric" autoComplete="one-time-code" value={twoFACode}
-                  onChange={(e) => setTwoFACode(e.target.value.replace(/[^\dA-Za-z-]/g, '').slice(0, 12))}
+                  onChange={(e) => setTwoFACode(e.target.value.replace(/[^\dA-Za-z-]/g, '').slice(0, 12).toUpperCase())}
                   placeholder="000000" autoFocus
                   style={{ width: '100%', boxSizing: 'border-box', padding: '14px 16px', borderRadius: '12px', border: `1.5px solid ${t.border}`, background: t.surfaceElevated, color: t.text, fontSize: '22px', fontWeight: 700, letterSpacing: '8px', textAlign: 'center', outline: 'none', fontFamily: 'monospace', transition: 'border-color 0.2s' }}
                   onFocus={(e) => (e.currentTarget.style.borderColor = RR_RED)}
                   onBlur={(e) => (e.currentTarget.style.borderColor = t.border)}
                 />
               </div>
+              <p style={{ margin: '0 0 14px', fontSize: 12, color: t.textMuted, textAlign: 'center' }}>
+                {rememberMe
+                  ? 'Sessão será mantida conectada neste dispositivo.'
+                  : 'Sessão termina ao fechar o navegador.'}
+              </p>
               <button type="submit" disabled={twoFASubmitting || isLoading || !twoFACode.trim()}
                 style={{ width: '100%', padding: '16px 24px', borderRadius: '14px', border: 'none', background: `linear-gradient(135deg, ${RR_RED}, ${RR_RED_DARK})`, color: '#fff', fontSize: '14.5px', fontWeight: 700, cursor: twoFASubmitting || isLoading || !twoFACode.trim() ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', opacity: twoFASubmitting || isLoading || !twoFACode.trim() ? 0.7 : 1 }}>
                 {twoFASubmitting || isLoading ? 'Validando...' : 'Confirmar'}
@@ -659,7 +723,7 @@ export const LoginView: React.FC = () => {
                 }}>
                   <Mail size={18} color={emailFocused ? RR_RED : t.textMuted} style={{ transition: 'all 0.3s', transform: emailFocused ? 'scale(1.15) rotate(-5deg)' : 'scale(1)' }} />
                   <input ref={emailInputRef} id="email" type="text" value={email} maxLength={100}
-                    onChange={(e) => setEmail(e.target.value.trim())}
+                    onChange={(e) => setEmail(sanitizeIdentifier(e.target.value))}
                     onFocus={() => setEmailFocused(true)} onBlur={() => setEmailFocused(false)}
                     placeholder="Seu email ou código" required autoComplete="email"
                     style={{ border: 'none', outline: 'none', background: 'transparent', color: t.text, fontSize: '14px', width: '100%', fontFamily: "'Inter', sans-serif" }}
@@ -699,7 +763,7 @@ export const LoginView: React.FC = () => {
                 }}>
                   <Lock size={18} color={passwordFocused ? RR_RED : t.textMuted}
                     style={{ transition: 'all 0.3s', transform: passwordFocused ? 'rotate(-12deg) scale(1.15)' : 'rotate(0deg) scale(1)' }} />
-                  <input id="password" type={showPassword ? 'text' : 'password'} value={password}
+                  <input ref={passwordInputRef} id="password" type={showPassword ? 'text' : 'password'} value={password} maxLength={128}
                     onChange={(e) => setPassword(e.target.value)}
                     onFocus={() => setPasswordFocused(true)} onBlur={() => setPasswordFocused(false)}
                     onKeyUp={handleKeyEvent} onKeyDown={handleKeyEvent}
@@ -742,6 +806,16 @@ export const LoginView: React.FC = () => {
                 </div>
                 <span style={{ fontSize: '13px', color: t.textSecondary }}>Manter sessão conectada</span>
               </label>
+
+              {rememberedUser && (
+                <button
+                  type="button"
+                  onClick={() => { saveRememberedUser('', false); setRememberedUser(''); setEmail(''); emailInputRef.current?.focus(); }}
+                  style={{ background: 'transparent', border: 'none', color: t.textMuted, fontSize: '11.5px', cursor: 'pointer', padding: 0, margin: '-14px 0 20px', textDecoration: 'underline' }}
+                >
+                  Não sou eu — esquecer este usuário
+                </button>
+              )}
 
               {/* Submit */}
               <button type="submit" disabled={isLoading || submitting || !consentGiven}
@@ -1001,7 +1075,7 @@ export const LoginView: React.FC = () => {
                 <form onSubmit={handleForgotSubmit}>
                   <div style={{ marginBottom: '22px' }}>
                     <label style={{ display: 'block', fontSize: '10.5px', color: t.textMuted, marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '1.5px', fontWeight: 500 }}>E-mail corporativo</label>
-                    <input type="email" value={forgotEmail || email} onChange={(e) => setForgotEmail(e.target.value)} required placeholder="Seu email ou código"
+                    <input type="email" value={forgotEmail || email} onChange={(e) => setForgotEmail(sanitizeIdentifier(e.target.value))} maxLength={100} required placeholder="Seu email ou código"
                       style={{ width: '100%', boxSizing: 'border-box', padding: '13px 16px', borderRadius: '12px', border: `1px solid ${t.border}`, background: mode === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)', color: t.text, fontSize: '14px', fontFamily: "'Inter', sans-serif", outline: 'none', transition: 'border-color 0.2s' }}
                       onFocus={(e) => (e.currentTarget.style.borderColor = RR_RED)} onBlur={(e) => (e.currentTarget.style.borderColor = t.border)}
                     />

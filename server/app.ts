@@ -8,6 +8,7 @@ import express from 'express';
 import cors from 'cors';
 import { importsRouter } from './routes/imports.js';
 import { authRouter } from './routes/auth.js';
+import { allowedOrigins, isProduction, rateLimit, securityHeaders } from './security.js';
 
 const app = express();
 
@@ -15,15 +16,34 @@ const app = express();
 // OBS: no Vercel, o próprio gateway limita o corpo da requisição a ~4.5MB
 // independente deste valor — planilhas muito grandes podem precisar rodar
 // pelo modo Node tradicional (server:dev) em vez do serverless.
-app.use(cors());
+app.disable('x-powered-by');
+// Atrás de proxy (Vercel/Cloud Run) o IP real vem no X-Forwarded-For.
+app.set('trust proxy', 1);
+app.use(securityHeaders);
+app.use(rateLimit(600));
+// CORS restrito às origens configuradas (nada de "*" com credenciais).
+app.use(
+  cors({
+    origin: (origin, cb) => cb(null, !origin || allowedOrigins().includes(origin)),
+    credentials: true,
+    methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'x-api-key'],
+  })
+);
 app.use(express.json({ limit: '30mb' }));
 
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true });
 });
 
-app.use('/api/imports', importsRouter);
-app.use('/api/auth', authRouter);
+app.use('/api/imports', rateLimit(60, 60_000, 'imports'), importsRouter);
+
+// O login deste servidor legado é um STUB de desenvolvimento (aceita a senha
+// semente de qualquer usuário e devolve um token falso). Nunca em produção; a
+// autenticação real está no backend Python (backend/app/routers/auth.py).
+if (!isProduction && process.env.ALLOW_DEV_AUTH === 'true') {
+  app.use('/api/auth', rateLimit(10, 60_000, 'auth'), authRouter);
+}
 
 // Rede de segurança: qualquer erro que escape de uma rota (ex: JSON malformado
 // no corpo da requisição) cai aqui em vez de deixar a requisição sem resposta.

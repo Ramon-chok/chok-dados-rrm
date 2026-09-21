@@ -5,6 +5,7 @@ import {
   apiLogin,
   apiLogin2FA,
   apiLogout,
+  clearApiCache,
   apiMe,
   ApiError,
   isLoginRequires2FA,
@@ -142,6 +143,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = () => {
     // immediately clear client state so UI returns to login
     clearAuthToken();
+    clearApiCache();
     hardLogout();
     // then notify backend to clear HttpOnly cookie (fire-and-forget)
     void apiLogout().catch(() => {

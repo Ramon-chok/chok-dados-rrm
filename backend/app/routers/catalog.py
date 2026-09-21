@@ -5,7 +5,9 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+from app.cache import cached
 from app.db import get_connection
+from app.sanitize import like_pattern
 from app.parse import parse_date_only
 from app.security import get_current_user
 from app.services import iso, num, scope_filters
@@ -28,6 +30,7 @@ def _resolve_equipe_vendedor(
 
 
 @router.get("/catalog/products")
+@cached()
 def products(
     q: str | None = None,
     fabricante: str | None = None,
@@ -44,7 +47,7 @@ def products(
         params.append(categoria)
     if q:
         parts.append("(p.cod_produto ILIKE %s OR p.descricao ILIKE %s)")
-        like = f"%{q}%"
+        like = like_pattern(q)
         params.extend([like, like])
     with get_connection() as conn:
         rows = conn.execute(
@@ -71,6 +74,7 @@ def products(
 
 
 @router.get("/catalog/sortimento")
+@cached()
 def sortimento(
     q: str | None = None,
     fabricante: str | None = None,
@@ -96,7 +100,7 @@ def sortimento(
             "OR COALESCE(s.fabricante, '') ILIKE %s OR COALESCE(s.categoria, '') ILIKE %s "
             "OR COALESCE(s.linha, '') ILIKE %s)"
         )
-        like = f"%{q}%"
+        like = like_pattern(q)
         params.extend([like, like, like, like, like])
     with get_connection() as conn:
         rows = conn.execute(
@@ -130,6 +134,7 @@ def sortimento(
 
 
 @router.get("/catalog/customers")
+@cached()
 def customers(
     q: str | None = None,
     status_filter: str | None = Query(default=None, alias="status"),
@@ -146,7 +151,7 @@ def customers(
         params.append(status_filter)
     if q:
         parts.append("(c.cod_cliente ILIKE %s OR c.razao_social ILIKE %s OR c.cnpj ILIKE %s)")
-        like = f"%{q}%"
+        like = like_pattern(q)
         params.extend([like, like, like])
     with get_connection() as conn:
         rows = conn.execute(
@@ -164,6 +169,7 @@ def customers(
 
 
 @router.get("/catalog/sellers")
+@cached()
 def sellers(user: dict[str, Any] = Depends(get_current_user)) -> list[dict[str, Any]]:
     params: list[Any] = []
     parts = ["1=1"]
@@ -189,6 +195,7 @@ def sellers(user: dict[str, Any] = Depends(get_current_user)) -> list[dict[str, 
 
 
 @router.get("/catalog/teams")
+@cached()
 def teams(_user: dict[str, Any] = Depends(get_current_user)) -> list[dict[str, Any]]:
     with get_connection() as conn:
         rows = conn.execute(
@@ -198,6 +205,7 @@ def teams(_user: dict[str, Any] = Depends(get_current_user)) -> list[dict[str, A
 
 
 @router.get("/catalog/manufacturers")
+@cached()
 def manufacturers(_user: dict[str, Any] = Depends(get_current_user)) -> list[dict[str, Any]]:
     with get_connection() as conn:
         rows = conn.execute(
@@ -207,6 +215,7 @@ def manufacturers(_user: dict[str, Any] = Depends(get_current_user)) -> list[dic
 
 
 @router.get("/commercial/targets")
+@cached()
 def targets(
     ano_mes: str | None = None,
     user: dict[str, Any] = Depends(get_current_user),
@@ -247,6 +256,7 @@ def targets(
 
 
 @router.get("/commercial/objetivos-faseamento")
+@cached()
 def objetivos_faseamento(
     ano: int | None = None,
     mes: int | None = None,
@@ -321,6 +331,7 @@ def objetivos_faseamento(
 
 
 @router.get("/commercial/top-customers")
+@cached()
 def top_customers(
     start: str | None = None,
     end: str | None = None,
@@ -387,6 +398,7 @@ def top_customers(
 
 
 @router.get("/commercial/top-20-customers")
+@cached()
 def top_20_customers(
     ano: int | None = None,
     mes: int | None = None,
@@ -472,6 +484,7 @@ def top_20_customers(
 
 
 @router.get("/commercial/nao-positivados-import")
+@cached()
 def nao_positivados_import(
     ano: int | None = None,
     mes: int | None = None,
@@ -573,6 +586,7 @@ def nao_positivados_import(
 
 
 @router.get("/commercial/not-positivated")
+@cached()
 def not_positivated(
     start: str | None = None,
     end: str | None = None,
@@ -653,6 +667,7 @@ def not_positivated(
 
 
 @router.get("/sar/positivacao")
+@cached()
 def sar_positivacao(
     ano: int | None = None,
     mes: int | None = None,
@@ -706,6 +721,7 @@ def sar_positivacao(
 
 
 @router.get("/sar/raiox")
+@cached()
 def sar_raiox(
     ano: int | None = None,
     mes: int | None = None,
@@ -857,6 +873,7 @@ def sar_raiox(
 
 
 @router.get("/sar/raiox/detalhe")
+@cached()
 def sar_raiox_detalhe(
     ano: int | None = None,
     mes: int | None = None,

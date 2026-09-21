@@ -4,6 +4,7 @@ import { pool } from '../db.js';
 import { IMPORT_TYPE_CONFIGS, getImportTypeConfig } from '../importTypes.js';
 import { mapAndValidateRows, upsertRows } from '../upsert.js';
 import { parseDateOnly } from '../parse.js';
+import { isProduction, safeEqual } from '../security.js';
 
 export const importsRouter = Router();
 
@@ -14,9 +15,16 @@ export const importsRouter = Router();
 // isso acontecer em produção.
 function requireApiKey(req: Request, res: Response, next: NextFunction) {
   const expected = process.env.IMPORT_API_KEY;
-  if (!expected) return next();
-  const provided = req.header('x-api-key');
-  if (provided !== expected) {
+  // Sem chave configurada só é tolerado em desenvolvimento local; em produção
+  // a rota fica FECHADA (antes ficava aberta a qualquer um).
+  if (!expected) {
+    if (isProduction) {
+      return res.status(503).json({ error: 'IMPORT_API_KEY não configurada no servidor.' });
+    }
+    return next();
+  }
+  const provided = req.header('x-api-key') || '';
+  if (!safeEqual(provided, expected)) {
     return res.status(401).json({ error: 'Chave de importação ausente ou inválida.' });
   }
   next();
@@ -267,7 +275,7 @@ importsRouter.post('/', requireApiKey, async (req: Request, res: Response) => {
   }
 });
 
-importsRouter.get('/', async (req: Request, res: Response) => {
+importsRouter.get('/', requireApiKey, async (req: Request, res: Response) => {
   try {
     const tipo = typeof req.query.tipo === 'string' ? req.query.tipo : undefined;
     const limit = Math.min(Number(req.query.limit) || 100, 500);
@@ -298,7 +306,7 @@ importsRouter.get('/', async (req: Request, res: Response) => {
   }
 });
 
-importsRouter.get('/:id/erros', async (req: Request, res: Response) => {
+importsRouter.get('/:id/erros', requireApiKey, async (req: Request, res: Response) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isFinite(id)) return res.status(400).json({ error: 'id inválido' });

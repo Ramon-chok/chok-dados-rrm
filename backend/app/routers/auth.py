@@ -3,18 +3,48 @@
 from datetime import UTC, datetime, timedelta
 import jwt
 
-from fastapi import APIRouter, Depends, HTTPException, status, Response
+import hmac
+
+from fastapi import APIRouter, Depends, HTTPException, Request, status, Response
 from typing import Any
 
 from app.db import get_connection
 from app.config import get_settings
 from app.schemas import LoginRequest, LoginResponse, UserOut
-from app.security import create_access_token, get_current_user, verify_password, require_roles
+from app.hardening import login_throttle
+from app.sanitize import clean_text
+from app.security import create_access_token, get_current_user, revoke_token, set_auth_cookie, verify_password, require_roles
+from pydantic import BaseModel, Field
 from fastapi import Body
 from app.mail import test_smtp_connection, send_test_email
 from app.services import user_to_out
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+INVALID_CREDENTIALS = "Credenciais corporativas incorretas."
+
+
+class TwoFALoginRequest(BaseModel):
+    tempToken: str = Field(min_length=10, max_length=2048)
+    code: str = Field(min_length=1, max_length=32)
+
+
+def _locked(retry_after: int) -> HTTPException:
+    minutes = max(1, (retry_after + 59) // 60)
+    return HTTPException(
+        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+        detail=f"Muitas tentativas. Tente novamente em {minutes} min.",
+        headers={"Retry-After": str(retry_after)},
+    )
+
+
+def _touch_last_login(user_id: str) -> None:
+    with get_connection() as conn:
+        conn.execute(
+            "UPDATE usuarios SET last_login_at = %s, updated_at = now() WHERE id::text = %s",
+            (datetime.now(UTC), str(user_id)),
+        )
+        conn.commit()
 
 
 @router.post("/login")
@@ -22,6 +52,13 @@ def login(payload: LoginRequest, response: Response) -> object:
     # payload.email is treated as a generic identifier: can be an e-mail or user code
     identifier_raw = (payload.email or "").strip()
     identifier_lower = identifier_raw.lower()
+
+    # Força bruta: bloqueia POR CONTA (além do rate limit por IP no middleware).
+    throttle_key = f"login:{identifier_lower}"
+    retry = login_throttle.locked_for(throttle_key)
+    if retry:
+        raise _locked(retry)
+
     with get_connection() as conn:
         # try to find by email (case-insensitive) or by codigo (exact match)
         row = conn.execute(
@@ -51,24 +88,17 @@ def login(payload: LoginRequest, response: Response) -> object:
             (identifier_lower, identifier_raw),
         ).fetchone()
 
-    if not row or not verify_password(payload.password, row["password_hash"]):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Credenciais corporativas incorretas.",
-        )
+    # verify_password roda o bcrypt mesmo sem usuário (tempo constante).
+    password_ok = verify_password(payload.password, row["password_hash"] if row else None)
+    if not row or not password_ok:
+        login_throttle.register_failure(throttle_key)
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=INVALID_CREDENTIALS)
+    login_throttle.reset(throttle_key)
+    # Mesma mensagem genérica para inativo: não revela que a conta existe.
     if row["status"] != "Ativo":
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Usuário inativo.")
-
-    # update last_login_at
-    with get_connection() as conn:
-        conn.execute(
-            "UPDATE usuarios SET last_login_at = %s, updated_at = now() WHERE id::text = %s",
-            (datetime.now(UTC), row["id"]),
-        )
-        conn.commit()
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=INVALID_CREDENTIALS)
 
     data = dict(row)
-    data["last_login_at"] = datetime.now(UTC)
     data.pop("password_hash", None)
 
     # Verifica se o usuário possui 2FA habilitado; se sim, retorna um token temporário para verificação do 2FA.
@@ -110,10 +140,19 @@ def login(payload: LoginRequest, response: Response) -> object:
             (str(data["id"]),),
         ).fetchone()
 
-        # Se 2FA ativo e método e-mail/SMS, gera e envia código para este login
+        # Se 2FA ativo por e-mail, gera e envia código para este login
         if row2 and row2["status"]:
             method = (row2.get("metodo") or "authenticator").lower().strip()
-            if method in ("email", "sms"):
+            if method == "sms":
+                # SMS foi descontinuado: contas antigas passam a receber o código por e-mail.
+                method = "email"
+                conn.execute(
+                    "UPDATE autenticacao_2fa SET metodo = 'email', telefone = NULL WHERE user_id = %s",
+                    (str(data["id"]),),
+                )
+                conn.commit()
+                row2 = {**row2, "metodo": "email"}
+            if method == "email":
                 import secrets as _secrets
 
                 code = "".join(str(_secrets.randbelow(10)) for _ in range(6))
@@ -127,7 +166,7 @@ def login(payload: LoginRequest, response: Response) -> object:
                     (code, expires, str(data["id"])),
                 )
                 conn.commit()
-                if method == "email":
+                if True:
                     dest = (row2.get("email") or data.get("email") or "").strip()
                     if dest:
                         try:
@@ -148,6 +187,8 @@ def login(payload: LoginRequest, response: Response) -> object:
         payload2 = {
             "sub": str(data["id"]),
             "typ": "2fa_pending",
+            # Guarda a escolha do checkbox "Manter sessão conectada" até o 2FA terminar.
+            "rm": bool(payload.rememberMe),
             "iat": int(now.timestamp()),
             "exp": int((now + timedelta(minutes=5)).timestamp()),
         }
@@ -160,6 +201,8 @@ def login(payload: LoginRequest, response: Response) -> object:
             "method": (row2.get("metodo") or "authenticator"),
         }
 
+    _touch_last_login(data["id"])
+    data["last_login_at"] = datetime.now(UTC)
     token, expires_in = create_access_token(
         data["id"],
         data["email"],
@@ -170,52 +213,45 @@ def login(payload: LoginRequest, response: Response) -> object:
             "team": data.get("team"),
         },
     )
-    # also set HttpOnly cookie for compatibility/secure sessions
-    try:
-        settings = get_settings()
-        cookie_name = settings.jwt_cookie_name or "chok_auth_token"
-        # FastAPI Response.set_cookie uses max_age (seconds)
-        # samesite should be one of 'lax', 'strict', 'none' — normalize
-        samesite = (settings.jwt_cookie_same_site or "Strict").lower()
-        # set cookie (respecting secure/httpOnly settings)
-        # If secure=True in dev (http) cookie won't be sent; env can override
-        response.set_cookie(
-            cookie_name,
-            token,
-            max_age=expires_in,
-            path=settings.jwt_cookie_path or "/",
-            domain=settings.jwt_cookie_domain,
-            secure=bool(settings.jwt_cookie_secure),
-            httponly=bool(settings.jwt_cookie_http_only),
-            samesite=samesite,
-        )
-    except Exception:
-        # don't fail login if cookie cannot be set
-        pass
+    # Cookie HttpOnly: persistente só se "manter conectado" estiver marcado.
+    set_auth_cookie(response, token, expires_in, payload.rememberMe)
 
     return LoginResponse(token=token, tokenType="Bearer", expiresIn=expires_in, user=user_to_out(data))
 
 
 
 @router.post("/2fa-login")
-def twofa_login(payload: dict = Body(...), response: Response = None):
+def twofa_login(payload: TwoFALoginRequest, response: Response):
     """Completa o login usando `tempToken` retornado por /login e o `code` do 2FA."""
-    temp = payload.get("tempToken")
-    code = str(payload.get("code") or "").strip()
-    if not temp or not code:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="tempToken e code são obrigatórios")
+    temp = payload.tempToken
+    code = clean_text(payload.code, 32)
     settings = get_settings()
+    generic_invalid = "Sessão de verificação inválida. Faça login novamente."
     try:
-        decoded = jwt.decode(temp, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
+        decoded = jwt.decode(
+            temp,
+            settings.jwt_secret,
+            algorithms=[settings.jwt_algorithm],
+            options={"require": ["exp", "iat", "sub"]},
+        )
     except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Temp token expirado")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Sessão de verificação expirada. Faça login novamente.")
     except jwt.InvalidTokenError:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Temp token inválido")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=generic_invalid)
 
     if decoded.get("typ") != "2fa_pending":
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Temp token inválido")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=generic_invalid)
 
     user_id = str(decoded.get("sub") or "")
+    # A escolha "Manter sessão conectada" feita na tela de login viaja no tempToken.
+    remember_me = bool(decoded.get("rm", False))
+
+    # 6 dígitos = 1.000.000 combinações: sem limite, dá para adivinhar em minutos.
+    throttle_key = f"2fa:{user_id}"
+    retry = login_throttle.locked_for(throttle_key)
+    if retry:
+        raise _locked(retry)
+
     from app.routers.twofa import _normalize_otp_code, _verify_totp
 
     code_digits = _normalize_otp_code(code)
@@ -230,37 +266,34 @@ def twofa_login(payload: dict = Body(...), response: Response = None):
             (user_id,),
         ).fetchone()
         if not row or not row.get("status"):
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Configuração 2FA não encontrada")
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=generic_invalid)
         method = (row["metodo"] or "").lower().strip()
         ok = False
         used_backup: str | None = None
+        used_temp_code = False
         if method == "authenticator":
-            ok = _verify_totp(row.get("segredo"), code_digits, window=2)
+            ok = _verify_totp(row.get("segredo"), code_digits, window=1)
         else:
             temp_code = row["codigo_temp"]
             exp = row["expira_temp"]
             if exp is not None and getattr(exp, "tzinfo", None) is None:
                 exp = exp.replace(tzinfo=UTC)
-            if temp_code and exp and datetime.now(UTC) <= exp:
-                ok = code_digits == _normalize_otp_code(str(temp_code))
+            if temp_code and exp and datetime.now(UTC) <= exp and code_digits:
+                ok = hmac.compare_digest(code_digits, _normalize_otp_code(str(temp_code)))
+                used_temp_code = ok
 
-        # códigos de backup (one-time) — formato XXXX-XXXX
+        # códigos de backup (uso único) — formato XXXX-XXXX, com ou sem hífen
         if not ok:
-            backups = list(row.get("backup_codes") or [])
-            upper_map = {str(c).upper().replace(" ", ""): str(c) for c in backups}
-            if code_raw in upper_map:
-                ok = True
-                used_backup = upper_map[code_raw]
-            elif code_digits and code_digits in {str(c).upper().replace("-", "").replace(" ", "") for c in backups}:
-                # aceita backup sem hífen
-                for original in backups:
-                    compact = str(original).upper().replace("-", "").replace(" ", "")
-                    if compact == code_digits:
-                        ok = True
-                        used_backup = str(original)
-                        break
+            candidate = code_raw.replace("-", "")
+            for original in list(row.get("backup_codes") or []):
+                compact = str(original).upper().replace("-", "").replace(" ", "")
+                if candidate and hmac.compare_digest(compact, candidate):
+                    ok = True
+                    used_backup = str(original)
+                    break
 
         if not ok:
+            login_throttle.register_failure(throttle_key)
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Código inválido. Use o código atual do autenticador (6 dígitos) ou um código de backup.",
@@ -273,8 +306,17 @@ def twofa_login(payload: dict = Body(...), response: Response = None):
                 (remaining, user_id),
             )
             conn.commit()
+        elif used_temp_code:
+            # código por e-mail é de uso único
+            conn.execute(
+                "UPDATE autenticacao_2fa SET codigo_temp = NULL, expira_temp = NULL WHERE user_id = %s",
+                (user_id,),
+            )
+            conn.commit()
 
-    # load user data and issue final token
+    login_throttle.reset(throttle_key)
+
+    # carrega o usuário e emite o token final
     with get_connection() as conn:
         rowu = conn.execute(
             """
@@ -301,20 +343,20 @@ def twofa_login(payload: dict = Body(...), response: Response = None):
             """,
             (user_id,),
         ).fetchone()
-        if not rowu:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuário não encontrado")
+        if not rowu or rowu["status"] != "Ativo":
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=generic_invalid)
         data = dict(rowu)
 
-    token, expires_in = create_access_token(data["id"], data["email"], data["role"], remember_me=True)
-    # set cookie
-    try:
-        settings = get_settings()
-        cookie_name = settings.jwt_cookie_name or "chok_auth_token"
-        samesite = (settings.jwt_cookie_same_site or "Strict").lower()
-        if response is not None:
-            response.set_cookie(cookie_name, token, max_age=expires_in, path=settings.jwt_cookie_path or "/", domain=settings.jwt_cookie_domain, secure=bool(settings.jwt_cookie_secure), httponly=bool(settings.jwt_cookie_http_only), samesite=samesite)
-    except Exception:
-        pass
+    _touch_last_login(user_id)
+    data["last_login_at"] = datetime.now(UTC)
+    token, expires_in = create_access_token(
+        data["id"],
+        data["email"],
+        data["role"],
+        remember_me=remember_me,
+        extra={"sellerCode": data.get("seller_code"), "team": data.get("team")},
+    )
+    set_auth_cookie(response, token, expires_in, remember_me)
 
     return LoginResponse(token=token, tokenType="Bearer", expiresIn=expires_in, user=user_to_out(data))
 
@@ -342,13 +384,22 @@ def email_test(payload: dict = Body(...), _admin: dict[str, Any] = Depends(requi
 
 
 @router.post("/logout")
-def logout(response: Response = None) -> dict[str, bool]:
-    # Allow logout without valid auth: always remove cookie if present.
+def logout(request: Request, response: Response) -> dict[str, bool]:
+    """Encerra a sessão: REVOGA o JWT no servidor (não só apaga o cookie) e limpa o cookie.
+    Não exige autenticação válida: sempre limpa o cookie."""
+    settings = get_settings()
+    cookie_name = settings.jwt_cookie_name or "chok_auth_token"
+    token = request.cookies.get(cookie_name)
+    auth_header = request.headers.get("authorization", "")
+    if auth_header.lower().startswith("bearer "):
+        try:
+            revoke_token(auth_header[7:].strip())
+        except Exception:
+            pass
     try:
-        settings = get_settings()
-        cookie_name = settings.jwt_cookie_name or "chok_auth_token"
-        if response is not None:
-            response.delete_cookie(cookie_name, path=settings.jwt_cookie_path or "/", domain=settings.jwt_cookie_domain)
+        revoke_token(token)
     except Exception:
+        # banco indisponível não pode impedir o usuário de sair
         pass
+    response.delete_cookie(cookie_name, path=settings.jwt_cookie_path or "/", domain=settings.jwt_cookie_domain)
     return {"ok": True}

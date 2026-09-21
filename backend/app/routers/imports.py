@@ -3,13 +3,14 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
 
+from app.cache import invalidate_all
 from app.db import get_connection
 import app.import_types as import_types
 from app.parse import parse_date_only
 from app.schemas import ImportRequest, ImportResultSummary, ImportRowError
-from app.security import require_import_api_key, require_roles
+from app.security import require_import_access, require_roles
 from app.services import iso
 from app.upsert import SnapshotContext, map_and_validate_rows, upsert_rows
 
@@ -24,7 +25,7 @@ MAX_ROWS_PER_REQUEST = 2500
 @router.post("", response_model=ImportResultSummary)
 def create_import(
     body: ImportRequest,
-    _: None = Depends(require_import_api_key),
+    _access: dict[str, Any] | None = Depends(require_import_access),
 ) -> ImportResultSummary:
     cfg = import_types.get_import_type_config(body.tipo)
     if not cfg:
@@ -187,6 +188,7 @@ def create_import(
 
             # commit final import metadata (upsert_rows commits per chunk)
             conn.commit()
+            invalidate_all()
 
         return ImportResultSummary(
             importId=importacao_id,
@@ -222,7 +224,7 @@ def create_import(
         except Exception:
             pass
 
-        message = str(err)
+        message = str(err)[:500]
         try:
             with get_connection() as conn:
                 conn.execute(
@@ -257,8 +259,9 @@ def create_import(
 
 @router.get("")
 def list_imports(
-    tipo: str | None = None,
+    tipo: str | None = Query(default=None, max_length=64, pattern=r"^[A-Za-z0-9_\-]+$"),
     limit: int = Query(default=100, ge=1, le=500),
+    _admin: dict[str, Any] = Depends(require_roles("ADMIN")),
 ) -> list[dict[str, Any]]:
     params: list[Any] = []
     where = ""
@@ -303,7 +306,10 @@ def clear_import_history(
 
 
 @router.get("/{import_id}/erros")
-def list_import_errors(import_id: int) -> list[dict[str, Any]]:
+def list_import_errors(
+    import_id: int = Path(ge=1, le=2**31 - 1),
+    _admin: dict[str, Any] = Depends(require_roles("ADMIN")),
+) -> list[dict[str, Any]]:
     with get_connection() as conn:
         rows = conn.execute(
             "SELECT linha, motivo FROM importacoes_erros WHERE importacao_id = %s ORDER BY linha",

@@ -8,11 +8,18 @@ from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 
 from app import __version__
 from app.config import get_settings
 from app.db import close_pool
+from app.hardening import (
+    BodySizeLimitMiddleware,
+    RateLimitMiddleware,
+    RequestGuardMiddleware,
+    SecurityHeadersMiddleware,
+)
 from app.routers import analytics, auth, catalog, imports, users, twofa
 
 settings = get_settings()
@@ -30,6 +37,10 @@ app = FastAPI(
     version=__version__,
     description="Backend Python do RR Mind / CHOK Dados: importação histórica, auth RBAC e leitura analítica.",
     lifespan=lifespan,
+    # Não publica o schema/Swagger em produção (mapa gratuito da superfície de ataque).
+    docs_url=None if settings.environment.lower() == "production" else "/docs",
+    redoc_url=None,
+    openapi_url=None if settings.environment.lower() == "production" else "/openapi.json",
 )
 
 # Diretório público para avatares de usuários
@@ -41,13 +52,23 @@ app.mount("/avatars", StaticFiles(directory=str(avatars_dir)), name="avatars")
 # Recomendamos definir origens específicas em produção (ex: https://app.suaempresa.com).
 cors_allow_origins = ["*"] if origins == ["*"] else origins
 cors_allow_credentials = False if cors_allow_origins == ["*"] else True
+# Ordem de execução (o ÚLTIMO adicionado é o mais externo):
+#   SecurityHeaders > CORS > RateLimit > BodySize > RequestGuard > rotas
+# RateLimit corre antes de o corpo ser lido, barrando inundação a baixo custo,
+# e o CORS envolve tudo para que até as respostas 403/413/429 sejam legíveis.
+app.add_middleware(RequestGuardMiddleware)
+app.add_middleware(BodySizeLimitMiddleware)
+app.add_middleware(RateLimitMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_allow_origins,
     allow_credentials=cors_allow_credentials,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", "x-api-key"],
+    max_age=600,
 )
+app.add_middleware(GZipMiddleware, minimum_size=1024)
+app.add_middleware(SecurityHeadersMiddleware)
 
 
 def _error_payload(message: str, extra: dict | None = None, status_code: int = 500) -> JSONResponse:
@@ -66,7 +87,9 @@ async def http_exception_handler(_request: Request, exc: HTTPException) -> JSONR
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(_request: Request, exc: RequestValidationError) -> JSONResponse:
-    return _error_payload("Corpo da requisição inválido.", extra={"detail": exc.errors()}, status_code=400)
+    # Não devolve `input`/`ctx` (poderia refletir dado sensível ou malicioso do cliente).
+    safe = [{"loc": [str(p) for p in e.get("loc", ())], "msg": str(e.get("msg", ""))} for e in exc.errors()]
+    return _error_payload("Corpo da requisição inválido.", extra={"detail": safe}, status_code=400)
 
 
 @app.exception_handler(Exception)

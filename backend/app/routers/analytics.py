@@ -4,7 +4,9 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+from app.cache import cached
 from app.db import get_connection
+from app.sanitize import like_pattern
 from app.security import get_current_user
 from app.services import num, scope_filters
 
@@ -53,6 +55,7 @@ def _period_clause(
 
 
 @router.get("/dashboard")
+@cached()
 def dashboard(
     ano: int | None = None,
     mes: int | None = None,
@@ -278,6 +281,7 @@ def dashboard(
 
 
 @router.get("/analytics/fabricante-detalhe")
+@cached()
 def fabricante_detalhe(
     fabricante: str,
     ano: int | None = None,
@@ -384,6 +388,7 @@ def fabricante_detalhe(
 
 
 @router.get("/analytics/filter-options")
+@cached()
 def filter_options(user: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
     """Opções para os filtros de Equipe/Vendedor do Dashboard, já restritas ao
     escopo do usuário: ADMIN/GERENTE veem tudo; SUPERVISOR só a própria
@@ -430,6 +435,7 @@ def filter_options(user: dict[str, Any] = Depends(get_current_user)) -> dict[str
 
 
 @router.get("/analytics/cliente-fabricantes")
+@cached()
 def cliente_fabricantes(
     codigo: str | None = None,
     nome: str | None = None,
@@ -559,6 +565,7 @@ def cliente_fabricantes(
 
 
 @router.get("/analytics/tree")
+@cached()
 def analytics_tree(
     ano: int | None = None,
     mes: int | None = None,
@@ -649,6 +656,7 @@ def analytics_tree(
 
 
 @router.get("/analytics/history")
+@cached()
 def history(
     fabricante: str | None = None,
     equipe: str | None = None,
@@ -707,6 +715,7 @@ def history(
 
 
 @router.get("/analytics/sales")
+@cached()
 def sales(
     q: str | None = None,
     fabricante: str | None = None,
@@ -729,7 +738,7 @@ def sales(
         params.append(scope["vendedor"])
     if q:
         parts.append("(v.numero_pedido ILIKE %s OR c.razao_social ILIKE %s OR ve.nome ILIKE %s)")
-        like = f"%{q}%"
+        like = like_pattern(q)
         params.extend([like, like, like])
     params.append(limit)
     with get_connection() as conn:

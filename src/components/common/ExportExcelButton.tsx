@@ -17,6 +17,27 @@ interface ExportExcelButtonProps {
   disabled?: boolean;
 }
 
+/**
+ * Neutraliza "injeção de fórmula" (CSV/Excel injection): texto vindo de cadastros ou
+ * planilhas importadas que comece com = + - @ (ou TAB/CR) viraria fórmula ao abrir
+ * o arquivo exportado. O apóstrofo inicial força o Excel a tratar como texto.
+ */
+const FORMULA_START = /^[=+\-@\t\r]/;
+function neutralizeCell(value: unknown): unknown {
+  if (typeof value !== 'string') return value;
+  const clean = value.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '');
+  return FORMULA_START.test(clean) ? `'${clean}` : clean;
+}
+function neutralizeRows(rows: Record<string, any>[]): Record<string, any>[] {
+  return rows.map((row) => {
+    const out: Record<string, any> = {};
+    Object.keys(row).forEach((k) => {
+      out[String(neutralizeCell(k))] = neutralizeCell(row[k]);
+    });
+    return out;
+  });
+}
+
 export const ExportExcelButton: React.FC<ExportExcelButtonProps> = ({
   filename = 'Relatorio_Chok.xlsx',
   sheets,
@@ -53,7 +74,7 @@ export const ExportExcelButton: React.FC<ExportExcelButtonProps> = ({
         const cleanName = (s.sheetName || 'Sheet')
           .replace(/[\\/?*[\]:]/g, ' ')
           .substring(0, 31);
-        const ws = XLSX.utils.json_to_sheet(s.data);
+        const ws = XLSX.utils.json_to_sheet(neutralizeRows(s.data));
         XLSX.utils.book_append_sheet(wb, ws, cleanName);
       });
 

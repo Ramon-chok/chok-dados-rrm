@@ -35,7 +35,7 @@ CREATE TABLE IF NOT EXISTS audit_log (
 );
 CREATE INDEX IF NOT EXISTS idx_audit_log_criado ON audit_log(criado_em DESC);
 
--- Autenticação de dois fatores (2FA / TOTP / e-mail / SMS)
+-- Autenticação de dois fatores (2FA / TOTP / e-mail)
 CREATE TABLE IF NOT EXISTS autenticacao_2fa (
   user_id TEXT PRIMARY KEY,
   metodo VARCHAR(50),
@@ -50,3 +50,11 @@ CREATE TABLE IF NOT EXISTS autenticacao_2fa (
   activated_at TIMESTAMPTZ
 );
 CREATE INDEX IF NOT EXISTS idx_autenticacao_2fa_status ON autenticacao_2fa(status);
+
+-- Tokens de sessão revogados (logout): o JWT é stateless, então o jti entra aqui
+-- e fica bloqueado até expirar. Linhas vencidas são apagadas no próprio logout.
+CREATE TABLE IF NOT EXISTS tokens_revogados (
+  jti TEXT PRIMARY KEY,
+  expira_em TIMESTAMPTZ NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_tokens_revogados_expira ON tokens_revogados(expira_em);

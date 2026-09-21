@@ -7,6 +7,10 @@ import re
 from datetime import UTC, datetime
 from typing import TypeVar
 
+from app.sanitize import clean_text
+
+MAX_TEXT_CELL = 1000
+
 T = TypeVar("T")
 
 ParseOk = tuple[True, T | None]
@@ -98,7 +102,9 @@ def parse_date_only(raw: object) -> ParseResult[str]:
 def parse_text(raw: object) -> ParseResult[str]:
     if raw is None:
         return True, None
-    s = str(raw).strip()
+    # Sanitiza texto de planilha: sem NUL/controles (Postgres rejeita NUL) e sem
+    # marcação HTML persistida; limite evita células gigantes (DoS de memória/DB).
+    s = clean_text(raw, MAX_TEXT_CELL, multiline=True)
     return True, None if s == "" else s
 
 

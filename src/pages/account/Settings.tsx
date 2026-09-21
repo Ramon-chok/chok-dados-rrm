@@ -7,6 +7,7 @@ import {
   apiTwoFAInit,
   apiTwoFAResend,
   apiTwoFAStatus,
+  apiTwoFASendCode,
   apiTwoFAVerify,
   ApiError,
 } from '../../lib/api';
@@ -17,7 +18,6 @@ import {
   X,
   Smartphone,
   Mail,
-  MessageSquare,
   KeyRound,
   ShieldCheck,
   ShieldOff,
@@ -43,7 +43,7 @@ import {
 // ============================================
 // TIPOS & CONSTANTES
 // ============================================
-type TwoFAMethod = 'authenticator' | 'sms' | 'email';
+type TwoFAMethod = 'authenticator' | 'email';
 type TwoFAStage = 'choose' | 'configure' | 'verify' | 'backup' | 'done';
 
 interface TwoFAConfig {
@@ -59,12 +59,6 @@ const METHOD_INFO: Record<TwoFAMethod, { icon: any; label: string; desc: string;
     label: 'App Autenticador',
     desc: 'Google Authenticator, Authy ou similar (TOTP)',
     color: '#8B5CF6',
-  },
-  sms: {
-    icon: MessageSquare,
-    label: 'SMS / Telefone',
-    desc: 'Código de verificação via mensagem de texto',
-    color: '#3B82F6',
   },
   email: {
     icon: Mail,
@@ -98,6 +92,8 @@ export const SettingsPage: React.FC = () => {
 
   const [show2FAModal, setShow2FAModal] = useState(false);
   const [showDisableConfirm, setShowDisableConfirm] = useState(false);
+  const [disableCode, setDisableCode] = useState('');
+  const [sendingDisableCode, setSendingDisableCode] = useState(false);
   const [twoFAMethod, setTwoFAMethod] = useState<TwoFAMethod | null>(null);
   const [twoFAStage, setTwoFAStage] = useState<TwoFAStage>('choose');
   const [twoFAInput, setTwoFAInput] = useState('');
@@ -128,7 +124,8 @@ export const SettingsPage: React.FC = () => {
       const st = await apiTwoFAStatus();
       setTwoFAConfig({
         enabled: !!st.enabled,
-        method: (st.method as TwoFAMethod) || null,
+        // SMS foi descontinuado: contas antigas são tratadas como e-mail.
+        method: st.method ? ((st.method as string) === 'authenticator' ? 'authenticator' : 'email') : null,
         requireNextLogin: st.requireNextLogin !== false,
         timestamp: st.activatedAt || '',
       });
@@ -253,13 +250,11 @@ export const SettingsPage: React.FC = () => {
     try {
       const res = await apiTwoFAInit({
         method: twoFAMethod,
-        phone: twoFAMethod === 'sms' ? twoFAInput.trim() : undefined,
         email: twoFAMethod === 'email' ? twoFAInput.trim() : undefined,
       });
       setCodeSent(true);
       setCodeTimer(60);
       setTwoFAStage('verify');
-      if (res.devCode) setDevHintCode(res.devCode);
       setTimeout(() => codeInputRefs.current[0]?.focus(), 150);
     } catch (err) {
       setActionError(err instanceof ApiError ? err.message : 'Falha ao enviar código.');
@@ -366,12 +361,30 @@ export const SettingsPage: React.FC = () => {
     setTwoFAStage('done');
   };
 
+  const handleSendDisableCode = async () => {
+    setSendingDisableCode(true);
+    setActionError('');
+    try {
+      await apiTwoFASendCode();
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : 'Falha ao enviar o código.');
+    } finally {
+      setSendingDisableCode(false);
+    }
+  };
+
   const handleDisable2FA = async () => {
+    const code = disableCode.trim();
+    if (code.length < 6) {
+      setActionError('Informe o código atual do app (6 dígitos) ou um código de backup.');
+      return;
+    }
     setDisabling(true);
     setActionError('');
     try {
-      await apiTwoFADisable();
+      await apiTwoFADisable(code);
       setTwoFAConfig({ enabled: false, method: null, requireNextLogin: true, timestamp: '' });
+      setDisableCode('');
       setShowDisableConfirm(false);
     } catch (err) {
       setActionError(err instanceof ApiError ? err.message : 'Falha ao desativar 2FA.');
@@ -405,7 +418,6 @@ export const SettingsPage: React.FC = () => {
       setCodeTimer(60);
       setCodeDigits(['', '', '', '', '', '']);
       setVerifyError('');
-      if (res.devCode) setDevHintCode(res.devCode);
       setTimeout(() => codeInputRefs.current[0]?.focus(), 100);
     } catch (err) {
       setActionError(err instanceof ApiError ? err.message : 'Falha ao reenviar código.');
@@ -1220,7 +1232,7 @@ export const SettingsPage: React.FC = () => {
                     </>
                   )}
 
-                  {(twoFAMethod === 'sms' || twoFAMethod === 'email') && (
+                  {twoFAMethod === 'email' && (
                     <>
                       <div style={{ textAlign: 'center', marginBottom: '24px' }}>
                         <div
@@ -1239,9 +1251,7 @@ export const SettingsPage: React.FC = () => {
                           <methodInfo.icon size={28} color={methodInfo.color} />
                         </div>
                         <p style={{ margin: '0 0 20px', fontSize: '13.5px', color: t.textSecondary, lineHeight: 1.6 }}>
-                          {twoFAMethod === 'sms'
-                            ? 'Informe o telefone. O código é salvo no banco (SMS real depende de provedor).'
-                            : 'Confirme o e-mail que receberá os códigos de verificação.'}
+                          Confirme o e-mail que receberá os códigos de verificação.
                         </p>
                       </div>
 
@@ -1257,13 +1267,13 @@ export const SettingsPage: React.FC = () => {
                             letterSpacing: '0.08em',
                           }}
                         >
-                          {twoFAMethod === 'sms' ? 'Número de Telefone' : 'E-mail de Verificação'}
+                          E-mail de Verificação
                         </label>
                         <input
-                          type={twoFAMethod === 'sms' ? 'tel' : 'email'}
+                          type="email" maxLength={254}
                           value={twoFAInput}
                           onChange={(e) => setTwoFAInput(e.target.value)}
-                          placeholder={twoFAMethod === 'sms' ? '+55 11 99999-9999' : currentUser?.email || 'seu@email.com'}
+                          placeholder={currentUser?.email || 'seu@email.com'}
                           style={{
                             width: '100%',
                             boxSizing: 'border-box',
@@ -1341,11 +1351,6 @@ export const SettingsPage: React.FC = () => {
                       ? 'Insira o código de 6 dígitos exibido no seu app autenticador.'
                       : `Enviamos um código de 6 dígitos para ${twoFAInput || 'seu destino configurado'}.`}
                   </p>
-                  {devHintCode && twoFAMethod === 'sms' && (
-                    <p style={{ margin: '0 0 12px', fontSize: 12, color: '#F59E0B' }}>
-                      Modo dev (sem SMS): código <strong>{devHintCode}</strong>
-                    </p>
-                  )}
 
                   {/* Campos de Código (OTP Input) */}
                   <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginBottom: '16px' }}>
@@ -1767,8 +1772,55 @@ export const SettingsPage: React.FC = () => {
               Desativar Proteção 2FA?
             </h3>
             <p style={{ margin: '0 0 16px', fontSize: '13px', color: t.textSecondary, lineHeight: 1.6, textAlign: 'center' }}>
-              Isso remove o 2FA no banco de dados. Tem certeza?
+              Por segurança, confirme com um código atual do app autenticador (ou um código de backup).
             </p>
+            {twoFAConfig.method === 'email' && (
+              <button
+                type="button"
+                disabled={sendingDisableCode}
+                onClick={() => void handleSendDisableCode()}
+                style={{
+                  width: '100%',
+                  marginBottom: 10,
+                  padding: '9px',
+                  borderRadius: 10,
+                  border: `1px solid ${t.border}`,
+                  background: 'transparent',
+                  color: t.textSecondary,
+                  fontSize: 12.5,
+                  fontWeight: 600,
+                  cursor: sendingDisableCode ? 'not-allowed' : 'pointer',
+                }}
+              >
+                {sendingDisableCode ? 'Enviando...' : 'Enviar código para meu e-mail'}
+              </button>
+            )}
+            <input
+              type="text"
+              inputMode="text"
+              autoComplete="one-time-code"
+              value={disableCode}
+              maxLength={12}
+              onChange={(e) => setDisableCode(e.target.value.replace(/[^\dA-Za-z-]/g, '').toUpperCase())}
+              placeholder="000000"
+              aria-label="Código 2FA para desativar"
+              style={{
+                width: '100%',
+                boxSizing: 'border-box',
+                marginBottom: 14,
+                padding: '12px 14px',
+                borderRadius: 10,
+                border: `1px solid ${t.border}`,
+                background: t.surfaceElevated,
+                color: t.text,
+                fontSize: 18,
+                fontWeight: 700,
+                letterSpacing: 6,
+                textAlign: 'center',
+                fontFamily: 'monospace',
+                outline: 'none',
+              }}
+            />
             {actionError && (
               <p style={{ color: '#EF4444', fontSize: 12, textAlign: 'center', marginBottom: 12 }}>{actionError}</p>
             )}
