@@ -1,5 +1,6 @@
 ﻿import React, { useEffect, useMemo, useState } from 'react';
 import { useTheme } from '../../context/ThemeContext';
+import { ScrollableChart } from '../../components/common/ScrollableChart';
 import { useGlobalFilter } from '../../context/GlobalFilterContext';
 import { PeriodSelector } from '../../components/common/PeriodSelector';
 import { EmptyBlock, ErrorBlock, LoadingBlock } from '../../components/common/DataState';
@@ -8,6 +9,9 @@ import { BarChart, ComposedChart, Bar, Area, XAxis, YAxis, Tooltip, ResponsiveCo
 
 const fmt = (v: number) => `R$ ${v.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}`;
 const fmtInt = (v: number) => v.toLocaleString('pt-BR', { maximumFractionDigits: 0 });
+
+/** Largura mínima da lista de fabricantes/equipes/vendedores; abaixo disso rola na horizontal. */
+const TABLE_MIN_WIDTH = 720;
 
 export const AnalisesPage: React.FC = () => {
   const { mode, t } = useTheme();
@@ -57,7 +61,7 @@ export const AnalisesPage: React.FC = () => {
       {!loading && !error && tree.length > 0 && (
         <>
           <div style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 12, padding: 16, height: 260, marginBottom: 16 }}>
-            <ResponsiveContainer width="100%" height="100%">
+            <ScrollableChart minWidth={Math.max(0, chartData.length * 90)} height="100%"><ResponsiveContainer width="100%" height="100%">
               <BarChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" stroke={t.border} />
                 <XAxis dataKey="nome" stroke={t.textMuted} fontSize={11} />
@@ -66,11 +70,11 @@ export const AnalisesPage: React.FC = () => {
                 <Bar dataKey="meta" fill={t.textMuted} />
                 <Bar dataKey="realizado" fill={t.primary} />
               </BarChart>
-            </ResponsiveContainer>
+            </ResponsiveContainer></ScrollableChart>
           </div>
           <div style={{ fontSize: 12, fontWeight: 600, color: t.textSecondary, marginBottom: 6 }}>Cobertura</div>
           <div style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 12, padding: 16, height: 260, marginBottom: 16 }}>
-            <ResponsiveContainer width="100%" height="100%">
+            <ScrollableChart minWidth={Math.max(0, coberturaChartData.length * 90)} height="100%"><ResponsiveContainer width="100%" height="100%">
               <ComposedChart data={coberturaChartData}>
                 <CartesianGrid strokeDasharray="3 3" stroke={t.border} />
                 <XAxis dataKey="nome" stroke={t.textMuted} fontSize={11} />
@@ -79,9 +83,10 @@ export const AnalisesPage: React.FC = () => {
                 <Bar dataKey="meta" fill={t.textMuted} />
                 <Area type="monotone" dataKey="realizado" stroke={t.accentBlue} fill={t.accentBlue} fillOpacity={0.3} />
               </ComposedChart>
-            </ResponsiveContainer>
+            </ResponsiveContainer></ScrollableChart>
           </div>
-          <div style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 12, overflow: 'hidden' }}>
+          <div style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 12, overflowX: 'auto', overflowY: 'hidden' }}>
+            <div style={{ minWidth: TABLE_MIN_WIDTH }}>
             {tree.map((fab) => {
               const isSelected = !!expanded[fab.nome];
               const isHovered = hoveredRow === fab.nome;
@@ -113,6 +118,7 @@ export const AnalisesPage: React.FC = () => {
                       display: 'flex',
                       justifyContent: 'space-between',
                       alignItems: 'center',
+                      gap: 16,
                       transition: 'background 0.15s ease, color 0.15s ease, border-color 0.15s ease',
                       boxShadow: isSelected
                         ? mode === 'dark'
@@ -121,12 +127,14 @@ export const AnalisesPage: React.FC = () => {
                         : 'none',
                     }}
                   >
-                    <strong style={{ color: isSelected ? t.primary : t.text }}>{fab.nome}</strong>
+                    <strong style={{ color: isSelected ? t.primary : t.text, minWidth: 0, overflowWrap: 'anywhere' }}>{fab.nome}</strong>
                     <span
                       style={{
                         display: 'flex',
                         alignItems: 'center',
                         gap: 14,
+                        flexShrink: 0,
+                        whiteSpace: 'nowrap',
                         color: isSelected ? t.primaryHover : t.textSecondary,
                       }}
                     >
@@ -154,13 +162,14 @@ export const AnalisesPage: React.FC = () => {
                           style={{
                             display: 'flex',
                             justifyContent: 'space-between',
+                            gap: 16,
                             fontSize: 12.5,
                             color: t.textSecondary,
                             padding: '4px 0',
                           }}
                         >
-                          <span>{v.nome}</span>
-                          <span style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                          <span style={{ minWidth: 0, overflowWrap: 'anywhere' }}>{v.nome}</span>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: 14, flexShrink: 0, whiteSpace: 'nowrap' }}>
                             <span>{fmt(v.realizado)} / {fmt(v.meta)}</span>
                             <span style={{ width: 1, height: 14, background: t.border }} />
                             <span style={{ fontSize: 11 }}>
@@ -174,6 +183,7 @@ export const AnalisesPage: React.FC = () => {
                 </div>
               );
             })}
+            </div>
           </div>
         </>
       )}

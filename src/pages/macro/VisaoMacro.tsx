@@ -1,5 +1,6 @@
 ﻿import React, { useEffect, useMemo, useState } from 'react';
 import { useTheme } from '../../context/ThemeContext';
+import { ScrollableChart } from '../../components/common/ScrollableChart';
 import { useGlobalFilter } from '../../context/GlobalFilterContext';
 import { EmptyBlock, ErrorBlock, LoadingBlock } from '../../components/common/DataState';
 import { ExportExcelButton } from '../../components/common/ExportExcelButton';
@@ -87,7 +88,7 @@ export const VisaoMacroPage: React.FC = () => {
           </div>
           <div style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 12, padding: 16, height: 280, marginBottom: 16 }}>
             {chartData.length === 0 ? <EmptyBlock title="Sem série" /> : (
-              <ResponsiveContainer width="100%" height="100%">
+              <ScrollableChart minWidth={Math.max(0, chartData.length * 90)} height="100%"><ResponsiveContainer width="100%" height="100%">
                 <BarChart data={chartData}>
                   <CartesianGrid strokeDasharray="3 3" stroke={t.border} />
                   <XAxis dataKey="mes" stroke={t.textMuted} fontSize={11} />
@@ -97,7 +98,7 @@ export const VisaoMacroPage: React.FC = () => {
                   <Bar dataKey="meta" fill={t.textMuted} name="Meta" />
                   <Bar dataKey="realizado" fill={t.primary} name="Realizado" />
                 </BarChart>
-              </ResponsiveContainer>
+              </ResponsiveContainer></ScrollableChart>
             )}
           </div>
           {(data.fabricantes || []).length === 0 ? <EmptyBlock title="Sem fabricantes" /> : (

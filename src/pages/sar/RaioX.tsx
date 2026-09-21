@@ -11,6 +11,7 @@ import {
   YAxis,
 } from 'recharts';
 import { useTheme } from '../../context/ThemeContext';
+import { ScrollableChart } from '../../components/common/ScrollableChart';
 import { useAuth } from '../../context/AuthContext';
 import { ExportExcelButton } from '../../components/common/ExportExcelButton';
 import { EmptyBlock, ErrorBlock, LoadingBlock } from '../../components/common/DataState';
@@ -514,7 +515,7 @@ export const RaioXPage: React.FC = () => {
                     </span>
                   )}
                 </div>
-                <ResponsiveContainer width="100%" height="86%">
+                <ScrollableChart minWidth={Math.max(0, chartData.length * 80)} height="86%"><ResponsiveContainer width="100%" height="100%">
                   <ComposedChart data={chartData} margin={{ top: 4, right: 8, left: -8, bottom: 24 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke={t.border} vertical={false} />
                     <XAxis
@@ -560,7 +561,7 @@ export const RaioXPage: React.FC = () => {
                       activeDot={{ r: 5 }}
                     />
                   </ComposedChart>
-                </ResponsiveContainer>
+                </ResponsiveContainer></ScrollableChart>
               </div>
 
               {/* TABELA — todos os vendedores filtrados, agrupada como na planilha original */}
@@ -689,7 +690,7 @@ export const RaioXPage: React.FC = () => {
                         <BarChart3 size={16} color={t.primary} />
                         <div style={{ fontSize: 14, fontWeight: 700, color: t.text }}>Visitas, Vendas e Valor Vendido por Dia</div>
                       </div>
-                      <ResponsiveContainer width="100%" height="86%">
+                      <ScrollableChart minWidth={Math.max(0, detalheChart.length * 56)} height="86%"><ResponsiveContainer width="100%" height="100%">
                         <ComposedChart data={detalheChart} margin={{ top: 4, right: 8, left: -8, bottom: 4 }}>
                           <CartesianGrid strokeDasharray="3 3" stroke={t.border} vertical={false} />
                           <XAxis dataKey="dia" stroke={t.textMuted} fontSize={11} tickLine={false} axisLine={{ stroke: t.border }} />
@@ -708,7 +709,7 @@ export const RaioXPage: React.FC = () => {
                           <Bar yAxisId="left" dataKey="vendas" name="Vendas" fill={t.primary} radius={[4, 4, 0, 0]} maxBarSize={28} />
                           <Line yAxisId="right" type="monotone" dataKey="valor" name="Valor Vendido" stroke="#3DD68C" strokeWidth={2.5} dot={{ r: 3, fill: '#3DD68C' }} />
                         </ComposedChart>
-                      </ResponsiveContainer>
+                      </ResponsiveContainer></ScrollableChart>
                     </div>
 
                     <div style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 12, overflow: 'auto' }}>

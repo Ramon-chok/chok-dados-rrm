@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTheme } from '../context/ThemeContext';
+import { ScrollableChart } from '../components/common/ScrollableChart';
 import { useAuth } from '../context/AuthContext';
 import { useGlobalFilter } from '../context/GlobalFilterContext';
 import { ExportExcelButton } from '../components/common/ExportExcelButton';
@@ -585,7 +586,7 @@ export const DashboardPage: React.FC = () => {
                   description="Importe indicadores por fabricante para ver o gráfico."
                 />
               ) : (
-                <ResponsiveContainer width="100%" height="82%">
+                <ScrollableChart minWidth={Math.max(0, chartData.length * 90)} height="82%"><ResponsiveContainer width="100%" height="100%">
                   <ComposedChart data={chartData} margin={{ top: 8, right: 8, left: -8, bottom: 24 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke={t.border} vertical={false} />
                     <XAxis
@@ -656,7 +657,7 @@ export const DashboardPage: React.FC = () => {
                       activeDot={{ r: 5 }}
                     />
                   </ComposedChart>
-                </ResponsiveContainer>
+                </ResponsiveContainer></ScrollableChart>
               )}
             </div>
           </div>
