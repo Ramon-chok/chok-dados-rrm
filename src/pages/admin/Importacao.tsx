@@ -521,6 +521,69 @@ const IMPORT_TYPES: ImportTypeOption[] = [
       },
     ],
   },
+  {
+    id: 'historico_',
+    label: 'Historico',
+    description: 'Vendedor detalhado fornecido pelo SAR para acompanhamento diário de vendedores',
+    templateFile: '/templates/importacao/vendedor_detalhado.xlsx',
+    sheets: [
+      {
+        // key interna usada no payload (tipo = "raiox" ou "raiox__raiox").
+        // O nome da aba no Excel continua sendo "Acompanhamento".
+        key: 'vendedor_detalhado',
+        sheetName: 'Vendedor Detalhado',
+        label: 'Vendedor Detalhado',
+
+        // Nomes de sistema (devem bater com server/importTypes.ts, entrada
+        // "raiox"). A planilha real repete alguns rótulos de coluna entre a
+        // seção diária e a seção "acumulado" (ex.: "% FORA ROTA" e
+        // "% POSITIVAÇÃO") — por isso as colunas do acumulado usam nomes de
+        // sistema próprios (…_acumulado) em vez de reaproveitar o mesmo nome
+        // da seção diária, que faria as duas colunas colidirem no mapeamento.
+        columns: [
+          'gerencia',
+          'supervisao',
+          'codigo_vendedor',
+
+          'vendedor',
+          'codigo_cliente',
+          'nome_cliente',
+          'acao',
+
+          'data',
+          'dentro_rota',
+          'hora',
+          'permanencia',
+
+          'venda',
+          'valor_venda',
+          'motivo_nao_venda',
+          'motivo_nao_visita',
+        ],
+
+        headerHints: {
+          gerencia: 'GERENCIA',
+          supervisao: 'SUPERVISÃO',
+          codigo_vendedor: 'CODIGO VENDEDOR',
+          vendedor: 'VENDEDOR',
+
+          codigo_cliente: 'CODIGO CLIENTE',
+          nome_cliente: 'NOME CLIENTE',
+          acao: 'AÇÃO',
+
+          data: 'DATA',
+          dentro_rota: 'DENTRO ROTA',
+          hora: 'HORA',
+          permanencia: 'PERMANÊNCIA',
+
+          venda: 'VENDA',
+          valor_venda: 'VALOR VENDA',
+          motivo_nao_venda: 'MOTIVO NÃO VENDA',
+          motivo_nao_visita: 'MOTIVO NÃO VISITA',
+        },
+      },
+    ],
+  },
 ];
 
 interface HistoryItem {

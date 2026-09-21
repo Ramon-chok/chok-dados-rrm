@@ -81,7 +81,7 @@ export const LogoutModal: React.FC = () => {
               Encerrar Sessão
             </h3>
             <p style={{ margin: '6px 0 0', fontSize: '13.5px', color: t.textSecondary, lineHeight: 1.5 }}>
-              Deseja realmente sair da plataforma? As alterações não salvas poderão ser perdidas e você precisará se autenticar novamente.
+              Você está saindo da plataforma, confirme se deseja continuar.
             </p>
           </div>
         </div>
@@ -129,23 +129,6 @@ export const LogoutModal: React.FC = () => {
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
           <button
             type="button"
-            onClick={() => setIsLogoutModalOpen(false)}
-            style={{
-              padding: '9px 16px',
-              borderRadius: '8px',
-              border: `1px solid ${t.border}`,
-              background: 'transparent',
-              color: t.textSecondary,
-              fontSize: '13.5px',
-              fontWeight: 500,
-              cursor: 'pointer',
-              transition: 'background 0.15s ease',
-            }}
-          >
-            Permanecer Conectado
-          </button>
-          <button
-            type="button"
             onClick={logout}
             style={{
               padding: '9px 18px',
@@ -163,7 +146,7 @@ export const LogoutModal: React.FC = () => {
             }}
           >
             <LogOut size={14} />
-            Sim, Encerrar Sessão
+            Desconectar
           </button>
         </div>
       </div>
