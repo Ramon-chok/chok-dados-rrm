@@ -3,6 +3,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import { PageId } from '../../types';
 import { LogoutModal } from '../auth/LogoutModal';
+import { Footer } from './Footer';
 import { APP_CONFIG } from '../../config/appConfig';
 import {
   LayoutGrid,
@@ -41,6 +42,7 @@ import {
   Route,
   DollarSign,
 } from 'lucide-react';
+import { ScrollToTopButton } from './ScrollToTopButton';
 
 interface AppLayoutProps {
   currentPage: PageId;
@@ -596,6 +598,9 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, c
         <main style={{ flex: 1, padding: '28px' }} className="content-pad">
           {children}
         </main>
+
+        <Footer />
+        <ScrollToTopButton />
       </div>
 
       {/* Logout confirmation modal */}

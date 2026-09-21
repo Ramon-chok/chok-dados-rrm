@@ -4,6 +4,6 @@ export const APP_CONFIG = {
   catalogUrl: ((import.meta as any).env?.VITE_CATALOG_URL as string) || 'https://catalogo.chokdistribuidora.com.br',
   CATALOG_URL: ((import.meta as any).env?.VITE_CATALOG_URL as string) || 'https://catalogo.chokdistribuidora.com.br',
   companyName: 'Chok Distribuidora',
-  systemVersion: '2.4.0',
+  systemVersion: '2.0',
 };
 
