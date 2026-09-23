@@ -4,8 +4,19 @@ import { ScrollableChart } from '../../components/common/ScrollableChart';
 import { useGlobalFilter } from '../../context/GlobalFilterContext';
 import { PeriodSelector } from '../../components/common/PeriodSelector';
 import { EmptyBlock, ErrorBlock, LoadingBlock } from '../../components/common/DataState';
-import { fetchAnalyticsTree, AnalyticsTreeNode } from '../../lib/api';
+import { getErrorMessage, fetchAnalyticsTree, AnalyticsTreeNode } from '../../lib/api';
 import { BarChart, ComposedChart, Bar, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
+import {
+  AttainmentRanking,
+  ChartCard,
+  ChartGrid,
+  ChartTooltip,
+  LegendSwatch,
+  ShareDonut,
+  fmtBRLShort,
+  pctOf,
+  useChartColors,
+} from '../../components/charts/chartKit';
 
 const fmt = (v: number) => `R$ ${v.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}`;
 const fmtInt = (v: number) => v.toLocaleString('pt-BR', { maximumFractionDigits: 0 });
@@ -35,13 +46,26 @@ export const AnalisesPage: React.FC = () => {
         });
         if (mounted) setTree(data);
       } catch (e) {
-        if (mounted) setError(e instanceof Error ? e.message : 'Falha ao carregar análises');
+        if (mounted) setError(getErrorMessage(e, 'Falha ao carregar análises'));
       } finally {
         if (mounted) setLoading(false);
       }
     })();
     return () => { mounted = false; };
   }, [ano, mes, startDate, endDate, periodType]);
+
+  const colors = useChartColors();
+  /** Fabricante escolhido nos gráficos: mostra a quebra por equipe e abre a linha na árvore. */
+  const [focusFab, setFocusFab] = useState<string | null>(null);
+
+  useEffect(() => setFocusFab(null), [tree]);
+
+  const selectFabricante = (nome: string) => {
+    setFocusFab((cur) => (cur === nome ? null : nome));
+    setExpanded((s) => ({ ...s, [nome]: true }));
+  };
+
+  const focusNode = useMemo(() => tree.find((f) => f.nome === focusFab) || null, [tree, focusFab]);
 
   const chartData = useMemo(() => tree.map((f) => ({ nome: f.nome, meta: f.meta, realizado: f.realizado })), [tree]);
   const coberturaChartData = useMemo(() => tree.map((f) => ({ nome: f.nome, meta: f.metaCobertura, realizado: f.realizadoCobertura })), [tree]);
@@ -60,31 +84,109 @@ export const AnalisesPage: React.FC = () => {
       {!loading && !error && tree.length === 0 && <EmptyBlock />}
       {!loading && !error && tree.length > 0 && (
         <>
-          <div style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 12, padding: 16, height: 260, marginBottom: 16 }}>
+          <ChartGrid min={360}>
+            <ChartCard title="Participação no faturamento" subtitle="Realizado por fabricante · clique para detalhar por equipe">
+              <ShareDonut
+                data={tree.map((f) => ({ label: f.nome, value: f.realizado }))}
+                totalLabel="Realizado"
+                onSelect={selectFabricante}
+              />
+            </ChartCard>
+            <ChartCard title="Atingimento por fabricante" subtitle="Realizado ÷ meta · clique para detalhar por equipe">
+              <AttainmentRanking
+                items={tree.map((f) => ({ key: f.nome, label: f.nome, pct: pctOf(f.realizado, f.meta), meta: f.meta, realizado: f.realizado }))}
+                onSelect={selectFabricante}
+                selectedKey={focusFab}
+                maxRows={8}
+              />
+            </ChartCard>
+          </ChartGrid>
+
+          {focusNode && (
+            <ChartCard
+              title={`Equipes em ${focusNode.nome}`}
+              subtitle="Atingimento de cada equipe neste fabricante"
+              actions={
+                <button
+                  type="button"
+                  onClick={() => setFocusFab(null)}
+                  style={{ background: 'transparent', border: `1px solid ${t.border}`, borderRadius: 6, color: t.textSecondary, fontSize: 12, padding: '4px 10px', cursor: 'pointer' }}
+                >
+                  Fechar
+                </button>
+              }
+              style={{ marginBottom: 16 }}
+            >
+              <AttainmentRanking
+                items={(focusNode.equipes || []).map((eq) => ({
+                  key: eq.nome,
+                  label: eq.nome,
+                  pct: pctOf(eq.realizado, eq.meta),
+                  meta: eq.meta,
+                  realizado: eq.realizado,
+                }))}
+                maxRows={10}
+                emptyText="Sem equipes para este fabricante."
+              />
+            </ChartCard>
+          )}
+
+          <ChartCard
+            title="Meta x Realizado por fabricante"
+            subtitle="Faturamento no período · clique em uma barra para detalhar"
+            legend={
+              <>
+                <LegendSwatch color={colors.target} label="Meta" />
+                <LegendSwatch color={colors.series[0]} label="Realizado" />
+              </>
+            }
+            height={260}
+            style={{ marginBottom: 16 }}
+          >
             <ScrollableChart minWidth={Math.max(0, chartData.length * 90)} height="100%"><ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" stroke={t.border} />
-                <XAxis dataKey="nome" stroke={t.textMuted} fontSize={11} />
-                <YAxis stroke={t.textMuted} fontSize={11} />
-                <Tooltip />
-                <Bar dataKey="meta" fill={t.textMuted} />
-                <Bar dataKey="realizado" fill={t.primary} />
+              <BarChart data={chartData} margin={{ top: 8, right: 8, left: 4, bottom: 0 }} barGap={2}>
+                <CartesianGrid stroke={colors.grid} vertical={false} />
+                <XAxis dataKey="nome" stroke={colors.axis} fontSize={11} tickLine={false} />
+                <YAxis stroke={colors.axis} fontSize={11} tickLine={false} axisLine={false} tickFormatter={fmtBRLShort} width={78} />
+                <Tooltip cursor={{ fill: `${colors.series[0]}10` }} content={<ChartTooltip valueFormatter={(v) => fmt(v)} />} />
+                <Bar dataKey="meta" name="Meta" fill={colors.target} radius={[4, 4, 0, 0]} maxBarSize={28} />
+                <Bar
+                  dataKey="realizado"
+                  name="Realizado"
+                  fill={colors.series[0]}
+                  radius={[4, 4, 0, 0]}
+                  maxBarSize={28}
+                  style={{ cursor: 'pointer' }}
+                  onClick={(_: unknown, i: number) => {
+                    if (chartData[i]) selectFabricante(chartData[i].nome);
+                  }}
+                />
               </BarChart>
             </ResponsiveContainer></ScrollableChart>
-          </div>
-          <div style={{ fontSize: 12, fontWeight: 600, color: t.textSecondary, marginBottom: 6 }}>Cobertura</div>
-          <div style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 12, padding: 16, height: 260, marginBottom: 16 }}>
+          </ChartCard>
+          <ChartCard
+            title="Cobertura por fabricante"
+            subtitle="Clientes positivados x meta de clientes"
+            legend={
+              <>
+                <LegendSwatch color={colors.target} label="Meta de clientes" />
+                <LegendSwatch color={colors.series[2]} label="Positivados" />
+              </>
+            }
+            height={260}
+            style={{ marginBottom: 16 }}
+          >
             <ScrollableChart minWidth={Math.max(0, coberturaChartData.length * 90)} height="100%"><ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={coberturaChartData}>
-                <CartesianGrid strokeDasharray="3 3" stroke={t.border} />
-                <XAxis dataKey="nome" stroke={t.textMuted} fontSize={11} />
-                <YAxis stroke={t.textMuted} fontSize={11} />
-                <Tooltip />
-                <Bar dataKey="meta" fill={t.textMuted} />
-                <Area type="monotone" dataKey="realizado" stroke={t.accentBlue} fill={t.accentBlue} fillOpacity={0.3} />
+              <ComposedChart data={coberturaChartData} margin={{ top: 8, right: 8, left: 4, bottom: 0 }}>
+                <CartesianGrid stroke={colors.grid} vertical={false} />
+                <XAxis dataKey="nome" stroke={colors.axis} fontSize={11} tickLine={false} />
+                <YAxis stroke={colors.axis} fontSize={11} tickLine={false} axisLine={false} tickFormatter={fmtInt} width={56} />
+                <Tooltip cursor={{ fill: `${colors.series[0]}10` }} content={<ChartTooltip valueFormatter={(v) => fmtInt(v)} />} />
+                <Bar dataKey="meta" name="Meta de clientes" fill={colors.target} radius={[4, 4, 0, 0]} maxBarSize={36} />
+                <Area type="monotone" dataKey="realizado" name="Positivados" stroke={colors.series[2]} strokeWidth={2} fill={colors.series[2]} fillOpacity={0.18} />
               </ComposedChart>
             </ResponsiveContainer></ScrollableChart>
-          </div>
+          </ChartCard>
           <div style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 12, overflowX: 'auto', overflowY: 'hidden' }}>
             <div style={{ minWidth: TABLE_MIN_WIDTH }}>
             {tree.map((fab) => {

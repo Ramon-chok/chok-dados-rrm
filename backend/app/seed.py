@@ -44,7 +44,7 @@ SEED_USERS = [
         "estado": "SP",
         "cep": "14160-000",
         "codigo": None,
-        "equipe": "TRAB ALFA",
+        "equipe": "TRAD FRANCA",
         "supervisor": "Supervisor A",
     },
     {
@@ -58,7 +58,7 @@ SEED_USERS = [
         "estado": "SP",
         "cep": "14015-060",
         "codigo": "003",
-        "equipe": "TRAB ALFA",
+        "equipe": "TRAD FRANCA",
         "supervisor": "Supervisor A",
     },
 ]

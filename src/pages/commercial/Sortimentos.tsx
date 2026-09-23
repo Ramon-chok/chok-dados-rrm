@@ -3,7 +3,7 @@ import { useTheme } from '../../context/ThemeContext';
 import { ExportExcelButton } from '../../components/common/ExportExcelButton';
 import { EmptyBlock, ErrorBlock, LoadingBlock } from '../../components/common/DataState';
 import { SingleSelectFilter } from '../../components/common/SingleSelectFilter';
-import { fetchSortimento, SortimentoRow } from '../../lib/api';
+import { getErrorMessage, fetchSortimento, SortimentoRow } from '../../lib/api';
 import { Search } from 'lucide-react';
 
 export const SortimentosPage: React.FC = () => {
@@ -28,7 +28,7 @@ export const SortimentosPage: React.FC = () => {
         });
         if (mounted) setRows(data);
       } catch (e) {
-        if (mounted) setError(e instanceof Error ? e.message : 'Falha ao carregar sortimentos');
+        if (mounted) setError(getErrorMessage(e, 'Falha ao carregar sortimentos'));
       } finally {
         if (mounted) setLoading(false);
       }

@@ -5,8 +5,22 @@ import { useGlobalFilter } from '../../context/GlobalFilterContext';
 import { EmptyBlock, ErrorBlock, LoadingBlock } from '../../components/common/DataState';
 import { ExportExcelButton } from '../../components/common/ExportExcelButton';
 import { PeriodSelector } from '../../components/common/PeriodSelector';
-import { fetchDashboard, DashboardResponse } from '../../lib/api';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
+import { getErrorMessage, fetchDashboard, DashboardResponse } from '../../lib/api';
+import { ComposedChart, LineChart, Line, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
+import {
+  AttainmentRanking,
+  ChartCard,
+  ChartGrid,
+  ChartTooltip,
+  LegendSwatch,
+  ShareDonut,
+  StatusTag,
+  attainmentStatus,
+  fmtBRLShort,
+  fmtPct,
+  pctOf,
+  useChartColors,
+} from '../../components/charts/chartKit';
 
 const MES = ['', 'Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
 const fmt = (v: number) => `R$ ${v.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}`;
@@ -31,7 +45,7 @@ export const VisaoMacroPage: React.FC = () => {
         });
         if (mounted) setData(res);
       } catch (e) {
-        if (mounted) setError(e instanceof Error ? e.message : 'Falha ao carregar visão macro');
+        if (mounted) setError(getErrorMessage(e, 'Falha ao carregar visão macro'));
       } finally {
         if (mounted) setLoading(false);
       }
@@ -39,14 +53,24 @@ export const VisaoMacroPage: React.FC = () => {
     return () => { mounted = false; };
   }, [ano, mes, startDate, endDate, periodType]);
 
-  const chartData = useMemo(
-    () => (data?.serieMensal || []).map((d) => ({
-      mes: `${MES[d.mes] || d.mes}/${String(d.ano).slice(2)}`,
-      meta: d.meta,
-      realizado: d.realizado,
-    })),
-    [data]
-  );
+  const colors = useChartColors();
+  const chartData = useMemo(() => {
+    let metaAcum = 0;
+    let realizadoAcum = 0;
+    return (data?.serieMensal || []).map((d) => {
+      metaAcum += d.meta;
+      realizadoAcum += d.realizado;
+      return {
+        mes: `${MES[d.mes] || d.mes}/${String(d.ano).slice(2)}`,
+        meta: d.meta,
+        realizado: d.realizado,
+        pct: pctOf(d.realizado, d.meta),
+        metaAcum,
+        realizadoAcum,
+        pctAcum: pctOf(realizadoAcum, metaAcum),
+      };
+    });
+  }, [data]);
 
   const handleExport = () => [{
     sheetName: 'Macro',
@@ -86,21 +110,104 @@ export const VisaoMacroPage: React.FC = () => {
               </div>
             ))}
           </div>
-          <div style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 12, padding: 16, height: 280, marginBottom: 16 }}>
-            {chartData.length === 0 ? <EmptyBlock title="Sem série" /> : (
-              <ScrollableChart minWidth={Math.max(0, chartData.length * 90)} height="100%"><ResponsiveContainer width="100%" height="100%">
-                <BarChart data={chartData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke={t.border} />
-                  <XAxis dataKey="mes" stroke={t.textMuted} fontSize={11} />
-                  <YAxis stroke={t.textMuted} fontSize={11} />
-                  <Tooltip />
-                  <Legend />
-                  <Bar dataKey="meta" fill={t.textMuted} name="Meta" />
-                  <Bar dataKey="realizado" fill={t.primary} name="Realizado" />
-                </BarChart>
-              </ResponsiveContainer></ScrollableChart>
-            )}
-          </div>
+          {chartData.length === 0 ? (
+            <EmptyBlock title="Sem série" />
+          ) : (
+            <ChartGrid min={420}>
+              <ChartCard
+                title="Meta x Realizado por mês"
+                subtitle="Faturamento mensal no ano · passe o mouse para ver o atingimento"
+                legend={
+                  <>
+                    <LegendSwatch color={colors.series[0]} label="Realizado" />
+                    <LegendSwatch color={colors.target} label="Meta" line dashed />
+                  </>
+                }
+                height={270}
+              >
+                <ScrollableChart minWidth={Math.max(0, chartData.length * 56)} height="100%"><ResponsiveContainer width="100%" height="100%">
+                  <ComposedChart data={chartData} margin={{ top: 8, right: 8, left: 4, bottom: 0 }}>
+                    <CartesianGrid stroke={colors.grid} vertical={false} />
+                    <XAxis dataKey="mes" stroke={colors.axis} fontSize={11} tickLine={false} />
+                    <YAxis stroke={colors.axis} fontSize={11} tickLine={false} axisLine={false} tickFormatter={fmtBRLShort} width={78} />
+                    <Tooltip
+                      cursor={{ fill: `${colors.series[0]}10` }}
+                      content={
+                        <ChartTooltip
+                          valueFormatter={(v) => fmt(v)}
+                          footer={(row) => (
+                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12 }}>
+                              <StatusTag status={attainmentStatus(Number(row.pct), Number(row.meta) > 0)} />
+                              <strong className="num" style={{ color: t.text }}>{fmtPct(Number(row.pct) || 0)}</strong>
+                            </div>
+                          )}
+                        />
+                      }
+                    />
+                    <Bar dataKey="realizado" name="Realizado" fill={colors.series[0]} radius={[4, 4, 0, 0]} maxBarSize={34} />
+                    <Line type="monotone" dataKey="meta" name="Meta" stroke={colors.target} strokeWidth={2} strokeDasharray="5 4" dot={false} />
+                  </ComposedChart>
+                </ResponsiveContainer></ScrollableChart>
+              </ChartCard>
+              <ChartCard
+                title="Acumulado no ano"
+                subtitle="O ritmo do ano: soma do realizado x soma da meta"
+                legend={
+                  <>
+                    <LegendSwatch color={colors.series[0]} label="Realizado acumulado" line />
+                    <LegendSwatch color={colors.target} label="Meta acumulada" line dashed />
+                  </>
+                }
+                height={270}
+              >
+                <ScrollableChart minWidth={Math.max(0, chartData.length * 56)} height="100%"><ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={chartData} margin={{ top: 8, right: 12, left: 4, bottom: 0 }}>
+                    <CartesianGrid stroke={colors.grid} vertical={false} />
+                    <XAxis dataKey="mes" stroke={colors.axis} fontSize={11} tickLine={false} />
+                    <YAxis stroke={colors.axis} fontSize={11} tickLine={false} axisLine={false} tickFormatter={fmtBRLShort} width={78} />
+                    <Tooltip
+                      cursor={{ stroke: colors.axis, strokeDasharray: '3 3' }}
+                      content={
+                        <ChartTooltip
+                          valueFormatter={(v) => fmt(v)}
+                          footer={(row) => (
+                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12, color: t.textSecondary }}>
+                              <span>Atingimento acumulado</span>
+                              <strong className="num" style={{ color: t.text }}>{fmtPct(Number(row.pctAcum) || 0)}</strong>
+                            </div>
+                          )}
+                        />
+                      }
+                    />
+                    <Line type="monotone" dataKey="metaAcum" name="Meta acumulada" stroke={colors.target} strokeWidth={2} strokeDasharray="5 4" dot={false} />
+                    <Line
+                      type="monotone"
+                      dataKey="realizadoAcum"
+                      name="Realizado acumulado"
+                      stroke={colors.series[0]}
+                      strokeWidth={2}
+                      dot={{ r: 4, fill: colors.series[0], stroke: colors.surface, strokeWidth: 2 }}
+                      activeDot={{ r: 6 }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer></ScrollableChart>
+              </ChartCard>
+            </ChartGrid>
+          )}
+
+          {(data.fabricantes || []).length > 0 && (
+            <ChartGrid min={360}>
+              <ChartCard title="Participação no faturamento" subtitle="Realizado por fabricante no período">
+                <ShareDonut data={data.fabricantes.map((f) => ({ label: f.fabricante, value: f.realizado }))} totalLabel="Realizado" />
+              </ChartCard>
+              <ChartCard title="Atingimento por fabricante" subtitle="Realizado ÷ meta, do maior para o menor">
+                <AttainmentRanking
+                  items={data.fabricantes.map((f) => ({ key: f.fabricante, label: f.fabricante, pct: f.pctR, meta: f.meta, realizado: f.realizado }))}
+                  maxRows={8}
+                />
+              </ChartCard>
+            </ChartGrid>
+          )}
           {(data.fabricantes || []).length === 0 ? <EmptyBlock title="Sem fabricantes" /> : (
             <div style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 12, overflow: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>

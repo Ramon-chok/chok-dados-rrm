@@ -43,6 +43,7 @@ import {
   DollarSign,
 } from 'lucide-react';
 import { ScrollToTopButton } from './ScrollToTopButton';
+import { SessionTimer } from './SessionTimer';
 
 interface AppLayoutProps {
   currentPage: PageId;
@@ -417,7 +418,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, c
               display: 'flex',
               justifyContent: 'center',
             }}
-            title={isNavbarCollapsed ? `${currentUser.name} (${currentUser.role} Â· ${currentUser.scope.level})` : undefined}
+            title={isNavbarCollapsed ? `${currentUser.name} (${currentUser.role})` : undefined}
           >
             {isNavbarCollapsed ? (
               <div
@@ -461,7 +462,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, c
                     {currentUser.name}
                   </div>
                   <div style={{ fontSize: '11px', color: t.textMuted }}>
-                    {currentUser.role} Â· {currentUser.scope.level}
+                    {currentUser.role}
                   </div>
                 </div>
               </div>
@@ -526,7 +527,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, c
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexShrink: 0 }}>
-            {/* Perfil autenticado via JWT (sem simulação) */}
+            {/* Perfil autenticado via JWT */}
             <div
               style={{
                 display: 'flex',
@@ -547,6 +548,9 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, c
                 Perfil: <strong>{currentUser?.role}</strong>
               </span>
             </div>
+
+            {/* Tempo restante da sessão (desconexão automática ao final) */}
+            <SessionTimer />
 
             {/* Theme Toggle Button */}
             <button

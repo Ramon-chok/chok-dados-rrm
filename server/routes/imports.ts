@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { Router, Request, Response, NextFunction } from 'express';
 import type { PoolClient } from 'pg';
 import { pool } from '../db.js';
@@ -239,7 +240,11 @@ importsRouter.post('/', requireApiKey, async (req: Request, res: Response) => {
         // se o rollback falhar (ex: conexão já caiu), não há mais nada a fazer aqui
       }
     }
-    const message = err instanceof Error ? err.message : 'Erro desconhecido';
+    // Detalhe técnico só no log do servidor; histórico e resposta levam só o código de referência.
+    const ref = randomBytes(4).toString('hex').toUpperCase();
+    // eslint-disable-next-line no-console
+    console.error(`[imports] [ref=${ref}] Falha na importação:`, err);
+    const message = `Falha interna ao processar a importação (ref. ${ref}).`;
 
     // Mesmo em falha total, registramos a tentativa para auditoria (regra 26),
     // fora da transação que acabou de sofrer rollback.
@@ -267,9 +272,7 @@ importsRouter.post('/', requireApiKey, async (req: Request, res: Response) => {
       // se nem o log de falha conseguir gravar, não há mais nada a fazer aqui
     }
 
-    // eslint-disable-next-line no-console
-    console.error('[imports] Falha na importação:', err);
-    return res.status(500).json({ error: 'Falha ao processar a importação. Nenhum dado foi gravado.', detail: message });
+    return res.status(500).json({ error: 'Falha ao processar a importação. Nenhum dado foi gravado.', ref });
   } finally {
     client?.release();
   }

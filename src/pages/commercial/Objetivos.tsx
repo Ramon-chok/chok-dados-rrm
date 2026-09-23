@@ -7,6 +7,7 @@ import { EmptyBlock, ErrorBlock, LoadingBlock } from '../../components/common/Da
 import { SingleSelectFilter } from '../../components/common/SingleSelectFilter';
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 import {
+  getErrorMessage,
   fetchTargets,
   fetchObjetivosFaseamento,
   fetchDashboardFilterOptions,
@@ -87,7 +88,7 @@ export const ObjetivosPage: React.FC = () => {
         });
         if (mounted) setFaseamento(res);
       } catch (e) {
-        if (mounted) setFaseamentoError(e instanceof Error ? e.message : 'Falha ao carregar metas de faseamento');
+        if (mounted) setFaseamentoError(getErrorMessage(e, 'Falha ao carregar metas de faseamento'));
       } finally {
         if (mounted) setFaseamentoLoading(false);
       }
@@ -109,7 +110,7 @@ export const ObjetivosPage: React.FC = () => {
         const data = await fetchTargets(anoMes ? { ano_mes: anoMes } : undefined);
         if (mounted) setRows(data);
       } catch (e) {
-        if (mounted) setError(e instanceof Error ? e.message : 'Falha ao carregar objetivos');
+        if (mounted) setError(getErrorMessage(e, 'Falha ao carregar objetivos'));
       } finally {
         if (mounted) setLoading(false);
       }

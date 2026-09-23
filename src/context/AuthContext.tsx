@@ -1,17 +1,33 @@
-﻿import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
+﻿import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { User, Permission, PageId } from '../types';
 import {
+  getErrorMessage,
   apiListUsers,
   apiLogin,
   apiLogin2FA,
   apiLogout,
   clearApiCache,
   apiMe,
+  apiSession,
   ApiError,
   isLoginRequires2FA,
   setUnauthorizedHandler,
 } from '../lib/api';
 import { clearAuthToken } from '../lib/authToken';
+
+/** Tempos da sessão, já em epoch ms do relógio do navegador (corrigido pelo servidor). */
+export interface SessionTimes {
+  startedAt: number;
+  expiresAt: number;
+  rememberMe: boolean;
+}
+
+/** Aviso mostrado na tela de login depois de uma desconexão automática. */
+const SESSION_EXPIRED_NOTICE = 'Sua sessão atingiu o tempo máximo e foi encerrada. Faça login novamente.';
+const SESSION_ENDED_NOTICE = 'Sua sessão foi encerrada. Faça login novamente.';
+
+/** setTimeout aceita no máximo ~24,8 dias; acima disso reagenda em etapas. */
+const MAX_TIMEOUT_MS = 2_147_000_000;
 
 export type LoginOutcome =
   | { success: true }
@@ -33,6 +49,10 @@ interface AuthContextType {
   refreshUsers: () => Promise<void>;
   isLogoutModalOpen: boolean;
   setIsLogoutModalOpen: (open: boolean) => void;
+  /** null enquanto não autenticado ou enquanto os tempos ainda não chegaram do servidor. */
+  session: SessionTimes | null;
+  sessionNotice: string | null;
+  clearSessionNotice: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -44,13 +64,85 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // isLoading = bootstrap da sessão. NÃO usar no login/2FA — isso desmonta o LoginView e perde o estado pending2FA.
   const [isLoading, setIsLoading] = useState(true);
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
+  const [session, setSession] = useState<SessionTimes | null>(null);
+  const [sessionNotice, setSessionNotice] = useState<string | null>(null);
+  // Lido pelo handler de 401 (registrado uma vez) sem depender de closure desatualizada.
+  const authenticatedRef = useRef(false);
 
   const hardLogout = useCallback(() => {
     clearAuthToken();
+    clearApiCache();
+    authenticatedRef.current = false;
     setCurrentUser(null);
+    setSession(null);
     setAvailableUsers([]);
     setIsLogoutModalOpen(false);
   }, []);
+
+  /** Tempo total da sessão atingido: encerra no servidor e volta ao login com aviso. */
+  const expireSession = useCallback(() => {
+    if (!authenticatedRef.current) return;
+    hardLogout();
+    setSessionNotice(SESSION_EXPIRED_NOTICE);
+    void apiLogout();
+  }, [hardLogout]);
+
+  useEffect(() => {
+    authenticatedRef.current = !!currentUser;
+  }, [currentUser]);
+
+  // Busca os tempos da sessão sempre que um usuário entra (login, 2FA ou cookie existente).
+  useEffect(() => {
+    if (!currentUser) return;
+    let mounted = true;
+    (async () => {
+      try {
+        const sentAt = Date.now();
+        const info = await apiSession();
+        const receivedAt = Date.now();
+        // Diferença entre o relógio do servidor e o do navegador (meio do round-trip).
+        const offset = new Date(info.serverTime).getTime() - (sentAt + receivedAt) / 2;
+        if (!mounted) return;
+        setSession({
+          startedAt: new Date(info.startedAt).getTime() - offset,
+          expiresAt: new Date(info.expiresAt).getTime() - offset,
+          rememberMe: info.rememberMe,
+        });
+      } catch {
+        // Sem os tempos, o contador não aparece; o backend continua recusando o token expirado.
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [currentUser?.id]);
+
+  // Desconecta exatamente quando o tempo total acaba. Timers ficam atrasados em abas
+  // em segundo plano, então também confere ao voltar o foco para a aba.
+  useEffect(() => {
+    if (!session) return;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const check = () => {
+      const remaining = session.expiresAt - Date.now();
+      if (remaining <= 0) {
+        expireSession();
+        return;
+      }
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(check, Math.min(remaining, MAX_TIMEOUT_MS));
+    };
+    check();
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') check();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', check);
+    return () => {
+      if (timer) clearTimeout(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', check);
+    };
+  }, [session, expireSession]);
 
   const refreshUsers = useCallback(async () => {
     try {
@@ -63,6 +155,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     setUnauthorizedHandler(() => {
+      // 401 com o usuário logado = token expirado/revogado no servidor.
+      if (authenticatedRef.current) setSessionNotice(SESSION_ENDED_NOTICE);
       hardLogout();
     });
     return () => setUnauthorizedHandler(null);
@@ -95,6 +189,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   ): Promise<LoginOutcome> => {
     // Não alterar isLoading aqui: o App desmonta LoginView quando isLoading=true
     // e o estado local de 2FA (pending2FA) seria perdido.
+    setSessionNotice(null);
     try {
       const body = await apiLogin(email.trim(), password, rememberMe);
       if (isLoginRequires2FA(body)) {
@@ -112,11 +207,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (err) {
       hardLogout();
       const message =
-        err instanceof ApiError
-          ? err.message
-          : err instanceof Error
-            ? err.message
-            : 'Falha ao autenticar.';
+        getErrorMessage(err, 'Falha ao autenticar.');
       return { success: false, error: message };
     }
   };
@@ -131,11 +222,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return { success: true };
     } catch (err) {
       const message =
-        err instanceof ApiError
-          ? err.message
-          : err instanceof Error
-            ? err.message
-            : 'Código 2FA inválido.';
+        getErrorMessage(err, 'Código 2FA inválido.');
       return { success: false, error: message };
     }
   };
@@ -228,6 +315,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         refreshUsers,
         isLogoutModalOpen,
         setIsLogoutModalOpen,
+        session,
+        sessionNotice,
+        clearSessionNotice: () => setSessionNotice(null),
       }}
     >
       {children}

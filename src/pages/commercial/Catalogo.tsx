@@ -1,7 +1,7 @@
 ﻿import React, { useEffect, useMemo, useState } from 'react';
 import { useTheme } from '../../context/ThemeContext';
 import { EmptyBlock, ErrorBlock, LoadingBlock } from '../../components/common/DataState';
-import { fetchProducts, ProductRow } from '../../lib/api';
+import { getErrorMessage, fetchProducts, ProductRow } from '../../lib/api';
 import { Search, ExternalLink } from 'lucide-react';
 import { APP_CATALOG_URL } from '../../config/appConfig';
 
@@ -20,7 +20,7 @@ export const CatalogoPage: React.FC = () => {
         const data = await fetchProducts({ q: query || undefined });
         if (mounted) setRows(data);
       } catch (e) {
-        if (mounted) setError(e instanceof Error ? e.message : 'Falha ao carregar catálogo');
+        if (mounted) setError(getErrorMessage(e, 'Falha ao carregar catálogo'));
       } finally {
         if (mounted) setLoading(false);
       }

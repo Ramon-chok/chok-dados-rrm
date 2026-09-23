@@ -2,18 +2,21 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from http import HTTPStatus
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app import __version__
 from app.config import get_settings
 from app.db import close_pool
+from app.errors import GENERIC_ERROR, SERVICE_UNAVAILABLE, PublicServerError, is_database_unavailable, log_exception
 from app.hardening import (
     BodySizeLimitMiddleware,
     RateLimitMiddleware,
@@ -78,24 +81,61 @@ def _error_payload(message: str, extra: dict | None = None, status_code: int = 5
     return JSONResponse(status_code=status_code, content=body)
 
 
-@app.exception_handler(HTTPException)
-async def http_exception_handler(_request: Request, exc: HTTPException) -> JSONResponse:
-    detail = exc.detail
-    message = detail if isinstance(detail, str) else str(detail)
-    return _error_payload(message, status_code=exc.status_code)
+# Mensagens padrão por status quando a exceção não traz um texto seguro para o usuário.
+_DEFAULT_STATUS_MESSAGES = {
+    400: "Requisição inválida.",
+    401: "Não autenticado.",
+    403: "Sem permissão para esta operação.",
+    404: "Recurso não encontrado.",
+    405: "Operação não permitida.",
+    409: "Conflito com o estado atual dos dados.",
+    413: "Conteúdo maior que o permitido.",
+    422: "Dados inválidos.",
+    429: "Muitas requisições. Aguarde um instante e tente novamente.",
+}
+
+
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:
+    # Registrado na classe base do Starlette para cobrir também 404/405 de rota
+    # inexistente (que não passam pelo HTTPException do FastAPI).
+    headers = getattr(exc, "headers", None)
+    if exc.status_code >= 500:
+        # 5xx nunca repassa o `detail` (pode conter texto de exceção interna).
+        ref = log_exception(f"HTTP {exc.status_code} em {request.method} {request.url.path}: {exc.detail!r}", exc)
+        response = _error_payload(GENERIC_ERROR, extra={"ref": ref}, status_code=exc.status_code)
+    else:
+        detail = exc.detail
+        fallback = _DEFAULT_STATUS_MESSAGES.get(exc.status_code, "Requisição inválida.")
+        # Frases padrão do Starlette ("Not Found", "Method Not Allowed"...) viram texto em português.
+        is_default_phrase = isinstance(detail, str) and detail == HTTPStatus(exc.status_code).phrase
+        message = detail if isinstance(detail, str) and detail and not is_default_phrase else fallback
+        response = _error_payload(message, status_code=exc.status_code)
+    if headers:
+        response.headers.update(headers)
+    return response
 
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(_request: Request, exc: RequestValidationError) -> JSONResponse:
-    # Não devolve `input`/`ctx` (poderia refletir dado sensível ou malicioso do cliente).
-    safe = [{"loc": [str(p) for p in e.get("loc", ())], "msg": str(e.get("msg", ""))} for e in exc.errors()]
-    return _error_payload("Corpo da requisição inválido.", extra={"detail": safe}, status_code=400)
+    # Só o nome do campo: não devolve `input`/`ctx`/`msg` do Pydantic (podem refletir
+    # dado do cliente ou detalhes de implementação dos validadores).
+    fields = sorted({str(e.get("loc", ("",))[-1]) for e in exc.errors() if e.get("loc")})
+    return _error_payload("Dados enviados inválidos. Revise os campos e tente novamente.", extra={"fields": fields}, status_code=400)
+
+
+@app.exception_handler(PublicServerError)
+async def public_server_error_handler(_request: Request, exc: PublicServerError) -> JSONResponse:
+    # Já registrado no log por quem levantou; a mensagem foi escrita para o usuário.
+    return _error_payload(exc.message, extra={"ref": exc.ref} if exc.ref else None, status_code=exc.status_code)
 
 
 @app.exception_handler(Exception)
-async def unhandled_exception_handler(_request: Request, exc: Exception) -> JSONResponse:
-    print("[app] Erro não tratado:", exc)
-    return _error_payload("Erro interno inesperado.")
+async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    ref = log_exception(f"Erro não tratado em {request.method} {request.url.path}", exc)
+    if is_database_unavailable(exc):
+        return _error_payload(SERVICE_UNAVAILABLE, extra={"ref": ref}, status_code=503)
+    return _error_payload(GENERIC_ERROR, extra={"ref": ref})
 
 
 @app.get("/api/health")

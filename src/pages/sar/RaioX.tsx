@@ -16,7 +16,7 @@ import { useAuth } from '../../context/AuthContext';
 import { ExportExcelButton } from '../../components/common/ExportExcelButton';
 import { EmptyBlock, ErrorBlock, LoadingBlock } from '../../components/common/DataState';
 import { SingleSelectFilter } from '../../components/common/SingleSelectFilter';
-import { fetchRaioX, fetchRaioXDetalhe, RaioXDetalheRow, RaioXRow } from '../../lib/api';
+import { getErrorMessage, fetchRaioX, fetchRaioXDetalhe, RaioXDetalheRow, RaioXRow } from '../../lib/api';
 import { Activity, BarChart3, Calendar, Layers, X } from 'lucide-react';
 
 const MESES = [
@@ -85,7 +85,7 @@ export const RaioXPage: React.FC = () => {
         setMode(data.mode);
         setAnosDisponiveis(data.anosDisponiveis.length ? data.anosDisponiveis : [currentYear]);
       } catch (e) {
-        if (mounted) setError(e instanceof Error ? e.message : 'Falha ao carregar Raio-X');
+        if (mounted) setError(getErrorMessage(e, 'Falha ao carregar Raio-X'));
       } finally {
         if (mounted) setLoading(false);
       }
@@ -128,7 +128,7 @@ export const RaioXPage: React.FC = () => {
         setDetalhe(data.rows);
         setDetalheVendedores(data.vendedores);
       } catch (e) {
-        if (mounted) setDetalheError(e instanceof Error ? e.message : 'Falha ao carregar vendedor detalhado');
+        if (mounted) setDetalheError(getErrorMessage(e, 'Falha ao carregar vendedor detalhado'));
       } finally {
         if (mounted) setDetalheLoading(false);
       }

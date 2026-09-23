@@ -83,8 +83,8 @@ export const ExportExcelButton: React.FC<ExportExcelButtonProps> = ({
 
       setSuccess(true);
       setTimeout(() => setSuccess(false), 2500);
-    } catch (err) {
-      console.error('Falha ao exportar arquivo Excel:', err);
+    } catch {
+      // Falha silenciosa: o botão simplesmente não mostra o "sucesso".
     } finally {
       setExporting(false);
     }

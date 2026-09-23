@@ -374,9 +374,60 @@ export interface TwoFAVerifyResponse {
 }
 
 export class ApiError extends Error {
-  constructor(message: string, public status: number) {
+  constructor(message: string, public status: number, public ref?: string) {
     super(message);
   }
+}
+
+/** Mensagens exibidas quando o servidor não manda um texto próprio para o usuário. */
+const STATUS_MESSAGES: Record<number, string> = {
+  400: 'Não foi possível processar a solicitação. Revise os dados e tente novamente.',
+  401: 'Sua sessão expirou. Faça login novamente.',
+  403: 'Você não tem permissão para esta operação.',
+  404: 'O recurso solicitado não foi encontrado.',
+  408: 'O servidor demorou para responder. Tente novamente.',
+  409: 'Os dados foram alterados por outra operação. Atualize a página e tente novamente.',
+  413: 'O conteúdo enviado é maior que o permitido.',
+  429: 'Muitas requisições em pouco tempo. Aguarde um instante e tente novamente.',
+};
+const SERVER_ERROR_MESSAGE = 'Não foi possível concluir a operação. Tente novamente em instantes.';
+const UNAVAILABLE_MESSAGE = 'Serviço temporariamente indisponível. Tente novamente em instantes.';
+const NETWORK_ERROR_MESSAGE = 'Não foi possível conectar ao servidor. Verifique sua conexão e tente novamente.';
+/** Texto de erro vindo do servidor maior que isso é tratado como técnico e descartado. */
+const MAX_SERVER_MESSAGE_LENGTH = 300;
+
+/** Anexa o código de referência (quando houver) para o usuário informar ao suporte. */
+function withRef(message: string, ref?: string): string {
+  return ref ? `${message} (código: ${ref})` : message;
+}
+
+/**
+ * Converte a resposta de erro em uma mensagem segura para exibir.
+ * - 5xx: sempre texto genérico (o backend já não envia detalhe; aqui é defesa extra,
+ *   ex.: proxy/gateway que devolve HTML ou stack).
+ * - 4xx: usa o `error` do backend (texto escrito para o usuário) se for uma string curta.
+ */
+function messageForStatus(status: number, body: unknown): { message: string; ref?: string } {
+  const b = (body && typeof body === 'object' ? body : {}) as { error?: unknown; ref?: unknown };
+  const ref = typeof b.ref === 'string' && /^[A-Z0-9]{4,16}$/.test(b.ref) ? b.ref : undefined;
+  if (status >= 500) {
+    // O backend só manda texto próprio em 5xx quando ele foi escrito para o usuário (e com ref).
+    const own = ref && typeof b.error === 'string' && b.error.length <= MAX_SERVER_MESSAGE_LENGTH ? b.error : null;
+    const fallback = status === 503 || status === 502 || status === 504 ? UNAVAILABLE_MESSAGE : SERVER_ERROR_MESSAGE;
+    return { message: withRef(own || fallback, ref), ref };
+  }
+  const own = typeof b.error === 'string' && b.error.trim() && b.error.length <= MAX_SERVER_MESSAGE_LENGTH ? b.error.trim() : null;
+  return { message: own || STATUS_MESSAGES[status] || STATUS_MESSAGES[400], ref };
+}
+
+/**
+ * Mensagem segura para mostrar na tela a partir de qualquer erro capturado.
+ * Só `ApiError` carrega texto destinado ao usuário; qualquer outro erro (bug de
+ * código, TypeError, etc.) vira o texto de fallback — nunca `err.message` cru.
+ */
+export function getErrorMessage(err: unknown, fallback = SERVER_ERROR_MESSAGE): string {
+  if (err instanceof ApiError) return err.message;
+  return fallback;
 }
 
 type UnauthorizedHandler = () => void;
@@ -428,7 +479,7 @@ async function requestRaw<T>(
   const timer =
     timeoutMs > 0
       ? setTimeout(() => {
-          controller.abort(new DOMException(`Timeout após ${Math.round(timeoutMs / 1000)}s ao chamar ${path}`, 'TimeoutError'));
+          controller.abort(new DOMException('timeout', 'TimeoutError'));
         }, timeoutMs)
       : null;
 
@@ -442,14 +493,13 @@ async function requestRaw<T>(
     });
 
     if (!res.ok) {
-      let message = `Erro ${res.status} ao chamar ${path}`;
+      let body: unknown = null;
       try {
-        const body = await res.json();
-        if (body?.error) message = body.error;
-        else if (body?.detail) message = typeof body.detail === 'string' ? body.detail : message;
+        body = await res.json();
       } catch {
-        // ignore
+        // corpo não-JSON (ex.: página de erro do proxy) — usa a mensagem padrão do status
       }
+      const { message, ref } = messageForStatus(res.status, body);
 
       if (res.status === 401 && !skipAuth) {
         clearAuthToken();
@@ -457,23 +507,28 @@ async function requestRaw<T>(
         onUnauthorized?.();
       }
 
-      throw new ApiError(message, res.status);
+      throw new ApiError(message, res.status, ref);
     }
 
     if (res.status === 204) return undefined as T;
-    return res.json() as Promise<T>;
+    try {
+      return (await res.json()) as T;
+    } catch {
+      throw new ApiError(SERVER_ERROR_MESSAGE, 502);
+    }
   } catch (err) {
     if (err instanceof ApiError) throw err;
     if (err instanceof DOMException && (err.name === 'AbortError' || err.name === 'TimeoutError')) {
       const timedOut = err.name === 'TimeoutError' || /timeout/i.test(err.message);
       throw new ApiError(
         timedOut
-          ? `A requisição para ${path} excedeu o tempo limite (${Math.round(timeoutMs / 1000)}s). Tente novamente ou envie em partes menores.`
-          : `Requisição para ${path} foi cancelada.`,
-        408
+          ? `O servidor demorou mais de ${Math.round(timeoutMs / 1000)}s para responder. Tente novamente ou envie em partes menores.`
+          : 'A requisição foi cancelada.',
+        timedOut ? 408 : 499
       );
     }
-    throw err;
+    // fetch() rejeita com TypeError em falha de rede/CORS: nunca repassa o texto do navegador.
+    throw new ApiError(NETWORK_ERROR_MESSAGE, 0);
   } finally {
     if (timer) clearTimeout(timer);
     if (externalSignal) externalSignal.removeEventListener('abort', onExternalAbort);
@@ -561,13 +616,13 @@ export async function apiLogin(
 
   if (isLoginRequires2FA(body)) {
     if (!body.tempToken) {
-      throw new ApiError('Login 2FA não retornou tempToken.', 500);
+      throw new ApiError(SERVER_ERROR_MESSAGE, 500);
     }
     return body;
   }
 
   if (!(body as LoginApiResponse)?.token) {
-    throw new ApiError('Login não retornou token.', 500);
+    throw new ApiError(SERVER_ERROR_MESSAGE, 500);
   }
 
   // backend sets HttpOnly cookie; do not persist token in localStorage.
@@ -581,7 +636,7 @@ export async function apiLogin2FA(tempToken: string, code: string): Promise<Logi
     skipAuth: true,
   });
   if (!body?.token) {
-    throw new ApiError('Verificação 2FA não retornou token.', 500);
+    throw new ApiError(SERVER_ERROR_MESSAGE, 500);
   }
   return body;
 }
@@ -631,6 +686,20 @@ export function apiTwoFADisable(code?: string): Promise<{ ok: boolean; enabled: 
 
 export function apiMe(): Promise<import('../types').User> {
   return request<import('../types').User>('/auth/me');
+}
+
+export interface SessionInfoResponse {
+  /** ISO — quando o login foi feito (iat do token). */
+  startedAt: string;
+  /** ISO — quando a sessão expira (exp do token); o backend recusa o token depois disso. */
+  expiresAt: string;
+  /** ISO — relógio do servidor, para corrigir diferença de horário do navegador. */
+  serverTime: string;
+  rememberMe: boolean;
+}
+
+export function apiSession(): Promise<SessionInfoResponse> {
+  return request<SessionInfoResponse>('/auth/session');
 }
 
 export function apiLogout(): Promise<{ ok: boolean }> {
@@ -737,6 +806,32 @@ export function fetchHistory(params?: {
   vendedor?: string;
 }): Promise<HistoryRow[]> {
   return request<HistoryRow[]>(`/analytics/history${qs(params)}`);
+}
+
+export interface EvolucaoResponse {
+  mensal: Array<{
+    ano: number;
+    mes: number;
+    meta: number;
+    realizado: number;
+    metaCobertura: number;
+    realizadoCobertura: number;
+    margem: number;
+  }>;
+  porFabricante: Array<{ fabricante: string; ano: number; mes: number; meta: number; realizado: number }>;
+  porEquipe: Array<{ equipe: string; ano: number; mes: number; meta: number; realizado: number }>;
+  fabricantes: string[];
+  anos: number[];
+}
+
+/** Série mensal consolidada (tela Histórico), já no escopo RBAC do usuário. */
+export function fetchEvolucao(params?: {
+  ano?: number;
+  fabricante?: string;
+  equipe?: string;
+  vendedor?: string;
+}): Promise<EvolucaoResponse> {
+  return request<EvolucaoResponse>(`/analytics/evolucao${qs(params)}`);
 }
 
 export function fetchSales(params?: {

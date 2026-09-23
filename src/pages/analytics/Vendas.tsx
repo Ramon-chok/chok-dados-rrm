@@ -4,7 +4,7 @@ import { useGlobalFilter } from '../../context/GlobalFilterContext';
 import { PeriodSelector } from '../../components/common/PeriodSelector';
 import { ExportExcelButton } from '../../components/common/ExportExcelButton';
 import { EmptyBlock, ErrorBlock, LoadingBlock } from '../../components/common/DataState';
-import { fetchSales, SaleRow } from '../../lib/api';
+import { getErrorMessage, fetchSales, SaleRow } from '../../lib/api';
 import { Search } from 'lucide-react';
 
 const fmtR = (v: number) => `R$ ${v.toLocaleString('pt-BR')}`;
@@ -26,7 +26,7 @@ export const VendasPage: React.FC = () => {
         const data = await fetchSales({ q: query || undefined, start: startDate || undefined, end: endDate || undefined, limit: 500 });
         if (mounted) setRows(data);
       } catch (e) {
-        if (mounted) setError(e instanceof Error ? e.message : 'Falha ao carregar vendas');
+        if (mounted) setError(getErrorMessage(e, 'Falha ao carregar vendas'));
       } finally {
         if (mounted) setLoading(false);
       }

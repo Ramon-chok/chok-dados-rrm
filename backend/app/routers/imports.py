@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Query
 
 from app.cache import invalidate_all
 from app.db import get_connection
+from app.errors import PublicServerError, log_exception, logger
 import app.import_types as import_types
 from app.parse import parse_date_only
 from app.schemas import ImportRequest, ImportResultSummary, ImportRowError
@@ -30,16 +31,7 @@ def create_import(
     cfg = import_types.get_import_type_config(body.tipo)
     if not cfg:
         available = ", ".join(sorted(getattr(import_types, "IMPORT_TYPE_CONFIGS", {}).keys()))
-        try:
-            import logging
-
-            logging.getLogger("uvicorn.error").error(
-                "Unknown import tipo received: %r | available=%s",
-                body.tipo,
-                available,
-            )
-        except Exception:
-            pass
+        logger.warning("Tipo de importação desconhecido recebido: %r", body.tipo)
         raise HTTPException(
             status_code=400,
             detail=f'Tipo de importação desconhecido: "{body.tipo}". Tipos válidos: {available}.',
@@ -209,22 +201,10 @@ def create_import(
     except HTTPException:
         raise
     except Exception as err:
-        # Log full traceback to a file for debugging (safe, local only)
-        try:
-            import traceback
-            from datetime import datetime as _dt
-            from pathlib import Path as _Path
-
-            tb = traceback.format_exc()
-            log_path = _Path(__file__).resolve().parents[2] / "import_error_debug.log"
-            with open(log_path, "a", encoding="utf-8") as fh:
-                fh.write(f"--- {_dt.now().isoformat()} | tipo={body.tipo} | arquivo={body.arquivo} ---\n")
-                fh.write(tb)
-                fh.write("\n\n")
-        except Exception:
-            pass
-
-        message = str(err)[:500]
+        # Detalhe técnico só no log do servidor; na tela/histórico fica a mensagem
+        # genérica com o código de referência para o suporte localizar o registro.
+        ref = log_exception(f"Falha na importação tipo={cfg.id} arquivo={body.arquivo!r}", err)
+        message = f"Falha interna ao processar a importação (ref. {ref})."
         try:
             with get_connection() as conn:
                 conn.execute(
@@ -251,10 +231,7 @@ def create_import(
                 conn.commit()
         except Exception:
             pass
-        raise HTTPException(
-            status_code=500,
-            detail="Falha ao processar a importação. Nenhum dado foi gravado.",
-        ) from err
+        raise PublicServerError("Falha ao processar a importação. Nenhum dado foi gravado.", ref=ref) from err
 
 
 @router.get("")

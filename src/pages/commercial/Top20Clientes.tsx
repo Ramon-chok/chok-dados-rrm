@@ -6,6 +6,7 @@ import { ExportExcelButton } from '../../components/common/ExportExcelButton';
 import { EmptyBlock, ErrorBlock, LoadingBlock } from '../../components/common/DataState';
 import { SingleSelectFilter } from '../../components/common/SingleSelectFilter';
 import {
+  getErrorMessage,
   fetchTop20Customers,
   fetchDashboardFilterOptions,
   Top20ClienteRow,
@@ -81,7 +82,7 @@ export const Top20ClientesPage: React.FC = () => {
         });
         if (mounted) setRows(res);
       } catch (e) {
-        if (mounted) setError(e instanceof Error ? e.message : 'Falha ao carregar Top 20 Clientes');
+        if (mounted) setError(getErrorMessage(e, 'Falha ao carregar Top 20 Clientes'));
       } finally {
         if (mounted) setLoading(false);
       }

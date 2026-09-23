@@ -7,6 +7,7 @@ import { EmptyBlock, ErrorBlock, LoadingBlock } from '../../components/common/Da
 import { MultiSelectFilter } from '../../components/common/MultiSelectFilter';
 import { SingleSelectFilter } from '../../components/common/SingleSelectFilter';
 import {
+  getErrorMessage,
   fetchNaoPositivadosImport,
   fetchDashboardFilterOptions,
   NaoPositivadosImportResponse,
@@ -99,7 +100,7 @@ export const NaoPositivadosPage: React.FC = () => {
         });
         if (mounted) setData(res);
       } catch (e) {
-        if (mounted) setError(e instanceof Error ? e.message : 'Falha ao carregar não positivados');
+        if (mounted) setError(getErrorMessage(e, 'Falha ao carregar não positivados'));
       } finally {
         if (mounted) setLoading(false);
       }

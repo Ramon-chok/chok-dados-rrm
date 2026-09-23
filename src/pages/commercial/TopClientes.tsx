@@ -4,7 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useGlobalFilter } from '../../context/GlobalFilterContext';
 import { ExportExcelButton } from '../../components/common/ExportExcelButton';
 import { EmptyBlock, ErrorBlock, LoadingBlock } from '../../components/common/DataState';
-import { fetchTopCustomers, TopCustomerRow } from '../../lib/api';
+import { getErrorMessage, fetchTopCustomers, TopCustomerRow } from '../../lib/api';
 import { SingleSelectFilter } from '../../components/common/SingleSelectFilter';
 
 const fmt = (v: number) => `R$ ${v.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}`;
@@ -35,7 +35,7 @@ export const TopClientesPage: React.FC = () => {
         const data = await fetchTopCustomers({ start: startDate || undefined, end: endDate || undefined, limit: topN });
         if (mounted) setRows(data);
       } catch (e) {
-        if (mounted) setError(e instanceof Error ? e.message : 'Falha ao carregar top clientes');
+        if (mounted) setError(getErrorMessage(e, 'Falha ao carregar top clientes'));
       } finally {
         if (mounted) setLoading(false);
       }

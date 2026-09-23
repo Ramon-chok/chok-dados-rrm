@@ -5,7 +5,7 @@ import { RoleBadge } from '../../components/auth/RoleBadge';
 import { EmptyBlock, ErrorBlock, LoadingBlock } from '../../components/common/DataState';
 import { Role } from '../../types';
 import { Search, Plus, X, User, MapPin, Briefcase, Eye, EyeOff, Pencil, Trash2, Ban, CheckCircle2 } from 'lucide-react';
-import { apiCreateUser, apiUpdateUser, apiDeleteUser, apiSetUserStatus } from '../../lib/api';
+import { getErrorMessage, apiCreateUser, apiUpdateUser, apiDeleteUser, apiSetUserStatus } from '../../lib/api';
 
 export const UsersPage: React.FC = () => {
   const { availableUsers, currentUser, refreshUsers } = useAuth();
@@ -69,7 +69,7 @@ export const UsersPage: React.FC = () => {
     (async () => {
       setLoading(true); setError(null);
       try { await refreshUsers(); }
-      catch (e) { if (mounted) setError(e instanceof Error ? e.message : 'Falha ao listar usuários'); }
+      catch (e) { if (mounted) setError(getErrorMessage(e, 'Falha ao listar usuários')); }
       finally { if (mounted) setLoading(false); }
     })();
     return () => { mounted = false; };
@@ -145,7 +145,7 @@ export const UsersPage: React.FC = () => {
       await apiSetUserStatus(user.id, nextStatus);
       await refreshUsers();
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : `Falha ao ${label} usuário`);
+      setActionError(getErrorMessage(err, `Falha ao ${label} usuário`));
     } finally {
       setActionLoadingId(null);
     }
@@ -164,7 +164,7 @@ export const UsersPage: React.FC = () => {
       await apiDeleteUser(user.id);
       await refreshUsers();
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'Falha ao excluir usuário');
+      setActionError(getErrorMessage(err, 'Falha ao excluir usuário'));
     } finally {
       setActionLoadingId(null);
     }
@@ -271,8 +271,8 @@ export const UsersPage: React.FC = () => {
         if (data.localidade) setCreateMunicipality(data.localidade);
         if (data.uf) setCreateState(data.uf.toUpperCase());
       }
-    } catch (err) {
-      console.debug('CEP lookup failed', err);
+    } catch {
+      // Consulta de CEP é só conveniência: o usuário preenche o endereço manualmente.
     } finally {
       if (isEdit) setEditCepLoading(false); else setCepLoading(false);
     }
@@ -674,7 +674,7 @@ export const UsersPage: React.FC = () => {
                   await refreshUsers();
                   handleCloseModal();
                 } catch (err) {
-                  setCreateError(err instanceof Error ? err.message : 'Falha ao criar usuário');
+                  setCreateError(getErrorMessage(err, 'Falha ao criar usuário'));
                 } finally {
                   setCreateLoading(false);
                 }
@@ -995,7 +995,7 @@ export const UsersPage: React.FC = () => {
                   await refreshUsers();
                   handleCloseEditModal();
                 } catch (err) {
-                  setEditError(err instanceof Error ? err.message : 'Falha ao editar usuário');
+                  setEditError(getErrorMessage(err, 'Falha ao editar usuário'));
                 } finally {
                   setEditLoading(false);
                 }

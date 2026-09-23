@@ -114,7 +114,7 @@ const useTypingEffect = (text: string, speed = 80, delay = 600) => {
 };
 
 export const LoginView: React.FC = () => {
-  const { login, complete2FALogin, isLoading } = useAuth();
+  const { login, complete2FALogin, isLoading, sessionNotice, clearSessionNotice } = useAuth();
   const { mode, toggleTheme, t } = useTheme();
 
   // ============================================
@@ -641,6 +641,30 @@ export const LoginView: React.FC = () => {
               <span style={{ lineHeight: 1.5 }}>
                 Aceite os <strong>Termos de Uso</strong> e a Política de Privacidade para prosseguir.
               </span>
+            </div>
+          )}
+
+          {/* Aviso de sessão encerrada automaticamente (tempo total atingido / token revogado) */}
+          {sessionNotice && !errorMessage && (
+            <div
+              role="status"
+              style={{
+                background: 'rgba(250,178,25,0.10)', border: '1.5px solid rgba(250,178,25,0.35)',
+                borderRadius: '12px', padding: '12px 14px', marginBottom: '24px',
+                display: 'flex', alignItems: 'flex-start', gap: '10px',
+                fontSize: '13px', color: 'inherit',
+              }}
+            >
+              <Info size={16} style={{ flexShrink: 0, marginTop: '2px', color: '#D99A0B' }} />
+              <span style={{ lineHeight: 1.5, fontWeight: 500, flex: 1 }}>{sessionNotice}</span>
+              <button
+                type="button"
+                onClick={clearSessionNotice}
+                aria-label="Fechar aviso"
+                style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'inherit', opacity: 0.6, padding: 0, fontSize: 16, lineHeight: 1 }}
+              >
+                ×
+              </button>
             </div>
           )}
 

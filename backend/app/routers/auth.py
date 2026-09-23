@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status, Response
 from typing import Any
 
 from app.db import get_connection
+from app.errors import PublicServerError, log_exception
 from app.config import get_settings
 from app.schemas import LoginRequest, LoginResponse, UserOut
 from app.hardening import login_throttle
@@ -366,6 +367,24 @@ def me(user: dict = Depends(get_current_user)) -> UserOut:
     return user_to_out(user)
 
 
+@router.get("/session")
+def session_info(request: Request, _user: dict = Depends(get_current_user)) -> dict[str, Any]:
+    """Tempos da sessão atual, para o contador no frontend.
+
+    O JWT fica em cookie HttpOnly (o JS não consegue lê-lo), então o próprio
+    servidor informa quando a sessão começou e quando expira. `serverTime`
+    permite ao cliente corrigir diferença de relógio. A expiração continua
+    sendo imposta aqui no backend (decode_token); o contador é só a interface.
+    """
+    payload = getattr(request.state, "token_payload", None) or {}
+    return {
+        "startedAt": datetime.fromtimestamp(int(payload.get("iat", 0)), UTC).isoformat(),
+        "expiresAt": datetime.fromtimestamp(int(payload.get("exp", 0)), UTC).isoformat(),
+        "serverTime": datetime.now(UTC).isoformat(),
+        "rememberMe": bool(payload.get("rm", False)),
+    }
+
+
 @router.post("/email-test")
 def email_test(payload: dict = Body(...), _admin: dict[str, Any] = Depends(require_roles("ADMIN"))):
     """Endpoint para testar conexão SMTP e envio de e-mail.
@@ -380,7 +399,13 @@ def email_test(payload: dict = Body(...), _admin: dict[str, Any] = Depends(requi
         send_test_email(to, subject="Teste de SMTP — CHOK Dados", body="Este é um e-mail de teste enviado pelo endpoint /api/email-test.")
         return {"ok": True}
     except Exception as exc:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc))
+        # O texto da exceção SMTP pode trazer host, usuário e resposta do servidor de e-mail.
+        ref = log_exception("Falha no teste de SMTP", exc)
+        raise PublicServerError(
+            "Não foi possível enviar o e-mail de teste. Verifique a configuração de SMTP no servidor.",
+            ref=ref,
+            status_code=status.HTTP_502_BAD_GATEWAY,
+        ) from exc
 
 
 @router.post("/logout")

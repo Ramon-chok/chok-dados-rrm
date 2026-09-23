@@ -665,18 +665,19 @@ def history(
 ) -> list[dict[str, Any]]:
     params: list[Any] = []
     parts = ["1=1"]
-    scope = scope_filters(user)
+    # O escopo do usuário prevalece sobre os filtros enviados: antes, um VENDEDOR
+    # que passasse ?vendedor=<outro código> via a carteira de outra pessoa.
+    scope = _resolve_filters(user, equipe, vendedor)
     if fabricante:
         parts.append("f.fabricante = %s")
         params.append(fabricante)
-    equipe_f = equipe or scope.get("equipe")
-    if equipe_f:
-        parts.append("f.equipe = %s")
-        params.append(equipe_f)
-    vend_f = vendedor or scope.get("vendedor")
-    if vend_f:
+    if scope.get("equipe"):
+        # f.equipe não é confiável (ver nota em /dashboard): usa a equipe do cadastro.
+        parts.append("v.equipe = %s")
+        params.append(scope["equipe"])
+    if scope.get("vendedor"):
         parts.append("f.cod_vendedor = %s")
-        params.append(vend_f)
+        params.append(scope["vendedor"])
 
     with get_connection() as conn:
         rows = conn.execute(
@@ -712,6 +713,133 @@ def history(
         }
         for r in rows
     ]
+
+
+@router.get("/analytics/evolucao")
+@cached()
+def evolucao(
+    ano: int | None = Query(default=None, ge=2000, le=2100),
+    fabricante: str | None = Query(default=None, max_length=120),
+    equipe: str | None = Query(default=None, max_length=120),
+    vendedor: str | None = Query(default=None, max_length=40),
+    user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Série mensal consolidada para os gráficos de evolução (tela Histórico).
+
+    Já chega agregada por mês (e por mês × fabricante / mês × equipe) para o
+    navegador não receber uma linha por vendedor. O escopo RBAC é aplicado
+    como no Dashboard: equipe resolvida via `vendedores` (fonte confiável).
+    """
+    scope = _resolve_filters(user, equipe, vendedor)
+    eff_equipe = scope.get("equipe")
+    eff_vendedor = scope.get("vendedor")
+
+    params: list[Any] = []
+    parts = ["f.ano_referencia IS NOT NULL", "f.mes_referencia IS NOT NULL"]
+    if ano:
+        parts.append("f.ano_referencia = %s")
+        params.append(ano)
+    if fabricante:
+        parts.append("f.fabricante = %s")
+        params.append(fabricante)
+    if eff_equipe:
+        parts.append("v.equipe = %s")
+        params.append(eff_equipe)
+    if eff_vendedor:
+        parts.append("f.cod_vendedor = %s")
+        params.append(eff_vendedor)
+    where = " AND ".join(parts)
+    base_from = "FROM indicadores_fabricante f LEFT JOIN vendedores v ON v.cod_vendedor = f.cod_vendedor"
+
+    # Opções dos filtros: independem do fabricante/ano escolhidos (senão a lista encolhe
+    # ao selecionar), mas respeitam o escopo do usuário.
+    opt_params: list[Any] = []
+    opt_parts = ["1=1"]
+    if eff_equipe:
+        opt_parts.append("v.equipe = %s")
+        opt_params.append(eff_equipe)
+    if eff_vendedor:
+        opt_parts.append("f.cod_vendedor = %s")
+        opt_params.append(eff_vendedor)
+    opt_where = " AND ".join(opt_parts)
+
+    with get_connection() as conn:
+        mensal = conn.execute(
+            f"""
+            SELECT f.ano_referencia AS ano, f.mes_referencia AS mes,
+                   COALESCE(SUM(f.meta), 0) AS meta,
+                   COALESCE(SUM(f.realizado), 0) AS realizado,
+                   COALESCE(SUM(f.cobertura), 0) AS meta_cobertura,
+                   COALESCE(SUM(f.realizado_cobertura), 0) AS realizado_cobertura,
+                   COALESCE(AVG(f.pct_margem), 0) AS margem
+            {base_from}
+            WHERE {where}
+            GROUP BY 1, 2
+            ORDER BY 1, 2
+            """,
+            params,
+        ).fetchall()
+        por_fabricante = conn.execute(
+            f"""
+            SELECT f.fabricante, f.ano_referencia AS ano, f.mes_referencia AS mes,
+                   COALESCE(SUM(f.meta), 0) AS meta,
+                   COALESCE(SUM(f.realizado), 0) AS realizado
+            {base_from}
+            WHERE {where} AND f.fabricante IS NOT NULL
+            GROUP BY 1, 2, 3
+            ORDER BY 2, 3, 1
+            """,
+            params,
+        ).fetchall()
+        por_equipe = (
+            []
+            if user["role"] == "VENDEDOR"
+            else conn.execute(
+                f"""
+                SELECT COALESCE(v.equipe, 'Sem equipe') AS equipe, f.ano_referencia AS ano, f.mes_referencia AS mes,
+                       COALESCE(SUM(f.meta), 0) AS meta,
+                       COALESCE(SUM(f.realizado), 0) AS realizado
+                {base_from}
+                WHERE {where}
+                GROUP BY 1, 2, 3
+                ORDER BY 2, 3, 1
+                """,
+                params,
+            ).fetchall()
+        )
+        fabricantes = conn.execute(
+            f"SELECT DISTINCT f.fabricante {base_from} WHERE {opt_where} AND f.fabricante IS NOT NULL ORDER BY 1",
+            opt_params,
+        ).fetchall()
+        anos = conn.execute(
+            f"SELECT DISTINCT f.ano_referencia AS ano {base_from} WHERE {opt_where} AND f.ano_referencia IS NOT NULL ORDER BY 1 DESC",
+            opt_params,
+        ).fetchall()
+
+    return {
+        "mensal": [
+            {
+                "ano": r["ano"],
+                "mes": r["mes"],
+                "meta": num(r["meta"]),
+                "realizado": num(r["realizado"]),
+                "metaCobertura": num(r["meta_cobertura"]),
+                "realizadoCobertura": num(r["realizado_cobertura"]),
+                "margem": round(num(r["margem"]), 2),
+            }
+            for r in mensal
+        ],
+        "porFabricante": [
+            {"fabricante": r["fabricante"], "ano": r["ano"], "mes": r["mes"], "meta": num(r["meta"]), "realizado": num(r["realizado"])}
+            for r in por_fabricante
+        ],
+        "porEquipe": [
+            {"equipe": r["equipe"], "ano": r["ano"], "mes": r["mes"], "meta": num(r["meta"]), "realizado": num(r["realizado"])}
+            for r in por_equipe
+        ],
+        "fabricantes": [r["fabricante"] for r in fabricantes],
+        "anos": [r["ano"] for r in anos],
+    }
 
 
 @router.get("/analytics/sales")

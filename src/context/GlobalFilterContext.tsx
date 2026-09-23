@@ -1,5 +1,5 @@
 ﻿import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
-import { fetchDashboard, fetchNotPositivated } from '../lib/api';
+import { getErrorMessage, fetchDashboard, fetchNotPositivated } from '../lib/api';
 import { useAuth } from './AuthContext';
 
 export type PeriodType = 'semanal' | 'mensal' | 'trimestral' | 'semestral' | 'anual' | 'personalizado';
@@ -174,7 +174,7 @@ export const GlobalFilterProvider: React.FC<{ children: React.ReactNode }> = ({ 
       } catch (err) {
         if (!mounted) return;
         setPeriodMetrics(EMPTY_METRICS);
-        setMetricsError(err instanceof Error ? err.message : 'Falha ao carregar métricas do período.');
+        setMetricsError(getErrorMessage(err, 'Falha ao carregar métricas do período.'));
       } finally {
         if (mounted) setIsLoadingMetrics(false);
       }

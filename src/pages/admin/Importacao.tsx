@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import {
+  getErrorMessage,
   submitImportChunked,
   fetchImportHistory,
   clearImportHistory,
@@ -1046,8 +1047,8 @@ export const ImportacaoPage: React.FC = () => {
     try {
       const entries = await fetchImportHistory(50);
       setHistory(entries.map(toHistoryItem));
-    } catch (err) {
-      console.error('Falha ao carregar histórico de importações:', err);
+    } catch {
+      // Histórico é auxiliar: se falhar, a lista só fica vazia.
     } finally {
       setIsLoadingHistory(false);
     }
@@ -1075,11 +1076,7 @@ export const ImportacaoPage: React.FC = () => {
       setHistory([]);
     } catch (err) {
       const message =
-        err instanceof ApiError
-          ? err.message
-          : err instanceof Error
-            ? err.message
-            : 'Falha ao limpar o histórico de importações.';
+        getErrorMessage(err, 'Falha ao limpar o histórico de importações.');
       setHistoryActionError(message);
     } finally {
       setIsClearingHistory(false);
@@ -1207,16 +1204,13 @@ export const ImportacaoPage: React.FC = () => {
         setSheetsData(newSheetsData);
         setColumnMappings(newMappings);
         setStep(3);
-      } catch (err) {
-        console.error('Erro ao ler arquivo:', err);
-        const detail = err instanceof Error ? err.message : String(err);
+      } catch {
         setFileError(
-          `Não foi possível ler o arquivo selecionado. Verifique se é um Excel (.xlsx/.xls/.xlsm) ou CSV válido. (${detail})`
+          'Não foi possível ler o arquivo selecionado. Verifique se é um Excel (.xlsx/.xls/.xlsm) ou CSV válido e se não está protegido por senha.'
         );
       }
     };
     reader.onerror = () => {
-      console.error('Erro ao ler arquivo:', reader.error);
       setFileError('Não foi possível ler o arquivo selecionado. Tente novamente ou use outro arquivo.');
     };
     reader.readAsArrayBuffer(file);

@@ -3,7 +3,7 @@ import { useTheme } from '../../context/ThemeContext';
 import { useGlobalFilter } from '../../context/GlobalFilterContext';
 import { PeriodSelector } from '../../components/common/PeriodSelector';
 import { EmptyBlock, ErrorBlock, LoadingBlock } from '../../components/common/DataState';
-import { fetchDashboard, fetchNotPositivated, DashboardResponse, NotPositivatedResponse } from '../../lib/api';
+import { getErrorMessage, fetchDashboard, fetchNotPositivated, DashboardResponse, NotPositivatedResponse } from '../../lib/api';
 import { Sparkles } from 'lucide-react';
 
 export const InsightsPage: React.FC = () => {
@@ -30,7 +30,7 @@ export const InsightsPage: React.FC = () => {
         ]);
         if (mounted) { setDash(d); setNp(n); }
       } catch (e) {
-        if (mounted) setError(e instanceof Error ? e.message : 'Falha ao carregar insights');
+        if (mounted) setError(getErrorMessage(e, 'Falha ao carregar insights'));
       } finally {
         if (mounted) setLoading(false);
       }

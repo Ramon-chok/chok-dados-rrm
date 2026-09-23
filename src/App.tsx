@@ -27,6 +27,7 @@ import { CreditosPage } from './pages/account/Creditos';
 import { UsersPage } from './pages/admin/Users';
 import { ImportacaoPage } from './pages/admin/Importacao';
 import { ShieldAlert, ArrowLeft } from 'lucide-react';
+import { ErrorBoundary } from './components/common/ErrorBoundary';
 
 function MainApp() {
   const { isAuthenticated, currentUser, canAccessPage, isLoading } = useAuth();
@@ -177,7 +178,8 @@ function MainApp() {
 
   return (
     <AppLayout currentPage={currentPage} onNavigate={setCurrentPage}>
-      {renderContent()}
+      {/* Erro em uma página não derruba o layout; trocar de página tenta de novo. */}
+      <ErrorBoundary resetKey={currentPage}>{renderContent()}</ErrorBoundary>
     </AppLayout>
   );
 }
@@ -185,11 +187,13 @@ function MainApp() {
 export default function App() {
   return (
     <ThemeProvider>
-      <AuthProvider>
-        <GlobalFilterProvider>
-          <MainApp />
-        </GlobalFilterProvider>
-      </AuthProvider>
+      <ErrorBoundary fullScreen>
+        <AuthProvider>
+          <GlobalFilterProvider>
+            <MainApp />
+          </GlobalFilterProvider>
+        </AuthProvider>
+      </ErrorBoundary>
     </ThemeProvider>
   );
 }

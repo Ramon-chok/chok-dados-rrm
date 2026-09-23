@@ -7,6 +7,7 @@ import { ExportExcelButton } from '../components/common/ExportExcelButton';
 import { EmptyBlock, ErrorBlock, LoadingBlock } from '../components/common/DataState';
 import { SingleSelectFilter } from '../components/common/SingleSelectFilter';
 import {
+  getErrorMessage,
   fetchDashboard,
   fetchDashboardFilterOptions,
   fetchImportHistory,
@@ -19,6 +20,8 @@ import {
 } from '../lib/api';
 import {
   ComposedChart,
+  BarChart,
+  LineChart,
   Bar,
   Line,
   XAxis,
@@ -27,8 +30,24 @@ import {
   Legend,
   ResponsiveContainer,
   CartesianGrid,
+  Cell,
 } from 'recharts';
 import { ChevronDown, ChevronRight } from 'lucide-react';
+import {
+  AttainmentGauge,
+  AttainmentRanking,
+  ChartCard,
+  ChartGrid,
+  ChartTooltip,
+  LegendSwatch,
+  ShareDonut,
+  StatusTag,
+  attainmentStatus,
+  fmtBRLShort,
+  mesLabel,
+  pctOf,
+  useChartColors,
+} from '../components/charts/chartKit';
 
 const fmt = (v: number) => `R$ ${v.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}`;
 const fmtInt = (v: number) => v.toLocaleString('pt-BR', { maximumFractionDigits: 0 });
@@ -119,7 +138,7 @@ export const DashboardPage: React.FC = () => {
         });
         if (mounted) setData(res);
       } catch (e) {
-        if (mounted) setError(e instanceof Error ? e.message : 'Falha ao carregar dashboard');
+        if (mounted) setError(getErrorMessage(e, 'Falha ao carregar dashboard'));
       } finally {
         if (mounted) setLoading(false);
       }
@@ -144,6 +163,30 @@ export const DashboardPage: React.FC = () => {
   );
 
   const kpis = data?.kpis;
+  const colors = useChartColors();
+
+  // Evolução mês a mês dentro do ano selecionado (serieMensal ignora o filtro de mês).
+  const serieData = useMemo(
+    () =>
+      (data?.serieMensal || []).map((d) => ({
+        label: mesLabel(d.ano, d.mes),
+        meta: d.meta,
+        realizado: d.realizado,
+        pct: pctOf(d.realizado, d.meta),
+      })),
+    [data]
+  );
+
+  const topClientesChart = useMemo(
+    () =>
+      (data?.topClientes || []).map((c, i) => ({
+        key: `${c.codigo || c.nome}-${i}`,
+        nome: c.nome,
+        codigo: c.codigo,
+        valor: c.valor,
+      })),
+    [data]
+  );
 
   const cardGroups = kpis
     ? [
@@ -362,6 +405,21 @@ export const DashboardPage: React.FC = () => {
     }
   };
 
+  /** Gráfico → tabela: abre o detalhamento do fabricante e rola até a linha dele. */
+  const focusFabricante = (fabricante: string) => {
+    if (canDrilldownFabricante && expandedFabricante !== fabricante) void handleToggleFabricante(fabricante);
+    requestAnimationFrame(() => {
+      document.getElementById(`fab-row-${encodeURIComponent(fabricante)}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+  };
+
+  const focusCliente = (clienteKey: string, codigo: string | null, nome: string) => {
+    if (expandedCliente !== clienteKey) void handleToggleCliente(clienteKey, codigo, nome);
+    requestAnimationFrame(() => {
+      document.getElementById(`cli-row-${encodeURIComponent(clienteKey)}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+  };
+
   // ─── Estilos das tabelas ────────────────────────────────────
   const thStyle: React.CSSProperties = {
     padding: '10px 12px',
@@ -544,6 +602,137 @@ export const DashboardPage: React.FC = () => {
           </div>
 
           {/* ═══════════════════════════════════════════
+              SEÇÃO 1B: VISÃO GRÁFICA (clicar leva ao detalhe nas tabelas)
+          ═══════════════════════════════════════════ */}
+          <div style={{ marginBottom: 8 }}>
+            <div style={sectionTitleStyle}>
+              Visão Gráfica
+              <span style={sectionBadgeStyle}>Clique para detalhar</span>
+            </div>
+            <ChartGrid min={260}>
+              <AttainmentGauge title="Faturamento" pct={kpis.atingimento} meta={kpis.meta} realizado={kpis.realizado} formatter={fmtBRLShort} />
+              <AttainmentGauge title="Cobertura" pct={kpis.pctCobertura} meta={kpis.metaCobertura} realizado={kpis.realizadoCobertura} formatter={fmtInt} />
+              <AttainmentGauge title="Sortimento" pct={kpis.pctSortimento} meta={kpis.metaSortimento} realizado={kpis.realizadoSortimento} formatter={fmtBRLShort} />
+            </ChartGrid>
+
+            <ChartGrid min={360}>
+              <ChartCard title="Participação no faturamento" subtitle="Realizado por fabricante no período · clique para detalhar">
+                <ShareDonut
+                  data={(data.fabricantes || []).map((f) => ({ label: f.fabricante, value: f.realizado }))}
+                  totalLabel="Realizado"
+                  onSelect={focusFabricante}
+                />
+              </ChartCard>
+              <ChartCard title="Atingimento por fabricante" subtitle="Realizado ÷ meta, do maior para o menor · clique para detalhar">
+                <AttainmentRanking
+                  items={(data.fabricantes || []).map((f) => ({
+                    key: f.fabricante,
+                    label: f.fabricante,
+                    pct: f.pctR,
+                    meta: f.meta,
+                    realizado: f.realizado,
+                  }))}
+                  onSelect={focusFabricante}
+                  selectedKey={expandedFabricante}
+                  maxRows={8}
+                />
+              </ChartCard>
+            </ChartGrid>
+
+            <ChartGrid min={360}>
+              <ChartCard
+                title="Evolução mensal no ano"
+                subtitle="Faturamento realizado x meta, mês a mês"
+                legend={
+                  <>
+                    <LegendSwatch color={colors.series[0]} label="Realizado" line />
+                    <LegendSwatch color={colors.target} label="Meta" line dashed />
+                  </>
+                }
+                height={260}
+              >
+                {serieData.length === 0 ? (
+                  <div style={{ fontSize: 12.5, color: t.textMuted }}>Sem série mensal para o período.</div>
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={serieData} margin={{ top: 8, right: 12, left: 4, bottom: 0 }}>
+                      <CartesianGrid stroke={colors.grid} vertical={false} />
+                      <XAxis dataKey="label" stroke={colors.axis} fontSize={11} tickLine={false} axisLine={{ stroke: colors.grid }} />
+                      <YAxis stroke={colors.axis} fontSize={11} tickLine={false} axisLine={false} tickFormatter={fmtBRLShort} width={78} />
+                      <Tooltip
+                        cursor={{ stroke: colors.axis, strokeDasharray: '3 3' }}
+                        content={
+                          <ChartTooltip
+                            valueFormatter={(v) => fmt(v)}
+                            footer={(row) => {
+                              const pct = Number(row.pct) || 0;
+                              return (
+                                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12 }}>
+                                  <StatusTag status={attainmentStatus(pct, Number(row.meta) > 0)} />
+                                  <strong className="num" style={{ color: t.text }}>{fmtPct(pct)}</strong>
+                                </div>
+                              );
+                            }}
+                          />
+                        }
+                      />
+                      <Line type="monotone" dataKey="meta" name="Meta" stroke={colors.target} strokeWidth={2} strokeDasharray="5 4" dot={false} />
+                      <Line
+                        type="monotone"
+                        dataKey="realizado"
+                        name="Realizado"
+                        stroke={colors.series[0]}
+                        strokeWidth={2}
+                        dot={{ r: 4, fill: colors.series[0], stroke: colors.surface, strokeWidth: 2 }}
+                        activeDot={{ r: 6, stroke: colors.surface, strokeWidth: 2 }}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                )}
+              </ChartCard>
+
+              <ChartCard title="Top clientes" subtitle="Faturamento no período · clique para ver fabricantes" height={260}>
+                {topClientesChart.length === 0 ? (
+                  <div style={{ fontSize: 12.5, color: t.textMuted }}>Sem clientes no período.</div>
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={topClientesChart} layout="vertical" margin={{ top: 0, right: 12, left: 0, bottom: 0 }} barCategoryGap={3}>
+                      <CartesianGrid stroke={colors.grid} horizontal={false} />
+                      <XAxis type="number" stroke={colors.axis} fontSize={11} tickLine={false} axisLine={false} tickFormatter={fmtBRLShort} />
+                      <YAxis
+                        type="category"
+                        dataKey="nome"
+                        stroke={colors.axis}
+                        fontSize={11}
+                        tickLine={false}
+                        axisLine={false}
+                        width={130}
+                        tickFormatter={(v: string) => (v && v.length > 18 ? `${v.slice(0, 17)}…` : v)}
+                      />
+                      <Tooltip cursor={{ fill: `${colors.series[0]}14` }} content={<ChartTooltip valueFormatter={(v) => fmt(v)} />} />
+                      <Bar
+                        dataKey="valor"
+                        name="Faturamento"
+                        radius={[0, 4, 4, 0]}
+                        maxBarSize={18}
+                        style={{ cursor: 'pointer' }}
+                        onClick={(_: unknown, i: number) => {
+                          const c = topClientesChart[i];
+                          if (c) focusCliente(c.key, c.codigo, c.nome);
+                        }}
+                      >
+                        {topClientesChart.map((c) => (
+                          <Cell key={c.key} fill={expandedCliente === c.key ? colors.series[1] : colors.series[0]} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
+              </ChartCard>
+            </ChartGrid>
+          </div>
+
+          {/* ═══════════════════════════════════════════
               SEÇÃO 2: GRÁFICO POR FABRICANTE
           ═══════════════════════════════════════════ */}
           <div style={{ marginBottom: 24 }}>
@@ -705,6 +894,7 @@ export const DashboardPage: React.FC = () => {
                         return (
                           <React.Fragment key={clienteKey}>
                             <tr
+                              id={`cli-row-${encodeURIComponent(clienteKey)}`}
                               style={{ transition: 'background 0.15s', cursor: 'pointer' }}
                               onClick={() => handleToggleCliente(clienteKey, c.codigo, c.nome)}
                               onMouseEnter={(e) => (e.currentTarget.style.background = t.surfaceElevated)}
@@ -855,6 +1045,7 @@ export const DashboardPage: React.FC = () => {
                         return (
                           <React.Fragment key={f.fabricante}>
                             <tr
+                              id={`fab-row-${encodeURIComponent(f.fabricante)}`}
                               style={{ transition: 'background 0.15s', cursor: canDrilldownFabricante ? 'pointer' : 'default' }}
                               onClick={() => canDrilldownFabricante && handleToggleFabricante(f.fabricante)}
                               onMouseEnter={(e) => (e.currentTarget.style.background = t.surfaceElevated)}

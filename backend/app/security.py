@@ -149,6 +149,7 @@ def create_access_token(
         "role": role,
         "typ": "access",
         "jti": secrets.token_urlsafe(16),  # id único: permite revogar no logout
+        "rm": bool(remember_me),  # "manter conectado" — só informativo para o contador de sessão
         "iat": int(now.timestamp()),
         "exp": int((now + timedelta(minutes=minutes)).timestamp()),
     }
@@ -244,22 +245,19 @@ def require_import_api_key(x_api_key: str | None = Header(default=None, alias="x
         )
 
 
+def extract_token(request: Request, credentials: HTTPAuthorizationCredentials | None) -> str | None:
+    """JWT do header Authorization (Bearer) ou, na falta dele, do cookie HttpOnly."""
+    if credentials is not None and credentials.scheme.lower() == "bearer":
+        return credentials.credentials
+    cookie_name = get_settings().jwt_cookie_name or "chok_auth_token"
+    return request.cookies.get(cookie_name)
+
+
 def get_current_user(
     request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
 ) -> dict[str, Any]:
-    token: str | None = None
-    # prefer Authorization header
-    if credentials is not None and credentials.scheme.lower() == "bearer":
-        token = credentials.credentials
-    else:
-        # fallback to cookie
-        try:
-            settings = get_settings()
-            cookie_name = settings.jwt_cookie_name or "chok_auth_token"
-            token = request.cookies.get(cookie_name)
-        except Exception:
-            token = None
+    token = extract_token(request, credentials)
 
     if not token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Não autenticado.")
@@ -288,6 +286,8 @@ def get_current_user(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Usuário não encontrado.")
     if row["status"] != "Ativo":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Usuário inativo.")
+    # Disponível para rotas que precisam dos tempos da sessão (iat/exp), ex.: /auth/session.
+    request.state.token_payload = payload
     return dict(row)
 
 
