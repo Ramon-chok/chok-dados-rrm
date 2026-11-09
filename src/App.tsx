@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+﻿import React, { useEffect, useState } from 'react';
 import { ThemeProvider, useTheme } from './context/ThemeContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { GlobalFilterProvider } from './context/GlobalFilterContext';
@@ -27,12 +27,51 @@ import { HistoricoImportacoesPage } from './pages/admin/HistoricoImportacoes';
 import { ShieldAlert, ArrowLeft } from 'lucide-react';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 
+/**
+ * Ordem de preferência da tela inicial, seguindo a ordem do menu.
+ *
+ * Não dá mais para fixar "Quadro de Vendas": ele e Categorias passaram a ser
+ * restritos a ADMIN/GERENTE/SUPERVISOR, então o Vendedor cairia direto na
+ * tela de acesso negado ao entrar. Aqui se escolhe a primeira tela que o
+ * perfil realmente pode abrir.
+ */
+const PAGINAS_INICIAIS: PageId[] = [
+  'sales-board',
+  'categories',
+  'dashboard',
+  'not-positivated',
+  'top-20-customers',
+  'top-customers',
+  'sortiments',
+  'catalog',
+  'objectives',
+  'sar-raio-x',
+  'sar-base-roteiro',
+  'sar-verba-indenizatoria',
+  'profile',
+];
+
 function MainApp() {
   const { isAuthenticated, currentUser, canAccessPage, isLoading } = useAuth();
   const { t } = useTheme();
-  // Quadro de Vendas é a primeira tela do menu e a única visível para todos os
-  // perfis — Dashboard/Visão Macro são restritos a ADMIN, GERENTE e SUPERVISOR.
-  const [currentPage, setCurrentPage] = useState<PageId>('sales-board');
+  const [currentPage, setCurrentPage] = useState<PageId | null>(null);
+
+  /** Primeira tela do menu que este perfil pode abrir. */
+  const paginaInicial = (): PageId =>
+    PAGINAS_INICIAIS.find((p) => canAccessPage(p)) ?? 'profile';
+
+  // A página só pode ser escolhida depois que o usuário chega (canAccessPage
+  // depende dele), por isso o estado começa nulo e é definido aqui.
+  useEffect(() => {
+    if (!isAuthenticated) {
+      // Logout: esquece a tela atual para que o próximo login escolha de novo
+      // conforme o perfil que entrar.
+      if (currentPage !== null) setCurrentPage(null);
+      return;
+    }
+    if (currentPage === null) setCurrentPage(paginaInicial());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated, currentPage, currentUser]);
 
   if (isLoading) {
     return (
@@ -47,6 +86,25 @@ function MainApp() {
 
   if (!isAuthenticated) {
     return <LoginView />;
+  }
+
+  // Enquanto o efeito acima não escolheu a tela inicial deste perfil, não
+  // renderiza nada. Sem esta guarda, `currentPage` nulo cai no `default` do
+  // switch e o Quadro de Vendas aparecia por um instante — inclusive para o
+  // Vendedor, que não deve vê-lo. (O tsconfig não usa `strict`, então o nulo
+  // não é apontado em tempo de compilação.)
+  if (currentPage === null) {
+    return (
+      <div
+        style={{
+          minHeight: '100vh',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: t.bg,
+        }}
+      />
+    );
   }
 
   // Check if current user has permission to access the active page
@@ -106,7 +164,7 @@ function MainApp() {
           </div>
 
           <button
-            onClick={() => setCurrentPage('sales-board')}
+            onClick={() => setCurrentPage(paginaInicial())}
             style={{
               display: 'inline-flex',
               alignItems: 'center',
@@ -122,7 +180,7 @@ function MainApp() {
             }}
           >
             <ArrowLeft size={16} />
-            <span>Retornar ao Quadro de Vendas</span>
+            <span>Voltar para a tela inicial</span>
           </button>
         </div>
       );
@@ -168,7 +226,10 @@ function MainApp() {
       case 'import-history':
         return <HistoricoImportacoesPage />;
       default:
-        return <QuadroVendasPage />;
+        // Não cai mais no Quadro de Vendas: ele é restrito, e um PageId novo
+        // sem `case` aqui exporia a tela a quem não deve vê-la. Perfil é a
+        // única página liberada para todos os papéis.
+        return <ProfilePage />;
     }
   };
 

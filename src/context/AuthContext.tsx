@@ -250,18 +250,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const canAccessPage = (pageId: PageId): boolean => {
     if (!currentUser) return false;
 
-    // Principal é restrito: o Vendedor não vê Dashboard nem Visão Macro.
-    if (pageId === 'dashboard' || pageId === 'macro-view') {
+    // Telas de gestão: só ADMIN, GERENTE e SUPERVISOR. O Vendedor não vê
+    // Dashboard, Visão Macro nem os quadros de Vendas e Categorias — estes
+    // dois consolidam o desempenho de toda a equipe, que não é escopo dele.
+    if (
+      pageId === 'dashboard' ||
+      pageId === 'macro-view' ||
+      pageId === 'sales-board' ||
+      pageId === 'categories'
+    ) {
       return PRINCIPAL_ROLES.includes(currentUser.role);
     }
 
     if (currentUser.role === 'ADMIN') return true;
 
     switch (pageId) {
-      case 'sales-board':
-        return hasPermission('sales-board.view');
-      case 'categories':
-        return hasPermission('categories.view');
       case 'not-positivated':
       case 'top-20-customers':
       case 'top-customers':

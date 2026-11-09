@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends
 from app import providers
 from app.cache import cached
 from app.db import get_connection
-from app.security import get_current_user
+from app.security import require_roles
 
 router = APIRouter(prefix="/board", tags=["board"])
 
@@ -95,7 +95,11 @@ def sales_board(
     end: str | None = None,
     equipe: str | None = None,
     vendedor: str | None = None,
-    user: dict[str, Any] = Depends(get_current_user),
+    # Quadros de Vendas e Categorias consolidam o desempenho da equipe
+    # inteira: são de gestão. require_roles já libera o ADMIN e barra
+    # o VENDEDOR com 403 — esconder só no menu não seria restrição
+    # nenhuma, já que a rota continuaria aberta a quem a chamasse.
+    user: dict[str, Any] = Depends(require_roles("GERENTE", "SUPERVISOR")),
 ) -> dict[str, Any]:
     """Meta x realizado por vendedor, com o total do período nos KPIs."""
     eff_equipe, eff_vendedor = _resolve_scope(user, equipe, vendedor)
@@ -246,7 +250,11 @@ def categories_board(
     end: str | None = None,
     equipe: str | None = None,
     vendedor: str | None = None,
-    user: dict[str, Any] = Depends(get_current_user),
+    # Quadros de Vendas e Categorias consolidam o desempenho da equipe
+    # inteira: são de gestão. require_roles já libera o ADMIN e barra
+    # o VENDEDOR com 403 — esconder só no menu não seria restrição
+    # nenhuma, já que a rota continuaria aberta a quem a chamasse.
+    user: dict[str, Any] = Depends(require_roles("GERENTE", "SUPERVISOR")),
 ) -> dict[str, Any]:
     """Meta x realizado por categoria/fabricante dentro do escopo do usuário."""
     eff_equipe, eff_vendedor = _resolve_scope(user, equipe, vendedor)

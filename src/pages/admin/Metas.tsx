@@ -39,7 +39,12 @@ interface ImportProgressState {
   phase: 'preparing' | 'uploading' | 'finishing';
 }
 
-export type ImportType = 'metas' | 'verba_indenizatoria' | 'raiox' | 'base_roteiro';
+export type ImportType =
+  | 'metas'
+  | 'sortimento'
+  | 'verba_indenizatoria'
+  | 'raiox'
+  | 'base_roteiro';
 
 interface ImportSheetOption {
   /** Identificador interno da aba dentro do tipo de importação. */
@@ -129,6 +134,36 @@ const IMPORT_TYPES: ImportTypeOption[] = [
           fabricante: 'CATEGORIA',
           meta_faturamento: 'META FATURAMENTO',
           meta_cobertura: 'META COBERTURA',
+        },
+      },
+    ],
+  },
+  {
+    id: 'sortimento',
+    label: 'Lista de Sortimento',
+    description:
+      'Produtos do sortimento (mix) por fabricante, categoria e linha. ATENÇÃO: cada envio SUBSTITUI a lista inteira — a planilha precisa trazer todos os itens vigentes, não só as novidades.',
+    templateFile: '/templates/importacao/sortimento.xlsx',
+    sheets: [
+      {
+        key: 'sortimento',
+        // Vazio = usa a primeira aba do arquivo. A planilha de origem vem com
+        // a aba chamada "Plan1", que é o padrão do Excel.
+        sheetName: '',
+        label: 'Sortimento',
+        // Nomes de sistema — devem bater com backend/app/import_types.py,
+        // entrada "sortimento" (tabela sortimento).
+        columns: ['cod_produto', 'produto', 'fabricante', 'categoria', 'linha'],
+        // O backend grava com replace_all_rows (apaga a tabela e regrava), e
+        // o código do produto pode repetir entre linhas do mix. A chave aqui
+        // serve só para exigir que a coluna esteja mapeada.
+        keyColumns: ['cod_produto'],
+        headerHints: {
+          cod_produto: ['CÓDIGO', 'CODIGO', 'COD PRODUTO', 'CÓD. PRODUTO', 'SKU'],
+          produto: ['PRODUTO', 'DESCRIÇÃO', 'DESCRICAO', 'ITEM'],
+          fabricante: ['FABRICANTE', 'INDÚSTRIA', 'INDUSTRIA', 'MARCA'],
+          categoria: ['CATEGORIA'],
+          linha: ['LINHA', 'SUBCATEGORIA', 'SEGMENTO'],
         },
       },
     ],
@@ -1011,10 +1046,10 @@ export const MetasPage: React.FC = () => {
           Metas &amp; Definições
         </h1>
         <p style={{ margin: 0, fontSize: '13px', color: t.textSecondary }}>
-          Importe aqui as metas comerciais (faturamento e cobertura por vendedor e categoria) e as planilhas
-          operacionais do SAR — Verba Indenizatória, Raio-X e Base de Roteiro. Os resultados realizados do comercial
-          vêm das APIs integradas e são comparados automaticamente contra estas metas nos quadros de Vendas e
-          Categorias. Planilhas grandes são enviadas em lotes seguros.
+          Importe aqui as metas comerciais (faturamento e cobertura por vendedor e categoria), a Lista de Sortimento
+          e as planilhas operacionais do SAR — Verba Indenizatória, Raio-X e Base de Roteiro. Os resultados realizados
+          do comercial vêm das APIs integradas e são comparados automaticamente contra estas metas nos quadros de
+          Vendas e Categorias. Planilhas grandes são enviadas em lotes seguros.
         </p>
       </div>
 
