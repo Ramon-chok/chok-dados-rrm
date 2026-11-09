@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-ColumnKind = Literal["text", "numeric", "integer", "date", "boolean", "jsonb", "time", "duration"]
+ColumnKind = Literal["text", "numeric", "integer", "date", "boolean", "jsonb", "time", "duration", "coord"]
 
 
 @dataclass(frozen=True)
@@ -488,6 +488,64 @@ IMPORT_TYPE_CONFIGS: dict[str, ImportTypeConfig] = {
 			ImportColumn("perc_positivacao_acumulado", "numeric"),
 			ImportColumn("acumulado_positivacao_fora_rota", "integer"),
 			ImportColumn("perc_positivacao_fora_rota", "numeric"),
+		),
+	),
+	# Base de Roteiro — uma linha por ponto de roteiro do cliente, com as
+	# coordenadas usadas no mapa de src/pages/sar/BaseRoteiro.tsx. O mesmo
+	# cliente aparece legitimamente várias vezes (dias e semanas diferentes),
+	# então a tabela tem PK própria (id) e cada importação substitui o
+	# snapshot inteiro da data_referencia — key_columns aqui só exige que
+	# cliente e vendedor estejam preenchidos.
+	#
+	# "dia" segue a convenção da planilha (2=segunda ... 6=sexta) e "semana"
+	# é texto porque a planilha usa combinações ("1", "2", "3", "4", "1,3",
+	# "2,4", "1234") que não cabem em um inteiro.
+	"base_roteiro": ImportTypeConfig(
+		id="base_roteiro",
+		label="Base de Roteiro",
+		table="base_roteiro",
+		key_columns=("cod_cliente", "cod_vendedor"),
+		snapshot=True,
+		replace_snapshot_rows=True,
+		columns=(
+			ImportColumn("cod_cliente", "text"),
+			ImportColumn("razao_social", "text"),
+			ImportColumn("nome_fantasia", "text"),
+			ImportColumn("cod_vendedor", "text"),
+			ImportColumn("vendedor", "text"),
+			ImportColumn("equipe", "text"),
+			ImportColumn("municipio", "text"),
+			ImportColumn("uf", "text"),
+			ImportColumn("bairro", "text"),
+			ImportColumn("endereco", "text"),
+			# coord (não numeric): a heurística decimal de parse_numeric é a
+			# de dinheiro e destruiria "-3,73180". Ver app.parse.parse_coordinate.
+			ImportColumn("latitude", "coord"),
+			ImportColumn("longitude", "coord"),
+			ImportColumn("dia", "integer"),
+			ImportColumn("semana", "text"),
+			ImportColumn("sequencia", "integer"),
+			ImportColumn("frequencia", "text"),
+		),
+	),
+	# Verba Indenizatória — fechamento por vendedor da verba de rota.
+	# Snapshot: uma linha por (data_referencia, cod_vendedor); reenviar o
+	# mesmo período atualiza, um período novo cria linha nova.
+	"verba_indenizatoria": ImportTypeConfig(
+		id="verba_indenizatoria",
+		label="Verba Indenizatória",
+		table="verba_indenizatoria",
+		key_columns=("data_referencia", "cod_vendedor"),
+		snapshot=True,
+		columns=(
+			ImportColumn("cod_vendedor", "text"),
+			ImportColumn("vendedor", "text"),
+			ImportColumn("equipe", "text"),
+			ImportColumn("km_total", "numeric"),
+			ImportColumn("verba_indenizatoria", "numeric"),
+			ImportColumn("desconto", "numeric"),
+			ImportColumn("reembolso", "numeric"),
+			ImportColumn("a_pagar", "numeric"),
 		),
 	),
 	# Vendedor Detalhado — planilha visita a visita (cliente, ação, rota,

@@ -38,40 +38,34 @@ USER_SELECT = """
     FROM usuarios
 """
 
+# Espelho de src/types.ts (Permission). "dashboard.view" cobre o grupo Principal
+# (Dashboard + Visão Macro) e NÃO é concedido ao VENDEDOR: esses painéis são
+# apenas para ADMIN, GERENTE e SUPERVISOR.
 ROLE_PERMISSIONS: dict[str, list[str]] = {
     "ADMIN": ["admin.full_access"],
     "GERENTE": [
+        "sales-board.view",
+        "categories.view",
         "dashboard.view",
-        "analytics.view",
-        "studies.view",
         "targets.view",
-        "sales.view",
         "customers.view",
         "products.view",
-        "reports.view",
-        "reports.export",
-        "history.view",
         "settings.view",
     ],
     "SUPERVISOR": [
+        "sales-board.view",
+        "categories.view",
         "dashboard.view",
-        "analytics.view",
-        "studies.view",
         "targets.view",
-        "sales.view",
         "customers.view",
         "products.view",
-        "reports.view",
-        "history.view",
     ],
     "VENDEDOR": [
-        "dashboard.view",
+        "sales-board.view",
+        "categories.view",
         "targets.view",
-        "sales.view",
         "customers.view",
         "products.view",
-        "analytics.view",
-        "history.view",
     ],
 }
 

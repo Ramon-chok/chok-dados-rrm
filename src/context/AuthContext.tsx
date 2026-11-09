@@ -1,5 +1,5 @@
 ﻿import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
-import { User, Permission, PageId } from '../types';
+import { User, Permission, PageId, Role } from '../types';
 import {
   getErrorMessage,
   apiListUsers,
@@ -244,16 +244,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return currentUser.permissions?.includes(permission) ?? false;
   };
 
+  /** Perfis que enxergam o grupo Principal (Dashboard e Visão Macro). */
+  const PRINCIPAL_ROLES: Role[] = ['ADMIN', 'GERENTE', 'SUPERVISOR'];
+
   const canAccessPage = (pageId: PageId): boolean => {
     if (!currentUser) return false;
-    if (pageId === 'macro-view') {
-      return currentUser.role === 'ADMIN' || currentUser.role === 'GERENTE' || currentUser.role === 'SUPERVISOR';
+
+    // Principal é restrito: o Vendedor não vê Dashboard nem Visão Macro.
+    if (pageId === 'dashboard' || pageId === 'macro-view') {
+      return PRINCIPAL_ROLES.includes(currentUser.role);
     }
+
     if (currentUser.role === 'ADMIN') return true;
 
     switch (pageId) {
-      case 'dashboard':
-        return hasPermission('dashboard.view');
+      case 'sales-board':
+        return hasPermission('sales-board.view');
+      case 'categories':
+        return hasPermission('categories.view');
       case 'not-positivated':
       case 'top-20-customers':
       case 'top-customers':
@@ -263,31 +271,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return (
           hasPermission('customers.view') ||
           hasPermission('products.view') ||
-          hasPermission('sales.view') ||
           hasPermission('targets.view')
         );
       case 'sar-raio-x':
       case 'sar-base-roteiro':
       case 'sar-verba-indenizatoria':
         return true;
-      case 'analytics':
-        return currentUser.role !== 'VENDEDOR' && hasPermission('analytics.view');
-      case 'studies':
-        return hasPermission('studies.view');
-      case 'targets':
-        return hasPermission('targets.view');
-      case 'history':
-        return currentUser.role !== 'VENDEDOR' && hasPermission('history.view');
-      case 'insights':
-        return hasPermission('analytics.view') || hasPermission('dashboard.view');
-      case 'reports':
-        return hasPermission('reports.view');
       case 'users':
-        return hasPermission('users.view') || currentUser.role === 'ADMIN';
-      case 'imports':
-        return currentUser.role === 'ADMIN';
-      case 'audit':
-        return hasPermission('audit.view') || currentUser.role === 'ADMIN';
+        return hasPermission('users.view');
+      // Importação de metas/definições: só o administrador.
+      case 'targets':
+        return false;
       case 'credits':
       case 'profile':
       case 'settings':

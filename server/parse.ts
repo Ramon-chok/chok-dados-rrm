@@ -37,6 +37,65 @@ export function parseNumeric(raw: unknown): ParseResult<number> {
   return { ok: true, value: n };
 }
 
+/**
+ * Latitude/longitude vinda de planilha (espelho de app.parse.parse_coordinate).
+ *
+ * Nao usa parseNumeric porque a heuristica de separador decimal dele e feita
+ * para dinheiro (",99" no fim = decimal brasileiro) e destruiria uma
+ * coordenada em texto com virgula e mais de 2 casas: "-3,73180" viraria
+ * -373180. Aqui a regra e a de coordenada:
+ *   - "." e "," juntos -> "." e milhar e "," e decimal ("-3.731,80")
+ *   - so ","           -> "," e o decimal ("-3,73180")
+ *   - so "."           -> "." e o decimal ("-3.73180")
+ * Aceita sufixo de hemisferio (N/S/L/E/O/W) e o simbolo de grau.
+ */
+export function parseCoordinate(raw: unknown): ParseResult<number> {
+  if (raw === undefined || raw === null || raw === '') return { ok: true, value: null };
+  if (typeof raw === 'boolean') return { ok: false, error: 'coordenada inválida' };
+  if (typeof raw === 'number') {
+    if (!Number.isFinite(raw)) return { ok: false, error: `coordenada inválida: "${raw}"` };
+    return checkCoordRange(raw, raw);
+  }
+
+  let s = String(raw).trim();
+  if (s === '') return { ok: true, value: null };
+  if (EXCEL_ERROR_RE.test(s)) return { ok: false, error: `coordenada inválida: "${raw}"` };
+
+  // Hemisferio em sufixo: S e O/W sao negativos.
+  let negativeHemisphere = false;
+  const hemi = s.match(/[NSLEOW]$/i);
+  if (hemi) {
+    negativeHemisphere = ['S', 'O', 'W'].includes(hemi[0].toUpperCase());
+    s = s.slice(0, s.length - 1).trim();
+  }
+
+  s = s.replace(/[°º]/g, '').replace(/\s/g, '');
+  if (s === '' || s === '-' || s === '+') return { ok: true, value: null };
+
+  const hasDot = s.includes('.');
+  const hasComma = s.includes(',');
+  if (hasDot && hasComma) {
+    s = s.replace(/\./g, '').replace(',', '.');
+  } else if (hasComma) {
+    s = s.replace(',', '.');
+  }
+
+  let value = Number(s);
+  if (!Number.isFinite(value)) return { ok: false, error: `coordenada inválida: "${raw}"` };
+  if (negativeHemisphere) value = -Math.abs(value);
+  return checkCoordRange(value, raw);
+}
+
+// Fora de [-180, 180] nao e coordenada decimal — quase sempre e a virgula
+// decimal perdida na exportacao da planilha. Rejeitar aqui da uma linha de
+// erro no historico em vez de um ponto no meio do oceano no mapa.
+function checkCoordRange(value: number, raw: unknown): ParseResult<number> {
+  if (Math.abs(value) > 180) {
+    return { ok: false, error: `coordenada fora do intervalo válido: "${raw}"` };
+  }
+  return { ok: true, value };
+}
+
 export function parseInteger(raw: unknown): ParseResult<number> {
   const res = parseNumeric(raw);
   if (!res.ok) return res;

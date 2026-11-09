@@ -53,6 +53,73 @@ def parse_numeric(raw: object) -> ParseResult[float]:
     return True, value
 
 
+def parse_coordinate(raw: object) -> ParseResult[float]:
+    """Latitude/longitude vinda de planilha.
+
+    Não usa parse_numeric porque a heurística de separador decimal dele é
+    feita para dinheiro (",99" no fim = decimal brasileiro) e destruiria uma
+    coordenada em texto com vírgula e mais de 2 casas: "-3,73180" viraria
+    -373180. Aqui a regra é a de coordenada:
+      - "." e "," juntos  -> "." é milhar e "," é decimal ("-3.731,80")
+      - só ","            -> "," é o decimal ("-3,73180")
+      - só "."            -> "." é o decimal ("-3.73180")
+    Aceita sufixo de hemisfério (N/S/L/E/O/W) e o símbolo de grau.
+    """
+    if raw is None or raw == "":
+        return True, None
+    if isinstance(raw, bool):
+        return False, "coordenada inválida"
+    if isinstance(raw, (int, float)):
+        value = float(raw)
+        if not math.isfinite(value):
+            return False, f'coordenada inválida: "{raw}"'
+        return _check_coord_range(value, raw)
+
+    s = str(raw).strip()
+    if s == "":
+        return True, None
+    if _EXCEL_ERROR_RE.match(s):
+        return False, f'coordenada inválida: "{raw}"'
+
+    # Hemisfério em sufixo/prefixo: S e O/W são negativos.
+    negative_hemisphere = False
+    hemi_match = re.search(r"[NSLEOW]$", s, re.I)
+    if hemi_match:
+        negative_hemisphere = hemi_match.group(0).upper() in {"S", "O", "W"}
+        s = s[: hemi_match.start()].strip()
+
+    s = s.replace("°", "").replace("º", "").replace(" ", "")
+    if s in {"", "-", "+"}:
+        return True, None
+
+    has_dot = "." in s
+    has_comma = "," in s
+    if has_dot and has_comma:
+        # "." é separador de milhar, "," é o decimal.
+        s = s.replace(".", "").replace(",", ".")
+    elif has_comma:
+        s = s.replace(",", ".")
+
+    try:
+        value = float(s)
+    except ValueError:
+        return False, f'coordenada inválida: "{raw}"'
+    if not math.isfinite(value):
+        return False, f'coordenada inválida: "{raw}"'
+    if negative_hemisphere:
+        value = -abs(value)
+    return _check_coord_range(value, raw)
+
+
+def _check_coord_range(value: float, raw: object) -> ParseResult[float]:
+    # Fora de [-180, 180] não é coordenada decimal — quase sempre é a vírgula
+    # decimal perdida na exportação da planilha. Rejeitar aqui dá uma linha de
+    # erro no histórico em vez de um ponto no meio do oceano no mapa.
+    if abs(value) > 180:
+        return False, f'coordenada fora do intervalo válido: "{raw}"'
+    return True, value
+
+
 def parse_integer(raw: object) -> ParseResult[int]:
     ok, value = parse_numeric(raw)
     if not ok:

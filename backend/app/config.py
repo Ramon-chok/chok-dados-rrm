@@ -34,6 +34,13 @@ class Settings(BaseSettings):
     login_lock_seconds: int = 15 * 60
     server_host: str = "0.0.0.0"
     server_port: int = 8787
+    # --- Fonte externa de dados (Quadro de Vendas / Categorias) ---------------
+    # Enquanto estiver vazio, os quadros leem as tabelas locais já importadas.
+    # Ao apontar para a API do ERP/BI, app/providers.py passa a buscar lá e as
+    # metas importadas pelo ADMIN continuam servindo de comparativo.
+    external_api_base_url: str = ""
+    external_api_key: str = ""
+    external_api_timeout_seconds: float = 20.0
     # SMTP / email settings
     smtp_host: str = ""
     smtp_port: int = 465

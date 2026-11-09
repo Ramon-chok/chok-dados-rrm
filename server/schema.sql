@@ -663,3 +663,100 @@ BEGIN
   END IF;
 END $vd_cod$;
 CREATE INDEX IF NOT EXISTS idx_vend_det_vendedor ON vendedor_detalhado(codigo_vendedor, data_referencia);
+
+-- ---------------------------------------------------------------------------
+-- Base de Roteiro — uma linha por ponto de roteiro do cliente (ver tipo
+-- "base_roteiro" em app.import_types / server/importTypes.ts e a configuração
+-- de colunas em src/pages/admin/Metas.tsx). Alimenta o mapa de
+-- src/pages/sar/BaseRoteiro.tsx.
+--
+-- O mesmo cliente aparece legitimamente em várias linhas (dias e semanas
+-- diferentes de visitação), então a tabela tem id próprio e cada importação
+-- substitui o snapshot inteiro da data_referencia (replace_snapshot_rows).
+--
+-- "dia" segue a convenção da planilha: 2=segunda, 3=terça, 4=quarta,
+-- 5=quinta, 6=sexta (1=domingo e 7=sábado são aceitos mas não roteirizados).
+-- "semana" é TEXT porque a planilha usa combinações ("1", "2", "3", "4",
+-- "1,3", "2,4", "1234") que não cabem em um inteiro.
+CREATE TABLE IF NOT EXISTS base_roteiro (
+  id                BIGSERIAL PRIMARY KEY,
+  data_referencia   DATE NOT NULL,
+  cod_cliente       TEXT NOT NULL,
+  razao_social      TEXT,
+  nome_fantasia     TEXT,
+  cod_vendedor      TEXT NOT NULL,
+  vendedor          TEXT,
+  equipe            TEXT,
+  municipio         TEXT,
+  uf                TEXT,
+  bairro            TEXT,
+  endereco          TEXT,
+  -- NUMERIC(10,7): ~1cm de resolução, suficiente para ponto de venda, e
+  -- cabe qualquer coordenada decimal de -180 a 180 (ver parse_coordinate).
+  latitude          NUMERIC(10,7),
+  longitude         NUMERIC(10,7),
+  dia               INT,
+  semana            TEXT,
+  sequencia         INT,
+  frequencia        TEXT,
+  mes_referencia    INT NOT NULL,
+  ano_referencia    INT NOT NULL,
+  data_importacao   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  importacao_id     BIGINT
+);
+CREATE INDEX IF NOT EXISTS idx_base_rot_data ON base_roteiro(data_referencia);
+CREATE INDEX IF NOT EXISTS idx_base_rot_periodo ON base_roteiro(ano_referencia, mes_referencia);
+CREATE INDEX IF NOT EXISTS idx_base_rot_vendedor ON base_roteiro(cod_vendedor, data_referencia);
+CREATE INDEX IF NOT EXISTS idx_base_rot_equipe ON base_roteiro(equipe);
+CREATE INDEX IF NOT EXISTS idx_base_rot_municipio ON base_roteiro(municipio);
+-- Instalações que já tinham a tabela de uma revisão anterior.
+ALTER TABLE base_roteiro ADD COLUMN IF NOT EXISTS razao_social TEXT;
+ALTER TABLE base_roteiro ADD COLUMN IF NOT EXISTS nome_fantasia TEXT;
+ALTER TABLE base_roteiro ADD COLUMN IF NOT EXISTS vendedor TEXT;
+ALTER TABLE base_roteiro ADD COLUMN IF NOT EXISTS equipe TEXT;
+ALTER TABLE base_roteiro ADD COLUMN IF NOT EXISTS municipio TEXT;
+ALTER TABLE base_roteiro ADD COLUMN IF NOT EXISTS uf TEXT;
+ALTER TABLE base_roteiro ADD COLUMN IF NOT EXISTS bairro TEXT;
+ALTER TABLE base_roteiro ADD COLUMN IF NOT EXISTS endereco TEXT;
+ALTER TABLE base_roteiro ADD COLUMN IF NOT EXISTS latitude NUMERIC(10,7);
+ALTER TABLE base_roteiro ADD COLUMN IF NOT EXISTS longitude NUMERIC(10,7);
+ALTER TABLE base_roteiro ADD COLUMN IF NOT EXISTS dia INT;
+ALTER TABLE base_roteiro ADD COLUMN IF NOT EXISTS semana TEXT;
+ALTER TABLE base_roteiro ADD COLUMN IF NOT EXISTS sequencia INT;
+ALTER TABLE base_roteiro ADD COLUMN IF NOT EXISTS frequencia TEXT;
+-- Precisão antiga (NUMERIC(9,6)) truncava a 7ª casa — alinha sem perder linhas.
+ALTER TABLE base_roteiro ALTER COLUMN latitude TYPE NUMERIC(10,7);
+ALTER TABLE base_roteiro ALTER COLUMN longitude TYPE NUMERIC(10,7);
+
+-- ---------------------------------------------------------------------------
+-- Verba Indenizatória — fechamento da verba de rota por vendedor (ver tipo
+-- "verba_indenizatoria" em app.import_types / server/importTypes.ts).
+-- Snapshot diário/mensal: uma linha por (data_referencia, cod_vendedor);
+-- reenviar o mesmo período faz UPDATE, um período novo sempre cria linha nova.
+CREATE TABLE IF NOT EXISTS verba_indenizatoria (
+  data_referencia     DATE NOT NULL,
+  cod_vendedor        TEXT NOT NULL,
+  vendedor            TEXT,
+  equipe              TEXT,
+  km_total            NUMERIC(12,2),
+  verba_indenizatoria NUMERIC(14,2),
+  desconto            NUMERIC(14,2),
+  reembolso           NUMERIC(14,2),
+  a_pagar             NUMERIC(14,2),
+  mes_referencia      INT NOT NULL,
+  ano_referencia      INT NOT NULL,
+  data_importacao     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  importacao_id       BIGINT,
+  PRIMARY KEY (data_referencia, cod_vendedor)
+);
+CREATE INDEX IF NOT EXISTS idx_verba_periodo ON verba_indenizatoria(ano_referencia, mes_referencia);
+CREATE INDEX IF NOT EXISTS idx_verba_vendedor ON verba_indenizatoria(cod_vendedor, data_referencia);
+CREATE INDEX IF NOT EXISTS idx_verba_equipe ON verba_indenizatoria(equipe);
+-- Instalações que já tinham a tabela de uma revisão anterior.
+ALTER TABLE verba_indenizatoria ADD COLUMN IF NOT EXISTS vendedor TEXT;
+ALTER TABLE verba_indenizatoria ADD COLUMN IF NOT EXISTS equipe TEXT;
+ALTER TABLE verba_indenizatoria ADD COLUMN IF NOT EXISTS km_total NUMERIC(12,2);
+ALTER TABLE verba_indenizatoria ADD COLUMN IF NOT EXISTS verba_indenizatoria NUMERIC(14,2);
+ALTER TABLE verba_indenizatoria ADD COLUMN IF NOT EXISTS desconto NUMERIC(14,2);
+ALTER TABLE verba_indenizatoria ADD COLUMN IF NOT EXISTS reembolso NUMERIC(14,2);
+ALTER TABLE verba_indenizatoria ADD COLUMN IF NOT EXISTS a_pagar NUMERIC(14,2);

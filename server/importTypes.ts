@@ -9,7 +9,17 @@
 // chave, então o mesmo período é atualizado (UPDATE) e um novo período sempre
 // cria uma linha nova (INSERT) — nunca se sobrescreve o passado.
 
-export type ColumnKind = 'text' | 'numeric' | 'integer' | 'date' | 'boolean' | 'jsonb' | 'time' | 'duration';
+export type ColumnKind =
+  | 'text'
+  | 'numeric'
+  | 'integer'
+  | 'date'
+  | 'boolean'
+  | 'jsonb'
+  | 'time'
+  | 'duration'
+  // Latitude/longitude: heuristica decimal propria (ver parseCoordinate).
+  | 'coord';
 
 export interface ImportColumn {
   name: string;
@@ -493,6 +503,61 @@ export const IMPORT_TYPE_CONFIGS: Record<string, ImportTypeConfig> = {
       { name: 'perc_positivacao_acumulado', kind: 'numeric' },
       { name: 'acumulado_positivacao_fora_rota', kind: 'integer' },
       { name: 'perc_positivacao_fora_rota', kind: 'numeric' },
+    ],
+  },
+
+  // Base de Roteiro — um ponto de roteiro do cliente por linha, com as
+  // coordenadas usadas no mapa de src/pages/sar/BaseRoteiro.tsx. O mesmo
+  // cliente aparece legitimamente varias vezes (dias/semanas diferentes), por
+  // isso PK propria (id) + replaceSnapshotRows; keyColumns aqui so exige que
+  // cliente e vendedor estejam preenchidos.
+  //
+  // "dia" segue a convencao da planilha (2=segunda ... 6=sexta) e "semana" e
+  // texto porque a planilha usa combinacoes ("1", "1,3", "2,4", "1234").
+  base_roteiro: {
+    id: 'base_roteiro',
+    label: 'Base de Roteiro',
+    table: 'base_roteiro',
+    keyColumns: ['cod_cliente', 'cod_vendedor'],
+    snapshot: true,
+    replaceSnapshotRows: true,
+    columns: [
+      { name: 'cod_cliente', kind: 'text' },
+      { name: 'razao_social', kind: 'text' },
+      { name: 'nome_fantasia', kind: 'text' },
+      { name: 'cod_vendedor', kind: 'text' },
+      { name: 'vendedor', kind: 'text' },
+      { name: 'equipe', kind: 'text' },
+      { name: 'municipio', kind: 'text' },
+      { name: 'uf', kind: 'text' },
+      { name: 'bairro', kind: 'text' },
+      { name: 'endereco', kind: 'text' },
+      { name: 'latitude', kind: 'coord' },
+      { name: 'longitude', kind: 'coord' },
+      { name: 'dia', kind: 'integer' },
+      { name: 'semana', kind: 'text' },
+      { name: 'sequencia', kind: 'integer' },
+      { name: 'frequencia', kind: 'text' },
+    ],
+  },
+
+  // Verba Indenizatoria — fechamento da verba de rota por vendedor.
+  // Snapshot: uma linha por (data_referencia, cod_vendedor).
+  verba_indenizatoria: {
+    id: 'verba_indenizatoria',
+    label: 'Verba Indenizatória',
+    table: 'verba_indenizatoria',
+    keyColumns: ['data_referencia', 'cod_vendedor'],
+    snapshot: true,
+    columns: [
+      { name: 'cod_vendedor', kind: 'text' },
+      { name: 'vendedor', kind: 'text' },
+      { name: 'equipe', kind: 'text' },
+      { name: 'km_total', kind: 'numeric' },
+      { name: 'verba_indenizatoria', kind: 'numeric' },
+      { name: 'desconto', kind: 'numeric' },
+      { name: 'reembolso', kind: 'numeric' },
+      { name: 'a_pagar', kind: 'numeric' },
     ],
   },
 

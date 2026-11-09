@@ -986,3 +986,372 @@ def sar_raiox_detalhe(
             for r in rows
         ],
     }
+
+
+# Teto de pontos devolvidos ao mapa de uma vez. O mapa desenha um
+# CircleMarker por ponto: acima desta ordem de grandeza o navegador começa a
+# engasgar no pan/zoom, então é melhor cortar e avisar na tela (campo
+# "truncado") do que entregar um mapa travado.
+MAX_PONTOS_ROTEIRO = 20000
+
+
+@router.get("/sar/base-roteiro")
+@cached()
+def sar_base_roteiro(
+    data: str | None = None,
+    equipe: str | None = None,
+    cod_vendedor: str | None = None,
+    municipio: str | None = None,
+    dia: int | None = Query(default=None, ge=1, le=7),
+    semana: str | None = None,
+    user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Pontos da Base de Roteiro (tabela base_roteiro) para o mapa de
+    src/pages/sar/BaseRoteiro.tsx.
+
+    A tabela é um snapshot: cada importação regrava a data_referencia inteira.
+    Sem o parâmetro `data`, usa a importação mais recente disponível dentro do
+    recorte RBAC do usuário — assim a tela abre já com a base vigente.
+
+    Os filtros de dia/semana/vendedor/equipe/cidade são opcionais aqui: a tela
+    filtra os pontos no cliente (para o mapa responder sem ida ao servidor), e
+    estes parâmetros existem para recortar bases muito grandes antes do envio.
+    """
+    scope = scope_filters(user)
+
+    # Recorte RBAC aplicado também na descoberta do snapshot mais recente: um
+    # vendedor não deve "ver" a existência de uma data que só tem linhas de
+    # outra equipe.
+    scope_parts: list[str] = []
+    scope_params: list[Any] = []
+    if scope.get("equipe"):
+        scope_parts.append("equipe = %s")
+        scope_params.append(scope["equipe"])
+    if scope.get("vendedor"):
+        scope_parts.append("cod_vendedor = %s")
+        scope_params.append(scope["vendedor"])
+    scope_where = ("WHERE " + " AND ".join(scope_parts)) if scope_parts else ""
+
+    data_ok: str | None = None
+    if data:
+        ok, parsed = parse_date_only(data)
+        if not ok or not parsed:
+            raise HTTPException(status_code=400, detail=f'Data inválida em "data": "{data}".')
+        data_ok = parsed
+
+    with get_connection() as conn:
+        datas_rows = conn.execute(
+            f"""
+            SELECT DISTINCT data_referencia
+            FROM base_roteiro
+            {scope_where}
+            ORDER BY data_referencia DESC
+            LIMIT 60
+            """,
+            scope_params,
+        ).fetchall()
+        datas_disponiveis = [iso(r["data_referencia"]) for r in datas_rows]
+
+        # Sem base importada ainda: devolve a estrutura vazia (a tela mostra o
+        # estado "nenhuma base importada" em vez de um erro).
+        if not datas_disponiveis:
+            return {
+                "data": None,
+                "datasDisponiveis": [],
+                "total": 0,
+                "semCoordenada": 0,
+                "truncado": False,
+                "filtros": {
+                    "vendedores": [],
+                    "equipes": [],
+                    "municipios": [],
+                    "dias": [],
+                    "semanas": [],
+                },
+                "rows": [],
+            }
+
+        if data_ok and data_ok not in datas_disponiveis:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Nenhuma Base de Roteiro importada para a data {data_ok}.",
+            )
+        data_efetiva = data_ok or datas_disponiveis[0]
+
+        parts = ["b.data_referencia = %s"]
+        params: list[Any] = [data_efetiva]
+        if scope.get("equipe"):
+            parts.append("b.equipe = %s")
+            params.append(scope["equipe"])
+        if scope.get("vendedor"):
+            parts.append("b.cod_vendedor = %s")
+            params.append(scope["vendedor"])
+        # Filtros opcionais do usuário (recorte antes do envio).
+        if equipe:
+            parts.append("b.equipe = %s")
+            params.append(equipe)
+        if cod_vendedor:
+            parts.append("b.cod_vendedor = %s")
+            params.append(cod_vendedor)
+        if municipio:
+            parts.append("b.municipio = %s")
+            params.append(municipio)
+        if dia is not None:
+            parts.append("b.dia = %s")
+            params.append(dia)
+        if semana:
+            parts.append("BTRIM(b.semana) = %s")
+            params.append(semana.strip())
+        where = " AND ".join(parts)
+
+        resumo = conn.execute(
+            f"""
+            SELECT COUNT(*) AS total,
+                   COUNT(*) FILTER (WHERE b.latitude IS NULL OR b.longitude IS NULL) AS sem_coordenada
+            FROM base_roteiro b
+            WHERE {where}
+            """,
+            params,
+        ).fetchone()
+        total = int(resumo["total"] or 0)
+        sem_coordenada = int(resumo["sem_coordenada"] or 0)
+
+        rows = conn.execute(
+            f"""
+            SELECT b.cod_cliente, b.razao_social, b.nome_fantasia,
+                   b.cod_vendedor,
+                   COALESCE(b.vendedor, v.nome, b.cod_vendedor) AS vendedor,
+                   COALESCE(b.equipe, v.equipe) AS equipe,
+                   b.municipio, b.uf, b.bairro, b.endereco,
+                   b.latitude, b.longitude, b.dia, b.semana,
+                   b.sequencia, b.frequencia
+            FROM base_roteiro b
+            LEFT JOIN vendedores v ON v.cod_vendedor = b.cod_vendedor
+            WHERE {where}
+            ORDER BY b.cod_vendedor, b.dia NULLS LAST, b.sequencia NULLS LAST, b.cod_cliente
+            LIMIT %s
+            """,
+            [*params, MAX_PONTOS_ROTEIRO],
+        ).fetchall()
+
+        # Opções de filtro: calculadas no snapshot inteiro (só com o recorte
+        # RBAC), não no resultado já filtrado — assim os combos da tela não
+        # "perdem" opções conforme o usuário filtra.
+        opt_parts = ["b.data_referencia = %s"]
+        opt_params: list[Any] = [data_efetiva]
+        if scope.get("equipe"):
+            opt_parts.append("b.equipe = %s")
+            opt_params.append(scope["equipe"])
+        if scope.get("vendedor"):
+            opt_parts.append("b.cod_vendedor = %s")
+            opt_params.append(scope["vendedor"])
+        opt_where = " AND ".join(opt_parts)
+
+        vend_rows = conn.execute(
+            f"""
+            SELECT b.cod_vendedor,
+                   COALESCE(MAX(b.vendedor), MAX(v.nome), b.cod_vendedor) AS vendedor,
+                   COUNT(*) AS pontos
+            FROM base_roteiro b
+            LEFT JOIN vendedores v ON v.cod_vendedor = b.cod_vendedor
+            WHERE {opt_where}
+            GROUP BY b.cod_vendedor
+            ORDER BY 2
+            """,
+            opt_params,
+        ).fetchall()
+        equipe_rows = conn.execute(
+            f"""
+            SELECT DISTINCT b.equipe
+            FROM base_roteiro b
+            WHERE {opt_where} AND NULLIF(BTRIM(b.equipe), '') IS NOT NULL
+            ORDER BY 1
+            """,
+            opt_params,
+        ).fetchall()
+        mun_rows = conn.execute(
+            f"""
+            SELECT DISTINCT b.municipio
+            FROM base_roteiro b
+            WHERE {opt_where} AND NULLIF(BTRIM(b.municipio), '') IS NOT NULL
+            ORDER BY 1
+            """,
+            opt_params,
+        ).fetchall()
+        dia_rows = conn.execute(
+            f"""
+            SELECT DISTINCT b.dia
+            FROM base_roteiro b
+            WHERE {opt_where} AND b.dia IS NOT NULL
+            ORDER BY 1
+            """,
+            opt_params,
+        ).fetchall()
+        semana_rows = conn.execute(
+            f"""
+            SELECT DISTINCT BTRIM(b.semana) AS semana
+            FROM base_roteiro b
+            WHERE {opt_where} AND NULLIF(BTRIM(b.semana), '') IS NOT NULL
+            ORDER BY 1
+            """,
+            opt_params,
+        ).fetchall()
+
+    def txt(value: Any) -> str | None:
+        if value is None:
+            return None
+        cleaned = str(value).strip()
+        return cleaned or None
+
+    def coord(value: Any) -> float | None:
+        # latitude/longitude são opcionais: cliente sem geocodificação entra na
+        # contagem mas não vira ponto no mapa.
+        return float(value) if value is not None else None
+
+    return {
+        "data": data_efetiva,
+        "datasDisponiveis": datas_disponiveis,
+        "total": total,
+        "semCoordenada": sem_coordenada,
+        "truncado": total > len(rows),
+        "filtros": {
+            "vendedores": [
+                {
+                    "codVendedor": r["cod_vendedor"],
+                    "vendedor": txt(r["vendedor"]) or r["cod_vendedor"],
+                    "pontos": int(r["pontos"] or 0),
+                }
+                for r in vend_rows
+            ],
+            "equipes": [txt(r["equipe"]) for r in equipe_rows if txt(r["equipe"])],
+            "municipios": [txt(r["municipio"]) for r in mun_rows if txt(r["municipio"])],
+            "dias": [int(r["dia"]) for r in dia_rows],
+            "semanas": [txt(r["semana"]) for r in semana_rows if txt(r["semana"])],
+        },
+        "rows": [
+            {
+                "codCliente": txt(r["cod_cliente"]),
+                "razaoSocial": txt(r["razao_social"]),
+                "nomeFantasia": txt(r["nome_fantasia"]),
+                "codVendedor": txt(r["cod_vendedor"]),
+                "vendedor": txt(r["vendedor"]),
+                "equipe": txt(r["equipe"]),
+                "municipio": txt(r["municipio"]),
+                "uf": txt(r["uf"]),
+                "bairro": txt(r["bairro"]),
+                "endereco": txt(r["endereco"]),
+                "latitude": coord(r["latitude"]),
+                "longitude": coord(r["longitude"]),
+                "dia": int(r["dia"]) if r["dia"] is not None else None,
+                "semana": txt(r["semana"]),
+                "sequencia": int(r["sequencia"]) if r["sequencia"] is not None else None,
+                "frequencia": txt(r["frequencia"]),
+            }
+            for r in rows
+        ],
+    }
+
+
+@router.get("/sar/verba-indenizatoria")
+@cached()
+def sar_verba_indenizatoria(
+    ano: int | None = None,
+    mes: int | None = None,
+    dia: str | None = None,
+    user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Verba Indenizatória (tabela verba_indenizatoria) para
+    src/pages/sar/VerbaIndenizatoria.tsx.
+
+    Mesma mecânica de /sar/raiox: filtra por dia exato (`dia`) ou por período
+    (`ano` + `mes` opcional). No período os valores são somados por vendedor —
+    km e dinheiro são aditivos, ao contrário dos percentuais do Raio-X."""
+    if mes is not None and not (1 <= mes <= 12):
+        raise HTTPException(status_code=400, detail='Parâmetro "mes" deve estar entre 1 e 12.')
+
+    dia_ok: str | None = None
+    if dia:
+        ok, parsed = parse_date_only(dia)
+        if not ok or not parsed:
+            raise HTTPException(status_code=400, detail=f'Data inválida em "dia": "{dia}".')
+        dia_ok = parsed
+
+    ano_efetivo = ano or date_cls.today().year
+    scope = scope_filters(user)
+
+    params: list[Any] = []
+    parts = ["1=1"]
+    if dia_ok:
+        parts.append("x.data_referencia = %s")
+        params.append(dia_ok)
+    else:
+        parts.append("x.ano_referencia = %s")
+        params.append(ano_efetivo)
+        if mes:
+            parts.append("x.mes_referencia = %s")
+            params.append(mes)
+    if scope.get("equipe"):
+        parts.append("x.equipe = %s")
+        params.append(scope["equipe"])
+    if scope.get("vendedor"):
+        parts.append("x.cod_vendedor = %s")
+        params.append(scope["vendedor"])
+
+    with get_connection() as conn:
+        rows = conn.execute(
+            f"""
+            SELECT x.cod_vendedor,
+                   COALESCE(MAX(x.vendedor), MAX(v.nome), x.cod_vendedor) AS vendedor,
+                   COALESCE(MAX(x.equipe), MAX(v.equipe)) AS equipe,
+                   COUNT(DISTINCT x.data_referencia) AS periodos,
+                   COALESCE(SUM(x.km_total), 0) AS km_total,
+                   COALESCE(SUM(x.verba_indenizatoria), 0) AS verba_indenizatoria,
+                   COALESCE(SUM(x.desconto), 0) AS desconto,
+                   COALESCE(SUM(x.reembolso), 0) AS reembolso,
+                   COALESCE(SUM(x.a_pagar), 0) AS a_pagar
+            FROM verba_indenizatoria x
+            LEFT JOIN vendedores v ON v.cod_vendedor = x.cod_vendedor
+            WHERE {" AND ".join(parts)}
+            GROUP BY x.cod_vendedor
+            ORDER BY equipe NULLS LAST, vendedor
+            """,
+            params,
+        ).fetchall()
+
+        anos_rows = conn.execute(
+            "SELECT DISTINCT ano_referencia FROM verba_indenizatoria ORDER BY ano_referencia DESC"
+        ).fetchall()
+
+    def txt(value: Any) -> str | None:
+        if value is None:
+            return None
+        cleaned = str(value).strip()
+        return cleaned or None
+
+    out_rows = [
+        {
+            "codVendedor": r["cod_vendedor"],
+            "vendedor": txt(r["vendedor"]) or r["cod_vendedor"],
+            "equipe": txt(r["equipe"]),
+            "periodos": int(r["periodos"] or 0),
+            "kmTotal": round(num(r["km_total"]), 2),
+            "verbaIndenizatoria": round(num(r["verba_indenizatoria"]), 2),
+            "desconto": round(num(r["desconto"]), 2),
+            "reembolso": round(num(r["reembolso"]), 2),
+            "aPagar": round(num(r["a_pagar"]), 2),
+        }
+        for r in rows
+    ]
+
+    anos_disponiveis = [int(a["ano_referencia"]) for a in anos_rows]
+    if ano_efetivo not in anos_disponiveis:
+        anos_disponiveis = sorted({*anos_disponiveis, ano_efetivo}, reverse=True)
+
+    return {
+        "mode": "dia" if dia_ok else "periodo",
+        "ano": ano_efetivo,
+        "mes": mes if not dia_ok else None,
+        "dia": dia_ok,
+        "anosDisponiveis": anos_disponiveis,
+        "rows": out_rows,
+    }

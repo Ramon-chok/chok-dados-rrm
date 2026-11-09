@@ -16,23 +16,22 @@ import { ObjetivosPage } from './pages/commercial/Objetivos';
 import { RaioXPage } from './pages/sar/RaioX';
 import { BaseRoteiroPage } from './pages/sar/BaseRoteiro';
 import { VerbaIndenizatoriaPage } from './pages/sar/VerbaIndenizatoria';
-import { VendasPage } from './pages/analytics/Vendas';
-import { AnalisesPage } from './pages/analytics/Analises';
-import { HistoricoPage } from './pages/analytics/Historico';
-import { InsightsPage } from './pages/analytics/Insights';
-import { EstudosPage } from './pages/analytics/Estudos';
+import { QuadroVendasPage } from './pages/board/QuadroVendas';
+import { CategoriasPage } from './pages/board/Categorias';
 import { ProfilePage } from './pages/account/Profile';
 import { SettingsPage } from './pages/account/Settings';
 import { CreditosPage } from './pages/account/Creditos';
 import { UsersPage } from './pages/admin/Users';
-import { ImportacaoPage } from './pages/admin/Importacao';
+import { MetasPage } from './pages/admin/Metas';
 import { ShieldAlert, ArrowLeft } from 'lucide-react';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 
 function MainApp() {
   const { isAuthenticated, currentUser, canAccessPage, isLoading } = useAuth();
   const { t } = useTheme();
-  const [currentPage, setCurrentPage] = useState<PageId>('dashboard');
+  // Quadro de Vendas é a primeira tela do menu e a única visível para todos os
+  // perfis — Dashboard/Visão Macro são restritos a ADMIN, GERENTE e SUPERVISOR.
+  const [currentPage, setCurrentPage] = useState<PageId>('sales-board');
 
   if (isLoading) {
     return (
@@ -106,7 +105,7 @@ function MainApp() {
           </div>
 
           <button
-            onClick={() => setCurrentPage('dashboard')}
+            onClick={() => setCurrentPage('sales-board')}
             style={{
               display: 'inline-flex',
               alignItems: 'center',
@@ -122,13 +121,17 @@ function MainApp() {
             }}
           >
             <ArrowLeft size={16} />
-            <span>Retornar ao Dashboard</span>
+            <span>Retornar ao Quadro de Vendas</span>
           </button>
         </div>
       );
     }
 
     switch (currentPage) {
+      case 'sales-board':
+        return <QuadroVendasPage />;
+      case 'categories':
+        return <CategoriasPage />;
       case 'macro-view':
         return <VisaoMacroPage />;
       case 'dashboard':
@@ -151,16 +154,6 @@ function MainApp() {
         return <BaseRoteiroPage />;
       case 'sar-verba-indenizatoria':
         return <VerbaIndenizatoriaPage />;
-      case 'sales':
-        return <VendasPage />;
-      case 'analytics':
-        return <AnalisesPage />;
-      case 'history':
-        return <HistoricoPage />;
-      case 'insights':
-        return <InsightsPage />;
-      case 'studies':
-        return <EstudosPage />;
       case 'profile':
         return <ProfilePage />;
       case 'settings':
@@ -169,10 +162,10 @@ function MainApp() {
         return <CreditosPage />;
       case 'users':
         return <UsersPage />;
-      case 'imports':
-        return <ImportacaoPage />;
+      case 'targets':
+        return <MetasPage />;
       default:
-        return <DashboardPage />;
+        return <QuadroVendasPage />;
     }
   };
 

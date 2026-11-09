@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 import {
@@ -42,7 +42,7 @@ interface ImportProgressState {
   phase: 'preparing' | 'uploading' | 'finishing';
 }
 
-export type ImportType = 'sortimento' | 'top_clientes' | 'dados_app' | 'nao_positivados' | 'raiox' | 'vendedor_detalhado';
+export type ImportType = 'metas' | 'verba_indenizatoria' | 'raiox' | 'base_roteiro';
 
 interface ImportSheetOption {
   /** Identificador interno da aba dentro do tipo de importação. */
@@ -86,272 +86,75 @@ interface ImportTypeOption {
   sheets: ImportSheetOption[];
 }
 
+// Esta tela importa as metas/definições comerciais e as planilhas
+// operacionais do SAR (Verba Indenizatória, Raio-X e Base de Roteiro). Os
+// valores realizados do comercial NÃO são carregados por planilha: eles vêm
+// das APIs externas (ver backend/app/providers.py) e são comparados contra as
+// metas importadas aqui.
+//
+// Para acrescentar um novo conjunto, basta adicionar outro item neste array
+// com as colunas da planilha — o assistente de importação é genérico e já
+// lida com N abas. O `id` precisa bater com a chave do tipo em
+// backend/app/import_types.py (e no espelho server/importTypes.ts).
 const IMPORT_TYPES: ImportTypeOption[] = [
   {
-    id: 'sortimento',
-    label: 'Lista de Sortimento',
-    description: 'Catálogo de produtos do sortimento: código, descrição, fornecedor e categoria',
-    templateFile: '/templates/importacao/sortimento.xlsx',
+    id: 'metas',
+    label: 'Metas Comerciais',
+    description:
+      'Meta de faturamento e de cobertura por vendedor e categoria, com o mês de referência em ano_mes (formato AAAA-MM).',
+    templateFile: '/templates/importacao/metas.xlsx',
     sheets: [
       {
-        key: 'sortimento',
+        key: 'metas',
+        // Vazio = usa a primeira aba do arquivo, sem exigir um nome específico.
         sheetName: '',
-        label: 'Sortimento',
-        columns: ['cod_produto', 'produto', 'fabricante', 'categoria', 'linha'],
+        label: 'Metas',
+        // Nomes de sistema — devem bater com backend/app/import_types.py,
+        // entrada "metas" (tabela metas_mensais).
+        columns: ['ano_mes', 'cod_vendedor', 'fabricante', 'meta_faturamento', 'meta_cobertura'],
         headerHints: {
-          cod_produto: 'CÓDIGO',
-          produto: 'PRODUTO',
-          fabricante: 'FABRICANTE',
-          categoria: 'CATEGORIA',
-          linha: 'LINHA',
+          ano_mes: 'ANO/MÊS',
+          cod_vendedor: 'CÓDIGO VENDEDOR',
+          fabricante: 'CATEGORIA',
+          meta_faturamento: 'META FATURAMENTO',
+          meta_cobertura: 'META COBERTURA',
         },
       },
     ],
   },
   {
-    id: 'top_clientes',
-    label: 'Top Clientes',
+    id: 'verba_indenizatoria',
+    label: 'Verba Indenizatória',
     description:
-      'Ranking de clientes por vendedor, equipe e gerência (aba "top_20_clientes") e venda total no mês por cliente (aba "top_clientes")',
-    templateFile: '/templates/importacao/top_clientes.xlsx',
+      'Fechamento da verba de rota por vendedor: km total, verba, desconto, reembolso e o valor a pagar. Uma linha por vendedor no período informado na Data de Referência.',
+    templateFile: '/templates/importacao/verba_indenizatoria.xlsx',
     sheets: [
       {
-        key: 'top_20_clientes',
-        sheetName: 'top_20_clientes',
-        label: 'Top 20 Clientes (Vendedor / Equipe / Gerência)',
+        key: 'verba_indenizatoria',
+        // Vazio = usa a primeira aba do arquivo, sem exigir nome específico.
+        sheetName: '',
+        label: 'Verba Indenizatória',
+        // Nomes de sistema — devem bater com backend/app/import_types.py,
+        // entrada "verba_indenizatoria" (tabela verba_indenizatoria).
         columns: [
-          'nivel',
-          'gerencia',
+          'cod_vendedor',
+          'vendedor',
           'equipe',
-          'cod_vendedor',
-          'nome_vendedor',
-          'pasta',
-          'cod_cliente',
-          'cliente_redes',
-          'trimestre_25',
-          'trimestre_26',
-          'pct_cresc_trimestre',
-          'mes_25',
-          'mes_26',
-          'pct_cresc_mes',
+          'km_total',
+          'verba_indenizatoria',
+          'desconto',
+          'reembolso',
+          'a_pagar',
         ],
         headerHints: {
-          nivel: 'Nível',
-          gerencia: 'Gerências',
-          equipe: 'Equipes',
-          cod_vendedor: 'Cod',
-          nome_vendedor: 'Vendedor',
-          pasta: 'Pasta',
-          cod_cliente: 'Cod cliente',
-          cliente_redes: 'Cliente/Redes',
-          trimestre_25: 'Trimestre 25',
-          trimestre_26: 'Trimestre 26',
-          pct_cresc_trimestre: '% Cresc.',
-          // A planilha real repete "% Cresc." (trimestre e mês) — a 2ª
-          // ocorrência é desambiguada para "% Cresc. (2)" na leitura (ver
-          // dedup de cabeçalhos em handleFileChange).
-          pct_cresc_mes: '% Cresc. (2)',
-          // mes_25/mes_26: cabeçalho real é a própria data do mês (muda a
-          // cada carga) — sem texto fixo para casar automaticamente, o
-          // usuário escolhe manualmente no mapeamento.
-        },
-      },
-      {
-        key: 'top_clientes',
-        sheetName: 'top_clientes',
-        label: 'Top Clientes (Venda Total no Mês)',
-        // gerencia/equipe/cod_vendedor/nome_vendedor vêm junto para o
-        // Dashboard poder filtrar o Top 10 Clientes por equipe/vendedor
-        // (Gerência vê a empresa toda, Supervisor só a própria equipe,
-        // Vendedor só os clientes associados a ele).
-        columns: [
-          'gerencia',
-          'equipe',
-          'cod_vendedor',
-          'nome_vendedor',
-          'cod_cliente',
-          'cliente',
-          'municipio',
-          'venda_total_mes',
-        ],
-        // Na planilha real desta aba, as 3 primeiras linhas são filtros da
-        // tabela dinâmica (tp_ped / dt_ped) — o cabeçalho de verdade só
-        // aparece na linha 4.
-        headerRow: 4,
-        headerHints: {
-          gerencia: 'descrição gerência',
-          equipe: 'nome da equipe',
-          cod_vendedor: 'cd_vend',
-          nome_vendedor: 'nome vendedor',
-          cod_cliente: 'cd_clien',
-          cliente: 'razão social',
-          municipio: 'municipio',
-          venda_total_mes: 'Soma de vl_venda',
-        },
-      },
-    ],
-  },
-  {
-    id: 'dados_app',
-    label: 'Dados App',
-    description:
-      'Indicadores consolidados do aplicativo: Mês (com fórmulas), Positivação e Categorias (com fórmulas)',
-    templateFile: '/templates/importacao/dados_app.xlsx',
-    sheets: [
-      {
-        key: 'mes',
-        sheetName: 'Mês',
-        label: 'Mês',
-        // Nomes de sistema (devem bater com backend/app/import_types.py).
-        // headerHints mapeia cada um para o cabeçalho real da planilha.
-        columns: [
-          'cod_vendedor',
-          'gerencia',
-          'nome_vendedor',
-          'meta_faturamento',
-          'realizado_faturamento',
-          'meta_cobertura',
-          'realizado_cobertura',
-          'meta_sortimento',
-          'realizado_sortimento',
-          'pct_margem',
-          'data_inicial_faseamento',
-          'realizado_faseamento',
-          'meta_faseamento',
-          'realizado_faseamento_2',
-          'data_inicial_desconcentracao',
-          'data_final_desconcentracao',
-          'meta_desconcentracao',
-          'realizado_desconcentracao',
-          'visitas_diaria',
-          'positivacao_diaria',
-          'fora_de_rota_diaria',
-          'visitas_acumulada',
-          'positivacao_acumulada',
-          'fora_de_rota_acumulada',
-          'data_inicial_faseamento_ii',
-          'data_final_faseamento_ii',
-          'meta_faseamento_ii',
-          'realizado_faseamento_ii',
-          'data_inicial_desafio',
-          'data_final_desafio',
-          'meta_desafio',
-          'realizado_desafio',
-        ],
-        headerHints: {
-          cod_vendedor: 'Vendedor',
-          gerencia: 'Gerência',
-          nome_vendedor: 'Nome Vendedor',
-          meta_faturamento: 'Meta Faturamento',
-          realizado_faturamento: 'Realizado Faturamento',
-          meta_cobertura: 'Meta Cobertura',
-          realizado_cobertura: 'Realizado Cobertura',
-          meta_sortimento: 'Meta Sortimento',
-          realizado_sortimento: 'Realizado Sortimento',
-          pct_margem: '%Margem',
-          data_inicial_faseamento: 'Data Inicial Faseamento',
-          realizado_faseamento: 'Realizado Faseamento',
-          meta_faseamento: 'Meta Faseamento',
-          // Planilhas às vezes repetem o mesmo título; o parser desambigua com " (2)".
-          realizado_faseamento_2: 'Realizado Faseamento (2)',
-          data_inicial_desconcentracao: 'Data Inicial Desconcentração',
-          data_final_desconcentracao: 'Data Final Desconcentração',
-          meta_desconcentracao: 'Meta Desconcentração',
-          realizado_desconcentracao: 'Realizado Desconcentração',
-          visitas_diaria: 'Visitas Diária',
-          positivacao_diaria: 'Positivação Diária',
-          fora_de_rota_diaria: 'Fora de Rota Diária',
-          visitas_acumulada: 'Visitas Acumulada',
-          positivacao_acumulada: 'Positivação Acumulada',
-          fora_de_rota_acumulada: 'Fora de Rota Acumulada',
-          data_inicial_faseamento_ii: 'Data Inicial Faseamento II',
-          data_final_faseamento_ii: 'Data Final Faseamento II',
-          meta_faseamento_ii: 'Meta Faseamento II',
-          realizado_faseamento_ii: 'Realizado Faseamento II',
-          data_inicial_desafio: 'Data Inicial Desafio',
-          data_final_desafio: 'Data Final Desafio',
-          meta_desafio: 'Meta Desafio',
-          realizado_desafio: 'Realizado Desafio',
-        },
-      },
-      {
-        key: 'categorias',
-        sheetName: 'Categorias',
-        label: 'Categorias',
-        columns: [
-          'cod_vendedor',
-          'fabricante',
-          'gerencia',
-          'equipe',
-          'meta',
-          'realizado',
-          'cobertura',
-          'realizado_cobertura',
-          'pct_margem',
-        ],
-        headerHints: {
-          cod_vendedor: 'Cod',
-          fabricante: 'Fabricantes',
-          gerencia: 'Gerências',
-          equipe: 'Equipes',
-          meta: 'Meta',
-          realizado: 'Realizado',
-          cobertura: 'Cobertura',
-          realizado_cobertura: 'Realizado Cob.',
-          pct_margem: '%Margem',
-        },
-      },
-    ],
-  },
-  {
-    id: 'nao_positivados',
-    label: 'Não Positivados',
-    description: 'Clientes sem compra no período, segmentados por Vendedor, Equipe e Chok Total',
-    templateFile: '/templates/importacao/nao_positivados.xlsx',
-    sheets: [
-      {
-        // Na planilha real, cada fabricante vira uma coluna própria (matriz
-        // cliente x fabricante com o valor vendido no período) e a lista de
-        // fabricantes muda com o tempo — por isso `columns` só lista os
-        // campos de identificação do cliente. Todas as demais colunas do
-        // arquivo (uma por fabricante) são capturadas automaticamente pelo
-        // backend e viram a coluna `fabricantes` (ver dynamicJsonColumn em
-        // server/importTypes.ts) — não precisam ser mapeadas aqui.
-        key: 'por_vendedor',
-        sheetName: 'Por vendedor',
-        label: 'Por Vendedor',
-        columns: ['cod_vendedor', 'cod_cliente', 'razao_social', 'nome_fantasia', 'municipio'],
-        headerHints: {
-          cod_vendedor: 'cd_vend',
-          cod_cliente: 'cd_clien',
-          razao_social: 'nome',
-          nome_fantasia: 'Nome Fantasia',
-          municipio: 'municipio',
-        },
-      },
-      {
-        key: 'equipe',
-        sheetName: 'Equipe',
-        label: 'Equipe',
-        columns: ['equipe', 'cod_cliente', 'razao_social', 'nome_fantasia', 'municipio'],
-        headerHints: {
-          equipe: 'Cd Equipe',
-          cod_cliente: 'cd_clien',
-          razao_social: 'nome',
-          nome_fantasia: 'Nome Fantasia',
-          municipio: 'municipio',
-        },
-      },
-      {
-        key: 'chok_total',
-        sheetName: 'Chok total',
-        label: 'Chok Total',
-        columns: ['cod_cliente', 'razao_social', 'nome_fantasia', 'municipio'],
-        headerHints: {
-          cod_cliente: 'cd_clien',
-          razao_social: 'nome',
-          nome_fantasia: 'Nome Fantasia',
-          municipio: 'municipio',
+          cod_vendedor: 'CÓDIGO VENDEDOR',
+          vendedor: 'NOME',
+          equipe: 'EQUIPE',
+          km_total: 'KM TOTAL',
+          verba_indenizatoria: 'VERBA INDENIZATÓRIA',
+          desconto: 'DESCONTO',
+          reembolso: 'REEMBOLSO',
+          a_pagar: 'A PAGAR',
         },
       },
     ],
@@ -359,22 +162,23 @@ const IMPORT_TYPES: ImportTypeOption[] = [
   {
     id: 'raiox',
     label: 'Raio-X',
-    description: 'Raio-X fornecido pelo SAR para acompanhamento diário de vendedores',
+    description:
+      'Raio-X fornecido pelo SAR para acompanhamento diário de vendedores (aba "Acompanhamento"). Alimenta a tela SAR › Raio-X.',
     templateFile: '/templates/importacao/raiox.xlsx',
     sheets: [
       {
-        // key interna usada no payload (tipo = "raiox" ou "raiox__raiox").
-        // O nome da aba no Excel continua sendo "Acompanhamento".
+        // key interna usada no payload (tipo = "raiox"). O nome da aba no
+        // Excel continua sendo "Acompanhamento".
         key: 'raiox',
         sheetName: 'Acompanhamento',
         label: 'Acompanhamento',
 
-        // Nomes de sistema (devem bater com server/importTypes.ts, entrada
-        // "raiox"). A planilha real repete alguns rótulos de coluna entre a
-        // seção diária e a seção "acumulado" (ex.: "% FORA ROTA" e
+        // Nomes de sistema (devem bater com backend/app/import_types.py,
+        // entrada "raiox"). A planilha real repete alguns rótulos de coluna
+        // entre a seção diária e a seção "acumulado" (ex.: "% FORA ROTA" e
         // "% POSITIVAÇÃO") — por isso as colunas do acumulado usam nomes de
         // sistema próprios (…_acumulado) em vez de reaproveitar o mesmo nome
-        // da seção diária, que faria as duas colunas colidirem no mapeamento.
+        // da seção diária, que faria as duas colidirem no mapeamento.
         columns: [
           'cod_vendedor',
           'vendedor',
@@ -427,7 +231,7 @@ const IMPORT_TYPES: ImportTypeOption[] = [
           // A planilha real repete "PREVISTA" (visitas e positivação) — o
           // parser desambigua a 2ª ocorrência com " (2)" (ver dedup de
           // cabeçalhos em handleFileChange), então o mesmo texto de dica
-          // funciona para os dois, na ordem em que aparecem nas colunas.
+          // funciona para as duas, na ordem em que aparecem nas colunas.
           positiva_prevista: 'PREVISTA',
           pedidos: 'PEDIDOS',
           perc_positivacao: '% POSITIVAÇÃO',
@@ -460,505 +264,58 @@ const IMPORT_TYPES: ImportTypeOption[] = [
     ],
   },
   {
-    id: 'vendedor_detalhado',
-    label: 'Vendedor Detalhado',
-    description: 'Vendedor detalhado fornecido pelo SAR para acompanhamento diário de vendedores',
-    templateFile: '/templates/importacao/vendedor_detalhado.xlsx',
+    id: 'base_roteiro',
+    label: 'Base de Roteiro',
+    description:
+      'Clientes roteirizados com latitude/longitude, dia (2=segunda … 6=sexta) e semana ("1", "2", "3", "4", "1,3", "2,4", "1234"). Alimenta o mapa da tela SAR › Base de Roteiro.',
+    templateFile: '/templates/importacao/base_roteiro.xlsx',
     sheets: [
       {
-        // key interna usada no payload (tipo = "raiox" ou "raiox__raiox").
-        // O nome da aba no Excel continua sendo "Acompanhamento".
-        key: 'vendedor_detalhado',
-        sheetName: 'Vendedor Detalhado',
-        label: 'Vendedor Detalhado',
-
-        // Nomes de sistema (devem bater com server/importTypes.ts, entrada
-        // "raiox"). A planilha real repete alguns rótulos de coluna entre a
-        // seção diária e a seção "acumulado" (ex.: "% FORA ROTA" e
-        // "% POSITIVAÇÃO") — por isso as colunas do acumulado usam nomes de
-        // sistema próprios (…_acumulado) em vez de reaproveitar o mesmo nome
-        // da seção diária, que faria as duas colunas colidirem no mapeamento.
+        key: 'base_roteiro',
+        // Vazio = usa a primeira aba do arquivo, sem exigir nome específico.
+        sheetName: '',
+        label: 'Base de Roteiro',
+        // Nomes de sistema — devem bater com backend/app/import_types.py,
+        // entrada "base_roteiro" (tabela base_roteiro).
         columns: [
-          'gerencia',
-          'supervisao',
-          'codigo_vendedor',
-
+          'cod_cliente',
+          'razao_social',
+          'nome_fantasia',
+          'cod_vendedor',
           'vendedor',
-          'codigo_cliente',
-          'nome_cliente',
-          'acao',
-
-          'data',
-          'dentro_rota',
-          'hora',
-          'permanencia',
-
-          'venda',
-          'valor_venda',
-          'motivo_nao_venda',
-          'motivo_nao_visita',
+          'equipe',
+          'municipio',
+          'uf',
+          'bairro',
+          'endereco',
+          'latitude',
+          'longitude',
+          'dia',
+          'semana',
+          'sequencia',
+          'frequencia',
         ],
-
         headerHints: {
-          gerencia: 'GERENCIA',
-          supervisao: 'SUPERVISÃO',
-          codigo_vendedor: 'CODIGO VENDEDOR',
+          cod_cliente: 'CÓDIGO CLIENTE',
+          razao_social: 'RAZÃO SOCIAL',
+          nome_fantasia: 'NOME FANTASIA',
+          // Precisa vir antes de "vendedor" na lista de colunas acima: o
+          // auto-match consome o cabeçalho encontrado, então "CÓDIGO
+          // VENDEDOR" sai de circulação antes da dica "VENDEDOR" procurar
+          // por correspondência parcial.
+          cod_vendedor: 'CÓDIGO VENDEDOR',
           vendedor: 'VENDEDOR',
-
-          codigo_cliente: 'CODIGO CLIENTE',
-          nome_cliente: 'NOME CLIENTE',
-          acao: 'AÇÃO',
-
-          data: 'DATA',
-          dentro_rota: 'DENTRO ROTA',
-          hora: 'HORA',
-          permanencia: 'PERMANÊNCIA',
-
-          venda: 'VENDA',
-          valor_venda: 'VALOR VENDA',
-          motivo_nao_venda: 'MOTIVO NÃO VENDA',
-          motivo_nao_visita: 'MOTIVO NÃO VISITA',
-        },
-      },
-    ],
-  },
-  {
-    id: 'historico_vendedores',
-    label: 'Historico de vendedores',
-    description: 'Histórico de faturamento de vendedores',
-    templateFile: '/templates/importacao/historico_vendedores.xlsx',
-    sheets: [
-      {
-        // key interna usada no payload (tipo = "raiox" ou "raiox__raiox").
-        // O nome da aba no Excel continua sendo "Acompanhamento".
-        key: 'vendedor_detalhado',
-        sheetName: 'Vendedor Detalhado',
-        label: 'Vendedor Detalhado',
-
-        // Nomes de sistema (devem bater com server/importTypes.ts, entrada
-        // "raiox"). A planilha real repete alguns rótulos de coluna entre a
-        // seção diária e a seção "acumulado" (ex.: "% FORA ROTA" e
-        // "% POSITIVAÇÃO") — por isso as colunas do acumulado usam nomes de
-        // sistema próprios (…_acumulado) em vez de reaproveitar o mesmo nome
-        // da seção diária, que faria as duas colunas colidirem no mapeamento.
-        columns: [
-          'gerencia',
-          'supervisao',
-          'codigo_vendedor',
-
-          'vendedor',
-          'codigo_cliente',
-          'nome_cliente',
-          'acao',
-
-          'data',
-          'dentro_rota',
-          'hora',
-          'permanencia',
-
-          'venda',
-          'valor_venda',
-          'motivo_nao_venda',
-          'motivo_nao_visita',
-        ],
-
-        headerHints: {
-          gerencia: 'GERENCIA',
-          supervisao: 'SUPERVISÃO',
-          codigo_vendedor: 'CODIGO VENDEDOR',
-          vendedor: 'VENDEDOR',
-
-          codigo_cliente: 'CODIGO CLIENTE',
-          nome_cliente: 'NOME CLIENTE',
-          acao: 'AÇÃO',
-
-          data: 'DATA',
-          dentro_rota: 'DENTRO ROTA',
-          hora: 'HORA',
-          permanencia: 'PERMANÊNCIA',
-
-          venda: 'VENDA',
-          valor_venda: 'VALOR VENDA',
-          motivo_nao_venda: 'MOTIVO NÃO VENDA',
-          motivo_nao_visita: 'MOTIVO NÃO VISITA',
-        },
-      },
-    ],
-  },
-  {
-    id: 'historico_cobertura',
-    label: 'Historico de cobertura',
-    description: 'Histórico de cobertura',
-    templateFile: '/templates/importacao/historico_vendedores.xlsx',
-    sheets: [
-      {
-        // key interna usada no payload (tipo = "raiox" ou "raiox__raiox").
-        // O nome da aba no Excel continua sendo "Acompanhamento".
-        key: 'vendedor_detalhado',
-        sheetName: 'Vendedor Detalhado',
-        label: 'Vendedor Detalhado',
-
-        // Nomes de sistema (devem bater com server/importTypes.ts, entrada
-        // "raiox"). A planilha real repete alguns rótulos de coluna entre a
-        // seção diária e a seção "acumulado" (ex.: "% FORA ROTA" e
-        // "% POSITIVAÇÃO") — por isso as colunas do acumulado usam nomes de
-        // sistema próprios (…_acumulado) em vez de reaproveitar o mesmo nome
-        // da seção diária, que faria as duas colunas colidirem no mapeamento.
-        columns: [
-          'gerencia',
-          'supervisao',
-          'codigo_vendedor',
-
-          'vendedor',
-          'codigo_cliente',
-          'nome_cliente',
-          'acao',
-
-          'data',
-          'dentro_rota',
-          'hora',
-          'permanencia',
-
-          'venda',
-          'valor_venda',
-          'motivo_nao_venda',
-          'motivo_nao_visita',
-        ],
-
-        headerHints: {
-          gerencia: 'GERENCIA',
-          supervisao: 'SUPERVISÃO',
-          codigo_vendedor: 'CODIGO VENDEDOR',
-          vendedor: 'VENDEDOR',
-
-          codigo_cliente: 'CODIGO CLIENTE',
-          nome_cliente: 'NOME CLIENTE',
-          acao: 'AÇÃO',
-
-          data: 'DATA',
-          dentro_rota: 'DENTRO ROTA',
-          hora: 'HORA',
-          permanencia: 'PERMANÊNCIA',
-
-          venda: 'VENDA',
-          valor_venda: 'VALOR VENDA',
-          motivo_nao_venda: 'MOTIVO NÃO VENDA',
-          motivo_nao_visita: 'MOTIVO NÃO VISITA',
-        },
-      },
-    ],
-  },
-  {
-    id: 'historico_sortimento',
-    label: 'Historico de sortimento',
-    description: 'Histórico de sortimento',
-    templateFile: '/templates/importacao/historico_sortimento.xlsx',
-    sheets: [
-      {
-        // key interna usada no payload (tipo = "raiox" ou "raiox__raiox").
-        // O nome da aba no Excel continua sendo "Acompanhamento".
-        key: 'vendedor_detalhado',
-        sheetName: 'Vendedor Detalhado',
-        label: 'Vendedor Detalhado',
-
-        // Nomes de sistema (devem bater com server/importTypes.ts, entrada
-        // "raiox"). A planilha real repete alguns rótulos de coluna entre a
-        // seção diária e a seção "acumulado" (ex.: "% FORA ROTA" e
-        // "% POSITIVAÇÃO") — por isso as colunas do acumulado usam nomes de
-        // sistema próprios (…_acumulado) em vez de reaproveitar o mesmo nome
-        // da seção diária, que faria as duas colunas colidirem no mapeamento.
-        columns: [
-          'gerencia',
-          'supervisao',
-          'codigo_vendedor',
-
-          'vendedor',
-          'codigo_cliente',
-          'nome_cliente',
-          'acao',
-
-          'data',
-          'dentro_rota',
-          'hora',
-          'permanencia',
-
-          'venda',
-          'valor_venda',
-          'motivo_nao_venda',
-          'motivo_nao_visita',
-        ],
-
-        headerHints: {
-          gerencia: 'GERENCIA',
-          supervisao: 'SUPERVISÃO',
-          codigo_vendedor: 'CODIGO VENDEDOR',
-          vendedor: 'VENDEDOR',
-
-          codigo_cliente: 'CODIGO CLIENTE',
-          nome_cliente: 'NOME CLIENTE',
-          acao: 'AÇÃO',
-
-          data: 'DATA',
-          dentro_rota: 'DENTRO ROTA',
-          hora: 'HORA',
-          permanencia: 'PERMANÊNCIA',
-
-          venda: 'VENDA',
-          valor_venda: 'VALOR VENDA',
-          motivo_nao_venda: 'MOTIVO NÃO VENDA',
-          motivo_nao_visita: 'MOTIVO NÃO VISITA',
-        },
-      },
-    ],
-  },
-  {
-    id: 'historico_margem',
-    label: 'Historico de margem',
-    description: 'Histórico de porcentagem de margem',
-    templateFile: '/templates/importacao/historico_perc_margem.xlsx',
-    sheets: [
-      {
-        // key interna usada no payload (tipo = "raiox" ou "raiox__raiox").
-        // O nome da aba no Excel continua sendo "Acompanhamento".
-        key: 'vendedor_detalhado',
-        sheetName: 'Vendedor Detalhado',
-        label: 'Vendedor Detalhado',
-
-        // Nomes de sistema (devem bater com server/importTypes.ts, entrada
-        // "raiox"). A planilha real repete alguns rótulos de coluna entre a
-        // seção diária e a seção "acumulado" (ex.: "% FORA ROTA" e
-        // "% POSITIVAÇÃO") — por isso as colunas do acumulado usam nomes de
-        // sistema próprios (…_acumulado) em vez de reaproveitar o mesmo nome
-        // da seção diária, que faria as duas colunas colidirem no mapeamento.
-        columns: [
-          'gerencia',
-          'supervisao',
-          'codigo_vendedor',
-
-          'vendedor',
-          'codigo_cliente',
-          'nome_cliente',
-          'acao',
-
-          'data',
-          'dentro_rota',
-          'hora',
-          'permanencia',
-
-          'venda',
-          'valor_venda',
-          'motivo_nao_venda',
-          'motivo_nao_visita',
-        ],
-
-        headerHints: {
-          gerencia: 'GERENCIA',
-          supervisao: 'SUPERVISÃO',
-          codigo_vendedor: 'CODIGO VENDEDOR',
-          vendedor: 'VENDEDOR',
-
-          codigo_cliente: 'CODIGO CLIENTE',
-          nome_cliente: 'NOME CLIENTE',
-          acao: 'AÇÃO',
-
-          data: 'DATA',
-          dentro_rota: 'DENTRO ROTA',
-          hora: 'HORA',
-          permanencia: 'PERMANÊNCIA',
-
-          venda: 'VENDA',
-          valor_venda: 'VALOR VENDA',
-          motivo_nao_venda: 'MOTIVO NÃO VENDA',
-          motivo_nao_visita: 'MOTIVO NÃO VISITA',
-        },
-      },
-    ],
-  },
-  {
-    id: 'historico_mestas',
-    label: 'Historico de metas',
-    description: 'Histórico de metas',
-    templateFile: '/templates/importacao/historico_perc_margem.xlsx',
-    sheets: [
-      {
-        // key interna usada no payload (tipo = "raiox" ou "raiox__raiox").
-        // O nome da aba no Excel continua sendo "Acompanhamento".
-        key: 'vendedor_detalhado',
-        sheetName: 'Vendedor Detalhado',
-        label: 'Vendedor Detalhado',
-
-        // Nomes de sistema (devem bater com server/importTypes.ts, entrada
-        // "raiox"). A planilha real repete alguns rótulos de coluna entre a
-        // seção diária e a seção "acumulado" (ex.: "% FORA ROTA" e
-        // "% POSITIVAÇÃO") — por isso as colunas do acumulado usam nomes de
-        // sistema próprios (…_acumulado) em vez de reaproveitar o mesmo nome
-        // da seção diária, que faria as duas colunas colidirem no mapeamento.
-        columns: [
-          'gerencia',
-          'supervisao',
-          'codigo_vendedor',
-
-          'vendedor',
-          'codigo_cliente',
-          'nome_cliente',
-          'acao',
-
-          'data',
-          'dentro_rota',
-          'hora',
-          'permanencia',
-
-          'venda',
-          'valor_venda',
-          'motivo_nao_venda',
-          'motivo_nao_visita',
-        ],
-
-        headerHints: {
-          gerencia: 'GERENCIA',
-          supervisao: 'SUPERVISÃO',
-          codigo_vendedor: 'CODIGO VENDEDOR',
-          vendedor: 'VENDEDOR',
-
-          codigo_cliente: 'CODIGO CLIENTE',
-          nome_cliente: 'NOME CLIENTE',
-          acao: 'AÇÃO',
-
-          data: 'DATA',
-          dentro_rota: 'DENTRO ROTA',
-          hora: 'HORA',
-          permanencia: 'PERMANÊNCIA',
-
-          venda: 'VENDA',
-          valor_venda: 'VALOR VENDA',
-          motivo_nao_venda: 'MOTIVO NÃO VENDA',
-          motivo_nao_visita: 'MOTIVO NÃO VISITA',
-        },
-      },
-    ],
-  },
-  {
-    id: 'historico_sar',
-    label: 'Historico fornecido pelo SAR',
-    description: 'Histórico do SAR',
-    templateFile: '/templates/importacao/historico_perc_margem.xlsx',
-    sheets: [
-      {
-        // key interna usada no payload (tipo = "raiox" ou "raiox__raiox").
-        // O nome da aba no Excel continua sendo "Acompanhamento".
-        key: 'vendedor_detalhado',
-        sheetName: 'Vendedor Detalhado',
-        label: 'Vendedor Detalhado',
-
-        // Nomes de sistema (devem bater com server/importTypes.ts, entrada
-        // "raiox"). A planilha real repete alguns rótulos de coluna entre a
-        // seção diária e a seção "acumulado" (ex.: "% FORA ROTA" e
-        // "% POSITIVAÇÃO") — por isso as colunas do acumulado usam nomes de
-        // sistema próprios (…_acumulado) em vez de reaproveitar o mesmo nome
-        // da seção diária, que faria as duas colunas colidirem no mapeamento.
-        columns: [
-          'gerencia',
-          'supervisao',
-          'codigo_vendedor',
-
-          'vendedor',
-          'codigo_cliente',
-          'nome_cliente',
-          'acao',
-
-          'data',
-          'dentro_rota',
-          'hora',
-          'permanencia',
-
-          'venda',
-          'valor_venda',
-          'motivo_nao_venda',
-          'motivo_nao_visita',
-        ],
-
-        headerHints: {
-          gerencia: 'GERENCIA',
-          supervisao: 'SUPERVISÃO',
-          codigo_vendedor: 'CODIGO VENDEDOR',
-          vendedor: 'VENDEDOR',
-
-          codigo_cliente: 'CODIGO CLIENTE',
-          nome_cliente: 'NOME CLIENTE',
-          acao: 'AÇÃO',
-
-          data: 'DATA',
-          dentro_rota: 'DENTRO ROTA',
-          hora: 'HORA',
-          permanencia: 'PERMANÊNCIA',
-
-          venda: 'VENDA',
-          valor_venda: 'VALOR VENDA',
-          motivo_nao_venda: 'MOTIVO NÃO VENDA',
-          motivo_nao_visita: 'MOTIVO NÃO VISITA',
-        },
-      },
-    ],
-  },
-  {
-    id: 'historico_categorias',
-    label: 'Historico de categorias',
-    description: 'Histórico de categorias',
-    templateFile: '/templates/importacao/historico_perc_margem.xlsx',
-    sheets: [
-      {
-        // key interna usada no payload (tipo = "raiox" ou "raiox__raiox").
-        // O nome da aba no Excel continua sendo "Acompanhamento".
-        key: 'vendedor_detalhado',
-        sheetName: 'Vendedor Detalhado',
-        label: 'Vendedor Detalhado',
-
-        // Nomes de sistema (devem bater com server/importTypes.ts, entrada
-        // "raiox"). A planilha real repete alguns rótulos de coluna entre a
-        // seção diária e a seção "acumulado" (ex.: "% FORA ROTA" e
-        // "% POSITIVAÇÃO") — por isso as colunas do acumulado usam nomes de
-        // sistema próprios (…_acumulado) em vez de reaproveitar o mesmo nome
-        // da seção diária, que faria as duas colunas colidirem no mapeamento.
-        columns: [
-          'gerencia',
-          'supervisao',
-          'codigo_vendedor',
-
-          'vendedor',
-          'codigo_cliente',
-          'nome_cliente',
-          'acao',
-
-          'data',
-          'dentro_rota',
-          'hora',
-          'permanencia',
-
-          'venda',
-          'valor_venda',
-          'motivo_nao_venda',
-          'motivo_nao_visita',
-        ],
-
-        headerHints: {
-          gerencia: 'GERENCIA',
-          supervisao: 'SUPERVISÃO',
-          codigo_vendedor: 'CODIGO VENDEDOR',
-          vendedor: 'VENDEDOR',
-
-          codigo_cliente: 'CODIGO CLIENTE',
-          nome_cliente: 'NOME CLIENTE',
-          acao: 'AÇÃO',
-
-          data: 'DATA',
-          dentro_rota: 'DENTRO ROTA',
-          hora: 'HORA',
-          permanencia: 'PERMANÊNCIA',
-
-          venda: 'VENDA',
-          valor_venda: 'VALOR VENDA',
-          motivo_nao_venda: 'MOTIVO NÃO VENDA',
-          motivo_nao_visita: 'MOTIVO NÃO VISITA',
+          equipe: 'EQUIPE',
+          municipio: 'MUNICÍPIO',
+          uf: 'UF',
+          bairro: 'BAIRRO',
+          endereco: 'ENDEREÇO',
+          latitude: 'LATITUDE',
+          longitude: 'LONGITUDE',
+          dia: 'DIA',
+          semana: 'SEMANA',
+          sequencia: 'SEQUÊNCIA',
+          frequencia: 'FREQUÊNCIA',
         },
       },
     ],
@@ -1016,12 +373,20 @@ function toHistoryItem(entry: ImportLogEntry): HistoryItem {
 
 type SheetParsedData = { headers: string[]; rows: Record<string, any>[] };
 
-export const ImportacaoPage: React.FC = () => {
+/**
+ * Metas & Definições (apenas ADMIN).
+ *
+ * Única porta de entrada manual de dados do sistema: o administrador importa
+ * as METAS/DEFINIÇÕES, e os valores realizados chegam pelas APIs externas
+ * (ver backend/app/providers.py), que são comparadas contra estas metas nos
+ * quadros de Vendas e Categorias.
+ */
+export const MetasPage: React.FC = () => {
   const { t } = useTheme();
   const { currentUser } = useAuth();
 
   const [step, setStep] = useState<number>(1);
-  const [selectedType, setSelectedType] = useState<ImportType>('sortimento');
+  const [selectedType, setSelectedType] = useState<ImportType>('metas');
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [sheetsData, setSheetsData] = useState<Record<string, SheetParsedData>>({});
   const [columnMappings, setColumnMappings] = useState<Record<string, Record<string, string>>>({});
@@ -1336,6 +701,20 @@ export const ImportacaoPage: React.FC = () => {
     }
   };
 
+  // Trocar o tipo descarta o arquivo já lido: sheetsData/columnMappings são
+  // indexados pela chave da aba, que é própria de cada tipo — aproveitá-los
+  // em outro tipo levaria a um mapeamento vazio no passo 3.
+  const handleSelectType = (id: ImportType) => {
+    if (id === selectedType) return;
+    setSelectedType(id);
+    setUploadedFile(null);
+    setSheetsData({});
+    setColumnMappings({});
+    setFileError(null);
+    setSubmitError(null);
+    setResultSummary(null);
+  };
+
   const resetWizard = () => {
     setStep(1);
     setUploadedFile(null);
@@ -1495,11 +874,13 @@ export const ImportacaoPage: React.FC = () => {
 
       <div style={{ marginBottom: '22px' }}>
         <h1 className="num" style={{ margin: '0 0 6px', fontSize: '24px', fontWeight: 700, color: t.text }}>
-          Módulo de Importação & Carga de Dados
+          Metas &amp; Definições
         </h1>
         <p style={{ margin: 0, fontSize: '13px', color: t.textSecondary }}>
-          Central administrativa para processamento, validação e atualização de sortimento, top clientes, dados do
-          app e não positivados. Planilhas pesadas são enviadas em lotes seguros automaticamente.
+          Importe aqui as metas comerciais (faturamento e cobertura por vendedor e categoria) e as planilhas
+          operacionais do SAR — Verba Indenizatória, Raio-X e Base de Roteiro. Os resultados realizados do comercial
+          vêm das APIs integradas e são comparados automaticamente contra estas metas nos quadros de Vendas e
+          Categorias. Planilhas grandes são enviadas em lotes seguros.
         </p>
       </div>
 
@@ -1562,10 +943,11 @@ export const ImportacaoPage: React.FC = () => {
       {step === 1 && (
         <div style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: '12px', padding: '24px', marginBottom: '24px' }}>
           <div style={{ fontSize: '16px', fontWeight: 600, color: t.text, marginBottom: '6px' }}>
-            Selecione a categoria de informação que deseja importar:
+            Selecione o conjunto de dados que deseja importar:
           </div>
           <div style={{ fontSize: '13px', color: t.textMuted, marginBottom: '20px' }}>
-            Cada categoria possui um layout pré-definido com validação sintática das colunas e das abas exigidas.
+            Cada conjunto possui um layout pré-definido com validação das colunas exigidas. Baixe o modelo para
+            conferir o cabeçalho esperado antes de enviar.
           </div>
 
           <div
@@ -1581,7 +963,7 @@ export const ImportacaoPage: React.FC = () => {
               return (
                 <div
                   key={type.id}
-                  onClick={() => setSelectedType(type.id)}
+                  onClick={() => handleSelectType(type.id)}
                   style={{
                     border: `1.5px solid ${isSel ? t.primary : t.border}`,
                     background: isSel ? `${t.primary}0D` : t.surfaceElevated,

@@ -23,7 +23,7 @@ from app.hardening import (
     RequestGuardMiddleware,
     SecurityHeadersMiddleware,
 )
-from app.routers import analytics, auth, catalog, imports, users, twofa
+from app.routers import analytics, auth, board, catalog, imports, users, twofa
 
 settings = get_settings()
 origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
@@ -147,5 +147,6 @@ app.include_router(auth.router, prefix="/api")
 app.include_router(users.router, prefix="/api")
 app.include_router(imports.router, prefix="/api")
 app.include_router(analytics.router, prefix="/api")
+app.include_router(board.router, prefix="/api")
 app.include_router(catalog.router, prefix="/api")
 app.include_router(twofa.router, prefix="/api")

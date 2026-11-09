@@ -143,49 +143,69 @@ export interface ClienteFabricantesResponse {
   }>;
 }
 
-export interface AnalyticsTreeNode {
-  nome: string;
+/**
+ * Origem dos valores REALIZADOS devolvidos pelos quadros:
+ *  - "api"   → vieram da API externa (ERP/BI) configurada no backend;
+ *  - "banco" → ainda saem das tabelas locais (API externa não configurada).
+ * As METAS são sempre as importadas pelo ADMIN em "Metas & Definições".
+ */
+export type FonteRealizado = 'api' | 'banco';
+
+/** Uma linha do Quadro de Vendas: um vendedor, meta x realizado no período. */
+export interface SalesBoardRow {
+  codVendedor: string;
+  vendedor: string | null;
+  equipe: string | null;
+  gerencia: string | null;
   meta: number;
   realizado: number;
+  gap: number;
+  atingimento: number;
   metaCobertura: number;
   realizadoCobertura: number;
-  participacao?: number;
-  crescimento?: number;
-  equipes?: AnalyticsTreeNode[];
-  vendedores?: Array<{
-    nome: string;
-    codVendedor?: string;
+  pctCobertura: number;
+  positivados: number;
+  margem: number;
+}
+
+export interface SalesBoardResponse {
+  fonteRealizado: FonteRealizado;
+  kpis: {
     meta: number;
     realizado: number;
+    gap: number;
+    atingimento: number;
+    vendedores: number;
     metaCobertura: number;
     realizadoCobertura: number;
-    participacao?: number;
-    crescimento?: number;
-  }>;
+  };
+  rows: SalesBoardRow[];
 }
 
-export interface HistoryRow {
-  ano: number;
-  mesNum: number;
-  fabricante: string | null;
-  equipe: string | null;
-  vendedor: string | null;
-  codVendedor: string | null;
+/** Uma linha de Categorias: uma categoria/fabricante, meta x realizado. */
+export interface CategoryBoardRow {
+  categoria: string;
   meta: number;
   realizado: number;
-  metaClientes: number;
-  positivados: number;
-  margemPct: number;
+  gap: number;
+  atingimento: number;
+  metaCobertura: number;
+  realizadoCobertura: number;
+  pctCobertura: number;
+  participacao: number;
+  margem: number;
 }
 
-export interface SaleRow {
-  id: string;
-  data: string | null;
-  cliente: string | null;
-  vendedor: string | null;
-  equipe: string | null;
-  valor: number;
-  status: string;
+export interface CategoryBoardResponse {
+  fonteRealizado: FonteRealizado;
+  kpis: {
+    meta: number;
+    realizado: number;
+    gap: number;
+    atingimento: number;
+    categorias: number;
+  };
+  rows: CategoryBoardRow[];
 }
 
 export interface ProductRow {
@@ -721,6 +741,12 @@ export interface UserCreatePayload {
   city?: string | null;
   state?: string | null;
   cep?: string | null;
+  /**
+   * Número do endereço coletado na tela de Usuários. ATENÇÃO: o backend ainda
+   * não tem esse campo (backend/app/schemas.py) e o descarta silenciosamente —
+   * o valor não é persistido enquanto a coluna não for criada lá.
+   */
+  number?: string | null;
   sellerCode?: string | null;
   team?: string | null;
   supervisor?: string | null;
@@ -791,57 +817,28 @@ export function fetchClienteFabricantes(params: {
   return request<ClienteFabricantesResponse>(`/analytics/cliente-fabricantes${qs(params)}`);
 }
 
-export function fetchAnalyticsTree(params?: {
+export interface BoardQueryParams {
   ano?: number;
   mes?: number;
   start?: string;
   end?: string;
-}): Promise<AnalyticsTreeNode[]> {
-  return request<AnalyticsTreeNode[]>(`/analytics/tree${qs(params)}`);
-}
-
-export function fetchHistory(params?: {
-  fabricante?: string;
   equipe?: string;
   vendedor?: string;
-}): Promise<HistoryRow[]> {
-  return request<HistoryRow[]>(`/analytics/history${qs(params)}`);
 }
 
-export interface EvolucaoResponse {
-  mensal: Array<{
-    ano: number;
-    mes: number;
-    meta: number;
-    realizado: number;
-    metaCobertura: number;
-    realizadoCobertura: number;
-    margem: number;
-  }>;
-  porFabricante: Array<{ fabricante: string; ano: number; mes: number; meta: number; realizado: number }>;
-  porEquipe: Array<{ equipe: string; ano: number; mes: number; meta: number; realizado: number }>;
-  fabricantes: string[];
-  anos: number[];
+/**
+ * Quadro de Vendas — meta (importada) x realizado por vendedor.
+ * O backend decide a origem do realizado (API externa ou banco) e informa
+ * qual foi em `fonteRealizado`; o contrato desta função não muda quando a
+ * API externa entrar no ar.
+ */
+export function fetchSalesBoard(params?: BoardQueryParams): Promise<SalesBoardResponse> {
+  return request<SalesBoardResponse>(`/board/sales${qs(params as Record<string, string | number | undefined>)}`);
 }
 
-/** Série mensal consolidada (tela Histórico), já no escopo RBAC do usuário. */
-export function fetchEvolucao(params?: {
-  ano?: number;
-  fabricante?: string;
-  equipe?: string;
-  vendedor?: string;
-}): Promise<EvolucaoResponse> {
-  return request<EvolucaoResponse>(`/analytics/evolucao${qs(params)}`);
-}
-
-export function fetchSales(params?: {
-  q?: string;
-  fabricante?: string;
-  start?: string;
-  end?: string;
-  limit?: number;
-}): Promise<SaleRow[]> {
-  return request<SaleRow[]>(`/analytics/sales${qs(params)}`);
+/** Categorias — meta (importada) x realizado por categoria/fabricante. */
+export function fetchCategoryBoard(params?: BoardQueryParams): Promise<CategoryBoardResponse> {
+  return request<CategoryBoardResponse>(`/board/categories${qs(params as Record<string, string | number | undefined>)}`);
 }
 
 export function fetchProducts(params?: {
@@ -1153,4 +1150,118 @@ export function fetchRaioXDetalhe(params?: { ano?: number; mes?: number; dia?: s
   return request<RaioXDetalheResponse>(
     `/sar/raiox/detalhe${qs({ ano: params?.ano, mes: params?.mes, dia: params?.dia, cod_vendedor: params?.codVendedor })}`
   );
+}
+
+/* ------------------------------------------------------------------ *
+ * Base de Roteiro (tabela `base_roteiro`) — mapa de sar/BaseRoteiro.tsx
+ * ------------------------------------------------------------------ */
+
+/** Um ponto de roteiro: o cliente em um dia/semana de visitação. */
+export interface BaseRoteiroPonto {
+  codCliente: string | null;
+  razaoSocial: string | null;
+  nomeFantasia: string | null;
+  codVendedor: string | null;
+  vendedor: string | null;
+  equipe: string | null;
+  municipio: string | null;
+  uf: string | null;
+  bairro: string | null;
+  endereco: string | null;
+  /** null = cliente sem geocodificação na planilha (não vai para o mapa). */
+  latitude: number | null;
+  longitude: number | null;
+  /** Convenção da planilha: 2=segunda ... 6=sexta. */
+  dia: number | null;
+  /** Combinação de semanas do mês: "1", "2", "3", "4", "1,3", "2,4", "1234". */
+  semana: string | null;
+  sequencia: number | null;
+  frequencia: string | null;
+}
+
+export interface BaseRoteiroResponse {
+  /** data_referencia do snapshot devolvido (null = nada importado ainda). */
+  data: string | null;
+  /** Snapshots disponíveis (importações), mais recente primeiro. */
+  datasDisponiveis: string[];
+  /** Total de linhas no snapshot, inclusive as sem coordenada. */
+  total: number;
+  semCoordenada: number;
+  /** true = o snapshot passou do teto de pontos e veio cortado. */
+  truncado: boolean;
+  filtros: {
+    vendedores: { codVendedor: string; vendedor: string; pontos: number }[];
+    equipes: string[];
+    municipios: string[];
+    dias: number[];
+    semanas: string[];
+  };
+  rows: BaseRoteiroPonto[];
+}
+
+/**
+ * Pontos da Base de Roteiro para o mapa. Sem `data`, o servidor devolve a
+ * importação mais recente visível para o usuário. Os filtros são opcionais —
+ * a tela filtra no cliente para o mapa responder sem ida ao servidor; use-os
+ * só para recortar bases muito grandes antes do envio.
+ */
+export function fetchBaseRoteiro(params?: {
+  data?: string;
+  equipe?: string;
+  codVendedor?: string;
+  municipio?: string;
+  dia?: number;
+  semana?: string;
+}): Promise<BaseRoteiroResponse> {
+  return request<BaseRoteiroResponse>(
+    `/sar/base-roteiro${qs({
+      data: params?.data,
+      equipe: params?.equipe,
+      cod_vendedor: params?.codVendedor,
+      municipio: params?.municipio,
+      dia: params?.dia,
+      semana: params?.semana,
+    })}`
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * Verba Indenizatória (tabela `verba_indenizatoria`)
+ * ------------------------------------------------------------------ */
+
+/** Uma linha por vendedor — já somada no servidor quando o modo é "periodo". */
+export interface VerbaIndenizatoriaRow {
+  codVendedor: string;
+  vendedor: string;
+  equipe: string | null;
+  /** Quantas data_referencia entraram na soma (1 no modo "dia"). */
+  periodos: number;
+  kmTotal: number;
+  verbaIndenizatoria: number;
+  desconto: number;
+  reembolso: number;
+  aPagar: number;
+}
+
+export interface VerbaIndenizatoriaResponse {
+  mode: 'dia' | 'periodo';
+  ano: number;
+  mes: number | null;
+  dia: string | null;
+  anosDisponiveis: number[];
+  rows: VerbaIndenizatoriaRow[];
+}
+
+/**
+ * Verba Indenizatória para sar/VerbaIndenizatoria.tsx. Como em fetchRaioX,
+ * `dia` (YYYY-MM-DD) tem prioridade sobre `ano`/`mes`: com `dia` a resposta
+ * vem com mode: "dia" (valores exatos do dia); sem ele, soma por vendedor no
+ * período e vem com mode: "periodo".
+ */
+export function fetchVerbaIndenizatoria(params?: {
+  ano?: number;
+  mes?: number;
+  dia?: string;
+}): Promise<VerbaIndenizatoriaResponse> {
+  return request<VerbaIndenizatoriaResponse>(`/sar/verba-indenizatoria${qs(params)}`);
 }

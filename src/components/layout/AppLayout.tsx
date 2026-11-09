@@ -11,32 +11,22 @@ import {
   Trophy,
   Layers,
   BookOpen,
-  BarChart3,
-  FlaskConical,
+  ClipboardList,
+  Tags,
   Target,
-  Clock,
-  Sparkles,
-  FileText,
   Users,
   Settings,
-  ShieldAlert,
   User,
   LogOut,
   Menu,
   X,
   Sun,
   Moon,
-  Bell,
-  Search,
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
   ExternalLink,
   Building,
   Compass,
-  ShoppingBag,
-  History,
-  UploadCloud,
   Award,
   Activity,
   Route,
@@ -92,6 +82,14 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, c
 
   const navGroups: NavGroup[] = [
     {
+      // Avulsos: ficam no topo, acima de "Principal", sem título de grupo.
+      label: '',
+      items: [
+        { id: 'sales-board', name: 'Quadro de Vendas', icon: <ClipboardList size={17} /> },
+        { id: 'categories', name: 'Categorias', icon: <Tags size={17} /> },
+      ],
+    },
+    {
       label: 'Principal',
       items: [
         { id: 'dashboard', name: 'Dashboard', icon: <LayoutGrid size={17} /> },
@@ -124,13 +122,6 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, c
       ],
     },
     {
-      label: 'Análises',
-      items: [
-        { id: 'analytics', name: 'Análises', icon: <BarChart3 size={17} /> },
-        { id: 'history', name: 'Histórico', icon: <History size={17} /> },
-      ],
-    },
-    {
       label: 'Conta',
       items: [
         { id: 'profile', name: 'Meu Perfil', icon: <User size={17} /> },
@@ -142,7 +133,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, c
       label: 'Administração',
       items: [
         { id: 'users', name: 'Usuários & RBAC', icon: <Users size={17} />, adminOnly: true },
-        { id: 'imports', name: 'Importação', icon: <UploadCloud size={17} />, adminOnly: true },
+        { id: 'targets', name: 'Metas & Definições', icon: <Target size={17} />, adminOnly: true },
       ],
     },
   ];
@@ -157,6 +148,8 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, c
   };
 
   const pageTitles: Record<PageId, string> = {
+    'sales-board': 'Quadro de Vendas',
+    categories: 'Categorias',
     'macro-view': 'Visão Macro',
     dashboard: 'Dashboard',
     'not-positivated': 'Não Positivados',
@@ -168,19 +161,11 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, c
     'sar-raio-x': 'Raio-X',
     'sar-base-roteiro': 'Base de Roteiro',
     'sar-verba-indenizatoria': 'Verba Indenizatória',
-    sales: 'Vendas',
-    analytics: 'Análises',
-    studies: 'Estudos',
-    targets: 'Metas',
-    history: 'Histórico',
-    insights: 'Insights',
-    reports: 'Relatórios',
     profile: 'Meu Perfil',
     settings: 'Configurações',
     credits: 'Créditos',
     users: 'Usuários & RBAC',
-    imports: 'Importação',
-    audit: 'Auditoria',
+    targets: 'Metas & Definições',
   };
 
   return (
@@ -335,12 +320,15 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, c
             if (accessibleItems.length === 0) return null;
 
             return (
-              <div key={group.label} style={{ marginBottom: isNavbarCollapsed ? '10px' : '18px' }}>
-                {!isNavbarCollapsed ? (
+              <div key={group.label || 'avulsos'} style={{ marginBottom: isNavbarCollapsed ? '10px' : '18px' }}>
+                {/* Grupo sem rótulo (itens avulsos do topo): entra direto, sem
+                    título nem divisor acima. */}
+                {group.label && !isNavbarCollapsed && (
                   <div style={{ fontSize: '11.5px', color: t.textMuted, padding: '0 10px 6px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                     {group.label}
                   </div>
-                ) : (
+                )}
+                {group.label && isNavbarCollapsed && (
                   <div style={{ height: '1px', background: t.border, margin: '6px 4px 8px' }} />
                 )}
                 {accessibleItems.map((item) => {

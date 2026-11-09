@@ -1,24 +1,18 @@
 ﻿export type Role = 'ADMIN' | 'GERENTE' | 'SUPERVISOR' | 'VENDEDOR';
 
 export type Permission =
+  // Quadro de Vendas e Categorias (itens avulsos no topo do menu)
+  | 'sales-board.view'
+  | 'categories.view'
+  // Principal (Dashboard / Visão Macro) — restrito a ADMIN, GERENTE e SUPERVISOR
   | 'dashboard.view'
-  | 'analytics.view'
-  | 'analytics.create'
-  | 'studies.view'
-  | 'studies.create'
+  // Metas/definições importadas pelo ADMIN e comparadas com os dados das APIs
   | 'targets.view'
   | 'targets.create'
   | 'targets.edit'
-  | 'sales.view'
-  | 'sales.edit'
   | 'customers.view'
   | 'customers.edit'
   | 'products.view'
-  | 'imports.view'
-  | 'imports.create'
-  | 'reports.view'
-  | 'reports.export'
-  | 'history.view'
   | 'users.view'
   | 'users.create'
   | 'users.edit'
@@ -84,28 +78,28 @@ export interface ThemeColors {
 }
 
 export type PageId =
+  // Avulsos (topo do menu, sem grupo)
+  | 'sales-board'
+  | 'categories'
+  // Principal
   | 'dashboard'
   | 'macro-view'
+  // Comercial
   | 'not-positivated'
   | 'top-20-customers'
   | 'top-customers'
   | 'sortiments'
   | 'catalog'
   | 'objectives'
+  // SAR
   | 'sar-raio-x'
   | 'sar-base-roteiro'
   | 'sar-verba-indenizatoria'
-  | 'analytics'
-  | 'studies'
-  | 'targets'
-  | 'sales'
-  | 'history'
-  | 'insights'
-  | 'reports'
-  | 'imports'
+  // Conta
   | 'profile'
   | 'settings'
   | 'credits'
+  // Administração
   | 'users'
-  | 'audit';
+  | 'targets';
 

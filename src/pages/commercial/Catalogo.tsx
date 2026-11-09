@@ -3,7 +3,6 @@ import { useTheme } from '../../context/ThemeContext';
 import { EmptyBlock, ErrorBlock, LoadingBlock } from '../../components/common/DataState';
 import { getErrorMessage, fetchProducts, ProductRow } from '../../lib/api';
 import { Search, ExternalLink } from 'lucide-react';
-import { APP_CATALOG_URL } from '../../config/appConfig';
 
 export const CatalogoPage: React.FC = () => {
   const { t } = useTheme();

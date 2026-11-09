@@ -17,6 +17,7 @@ from psycopg.types.json import Jsonb
 from app.import_types import ImportTypeConfig
 from app.parse import (
     parse_boolean,
+    parse_coordinate,
     parse_date_only,
     parse_duration,
     parse_integer,
@@ -96,6 +97,8 @@ def map_and_validate_rows(
 
             if col.kind == "numeric":
                 parsed_ok, parsed_val = parse_numeric(raw_value)
+            elif col.kind == "coord":
+                parsed_ok, parsed_val = parse_coordinate(raw_value)
             elif col.kind == "integer":
                 parsed_ok, parsed_val = parse_integer(raw_value)
             elif col.kind == "date":
