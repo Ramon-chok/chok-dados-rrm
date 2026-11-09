@@ -207,11 +207,35 @@ export const VerbaIndenizatoriaPage: React.FC = () => {
     fontWeight: 600,
     fontSize: 11.5,
     color: t.textMuted,
-    borderBottom: `1px solid ${t.border}`,
     whiteSpace: 'nowrap',
+    // Cabeçalho preso no topo da área rolável. Precisa de fundo opaco, senão
+    // as linhas passam por baixo dele ao rolar.
+    position: 'sticky',
+    top: 0,
+    zIndex: 2,
+    background: t.surface,
+    // boxShadow no lugar de borderBottom: com borderCollapse: 'collapse' a
+    // borda de uma célula sticky não é pintada de forma confiável.
+    boxShadow: `inset 0 -1px 0 ${t.border}`,
   };
   const cellStyle: React.CSSProperties = { padding: '10px 12px', whiteSpace: 'nowrap' };
   const numCellStyle: React.CSSProperties = { ...cellStyle, textAlign: 'right' };
+  /**
+   * Linha de totais presa no RODAPÉ da área rolável.
+   *
+   * O total é a informação mais importante da tela: se ele rolasse junto com
+   * as linhas, sumiria assim que a lista passasse da altura visível.
+   */
+  const footCellStyle: React.CSSProperties = {
+    ...cellStyle,
+    fontWeight: 700,
+    position: 'sticky',
+    bottom: 0,
+    zIndex: 2,
+    background: t.surfaceElevated,
+    boxShadow: `inset 0 2px 0 ${t.border}`,
+  };
+  const footNumCellStyle: React.CSSProperties = { ...footCellStyle, textAlign: 'right' };
 
   return (
     <div>
@@ -492,7 +516,11 @@ export const VerbaIndenizatoriaPage: React.FC = () => {
               overflow: 'hidden',
             }}
           >
-            <div style={{ overflowX: 'auto' }}>
+            {/* Altura FIXA com rolagem só aqui dentro: a lista de vendedores
+                não estica mais a página inteira. O cabeçalho fica preso no
+                topo e a linha de totais no rodapé, então as duas referências
+                continuam à vista enquanto se rola. */}
+            <div style={{ maxHeight: 460, overflowY: 'auto', overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5, color: t.text }}>
                 <thead>
                   <tr>
@@ -530,16 +558,16 @@ export const VerbaIndenizatoriaPage: React.FC = () => {
                 </tbody>
                 {filtered.length > 0 && (
                   <tfoot>
-                    <tr style={{ borderTop: `2px solid ${t.border}`, background: t.surfaceElevated }}>
-                      <td style={{ ...cellStyle, fontWeight: 700 }} colSpan={3}>
+                    <tr>
+                      <td style={footCellStyle} colSpan={3}>
                         Total ({filtered.length.toLocaleString('pt-BR')}{' '}
                         {filtered.length === 1 ? 'vendedor' : 'vendedores'})
                       </td>
-                      <td className="num" style={{ ...numCellStyle, fontWeight: 700 }}>{fmtKm(totals.kmTotal)}</td>
-                      <td className="num" style={{ ...numCellStyle, fontWeight: 700 }}>{fmtMoeda(totals.verba)}</td>
-                      <td className="num" style={{ ...numCellStyle, fontWeight: 700 }}>{fmtMoeda(totals.desconto)}</td>
-                      <td className="num" style={{ ...numCellStyle, fontWeight: 700 }}>{fmtMoeda(totals.reembolso)}</td>
-                      <td className="num" style={{ ...numCellStyle, fontWeight: 700, color: t.primary }}>
+                      <td className="num" style={footNumCellStyle}>{fmtKm(totals.kmTotal)}</td>
+                      <td className="num" style={footNumCellStyle}>{fmtMoeda(totals.verba)}</td>
+                      <td className="num" style={footNumCellStyle}>{fmtMoeda(totals.desconto)}</td>
+                      <td className="num" style={footNumCellStyle}>{fmtMoeda(totals.reembolso)}</td>
+                      <td className="num" style={{ ...footNumCellStyle, color: t.primary }}>
                         {fmtMoeda(totals.aPagar)}
                       </td>
                     </tr>

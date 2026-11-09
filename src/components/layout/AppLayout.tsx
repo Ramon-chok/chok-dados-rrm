@@ -31,6 +31,7 @@ import {
   Activity,
   Route,
   DollarSign,
+  Clock,
 } from 'lucide-react';
 import { ScrollToTopButton } from './ScrollToTopButton';
 import { SessionTimer } from './SessionTimer';
@@ -134,6 +135,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, c
       items: [
         { id: 'users', name: 'Usuários & RBAC', icon: <Users size={17} />, adminOnly: true },
         { id: 'targets', name: 'Metas & Definições', icon: <Target size={17} />, adminOnly: true },
+        { id: 'import-history', name: 'Histórico de Importações', icon: <Clock size={17} />, adminOnly: true },
       ],
     },
   ];
@@ -158,6 +160,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, c
     sortiments: 'Sortimentos',
     catalog: 'Catálogo de Produtos',
     objectives: 'Objetivos',
+    'import-history': 'Histórico de Importações',
     'sar-raio-x': 'Raio-X',
     'sar-base-roteiro': 'Base de Roteiro',
     'sar-verba-indenizatoria': 'Verba Indenizatória',

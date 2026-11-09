@@ -279,8 +279,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return true;
       case 'users':
         return hasPermission('users.view');
-      // Importação de metas/definições: só o administrador.
+      // Importação de metas/definições e a auditoria dela: só o administrador.
       case 'targets':
+      case 'import-history':
         return false;
       case 'credits':
       case 'profile':

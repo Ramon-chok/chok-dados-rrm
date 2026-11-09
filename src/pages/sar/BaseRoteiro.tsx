@@ -33,7 +33,6 @@ import {
   Palette,
   Repeat,
   Route,
-  Satellite,
   Search,
 } from 'lucide-react';
 
@@ -243,13 +242,32 @@ const FALLBACK_CENTER: [number, number] = [-14.235, -51.925];
  * de depender de mais um serviço.
  * ------------------------------------------------------------------ */
 
-const OSM_URL = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 const OSM_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
+const ESRI_ATTR = '&copy; <a href="https://www.esri.com">Esri</a>';
+const ESRI = 'https://server.arcgisonline.com/ArcGIS/rest/services';
 
-type BasemapId = 'padrao' | 'cinza' | 'escuro' | 'satelite';
+type BasemapId =
+  | 'padrao'
+  | 'esri_ruas'
+  | 'humanitario'
+  | 'cicloturismo'
+  | 'topografico'
+  | 'esri_topo'
+  | 'fisico'
+  | 'satelite'
+  | 'satelite_ruas'
+  | 'cinza_claro'
+  | 'cinza_escuro'
+  | 'pb'
+  | 'escuro'
+  | 'sepia'
+  | 'natgeo'
+  | 'oceanos';
 
 interface BasemapCfg {
   label: string;
+  /** Agrupamento exibido no seletor. */
+  grupo: string;
   url: string;
   attribution: string;
   maxZoom: number;
@@ -257,36 +275,161 @@ interface BasemapCfg {
   className?: string;
   /** true = fundo escuro: controles e anel dos pontos se adaptam. */
   escuro?: boolean;
+  /** Camadas de referência desenhadas POR CIMA da base (ruas, nomes). */
+  overlays?: string[];
 }
 
+/**
+ * Todos os estilos disponíveis — e todos SEM chave de API.
+ *
+ * Cada endereço foi testado antes de entrar aqui (HTTP 200 e imagem de
+ * verdade). Ficaram de fora, de propósito, os provedores que passaram a
+ * exigir cadastro: CARTO (que devolvia os tiles carimbados com "API KEY
+ * REQUIRED", o problema original) e Stamen, hoje servido pela Stadia.
+ *
+ * Preto-e-branco, escuro e sépia não são serviços novos: reaproveitam os
+ * tiles do OSM com filtro CSS, sem requisição adicional.
+ */
 const BASEMAPS: Record<BasemapId, BasemapCfg> = {
-  padrao: { label: 'Mapa', url: OSM_URL, attribution: OSM_ATTR, maxZoom: 19 },
-  cinza: {
+  padrao: {
+    label: 'Mapa padrão',
+    grupo: 'Ruas',
+    url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+    attribution: OSM_ATTR,
+    maxZoom: 19,
+  },
+  esri_ruas: {
+    label: 'Ruas (Esri)',
+    grupo: 'Ruas',
+    url: `${ESRI}/World_Street_Map/MapServer/tile/{z}/{y}/{x}`,
+    attribution: ESRI_ATTR,
+    maxZoom: 19,
+  },
+  humanitario: {
+    label: 'Humanitário (HOT)',
+    grupo: 'Ruas',
+    url: 'https://a.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png',
+    attribution: `${OSM_ATTR}, tiles Humanitarian OSM Team`,
+    maxZoom: 19,
+  },
+  cicloturismo: {
+    label: 'Ciclovias',
+    grupo: 'Ruas',
+    url: 'https://a.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png',
+    attribution: `${OSM_ATTR}, tiles CyclOSM`,
+    maxZoom: 19,
+  },
+
+  satelite: {
+    label: 'Satélite',
+    grupo: 'Satélite',
+    url: `${ESRI}/World_Imagery/MapServer/tile/{z}/{y}/{x}`,
+    attribution: `Imagens ${ESRI_ATTR}, Maxar, Earthstar Geographics`,
+    maxZoom: 19,
+    escuro: true,
+  },
+  satelite_ruas: {
+    label: 'Satélite com ruas',
+    grupo: 'Satélite',
+    url: `${ESRI}/World_Imagery/MapServer/tile/{z}/{y}/{x}`,
+    attribution: `Imagens ${ESRI_ATTR}, Maxar, Earthstar Geographics`,
+    maxZoom: 19,
+    escuro: true,
+    // Camadas de referência da própria Esri: vias e nomes por cima da imagem.
+    overlays: [
+      `${ESRI}/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}`,
+      `${ESRI}/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}`,
+    ],
+  },
+
+  topografico: {
+    label: 'Topográfico',
+    grupo: 'Relevo',
+    url: 'https://a.tile.opentopomap.org/{z}/{x}/{y}.png',
+    attribution: `${OSM_ATTR}, SRTM | tiles OpenTopoMap (CC-BY-SA)`,
+    // OpenTopoMap não gera tiles acima do zoom 17.
+    maxZoom: 17,
+  },
+  esri_topo: {
+    label: 'Topográfico (Esri)',
+    grupo: 'Relevo',
+    url: `${ESRI}/World_Topo_Map/MapServer/tile/{z}/{y}/{x}`,
+    attribution: ESRI_ATTR,
+    maxZoom: 19,
+  },
+  fisico: {
+    label: 'Relevo físico',
+    grupo: 'Relevo',
+    url: `${ESRI}/World_Physical_Map/MapServer/tile/{z}/{y}/{x}`,
+    attribution: ESRI_ATTR,
+    // O World_Physical_Map só existe até o zoom 8.
+    maxZoom: 8,
+  },
+
+  cinza_claro: {
+    label: 'Cinza claro',
+    grupo: 'Neutros',
+    url: `${ESRI}/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}`,
+    attribution: ESRI_ATTR,
+    maxZoom: 16,
+  },
+  cinza_escuro: {
+    label: 'Cinza escuro',
+    grupo: 'Neutros',
+    url: `${ESRI}/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}`,
+    attribution: ESRI_ATTR,
+    maxZoom: 16,
+    escuro: true,
+  },
+  pb: {
     label: 'Preto e branco',
-    url: OSM_URL,
+    grupo: 'Neutros',
+    url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
     attribution: OSM_ATTR,
     maxZoom: 19,
     className: 'mapa-tiles-cinza',
   },
   escuro: {
     label: 'Escuro',
-    url: OSM_URL,
+    grupo: 'Neutros',
+    url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
     attribution: OSM_ATTR,
     maxZoom: 19,
     className: 'mapa-tiles-escuro',
     escuro: true,
   },
-  satelite: {
-    label: 'Satélite',
-    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-    attribution: 'Imagens &copy; <a href="https://www.esri.com">Esri</a>, Maxar, Earthstar Geographics',
-    // O World_Imagery não tem tiles acima de 19 em boa parte do Brasil.
+  sepia: {
+    label: 'Sépia',
+    grupo: 'Neutros',
+    url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+    attribution: OSM_ATTR,
     maxZoom: 19,
-    escuro: true,
+    className: 'mapa-tiles-sepia',
+  },
+
+  natgeo: {
+    label: 'National Geographic',
+    grupo: 'Temáticos',
+    url: `${ESRI}/NatGeo_World_Map/MapServer/tile/{z}/{y}/{x}`,
+    attribution: `${ESRI_ATTR}, National Geographic`,
+    maxZoom: 16,
+  },
+  oceanos: {
+    label: 'Oceanos',
+    grupo: 'Temáticos',
+    url: `${ESRI}/Ocean/World_Ocean_Base/MapServer/tile/{z}/{y}/{x}`,
+    attribution: `${ESRI_ATTR}, GEBCO, NOAA`,
+    maxZoom: 13,
   },
 };
 
-const BASEMAP_ORDEM: BasemapId[] = ['padrao', 'satelite', 'cinza', 'escuro'];
+const BASEMAP_ORDEM: BasemapId[] = [
+  'padrao', 'esri_ruas', 'humanitario', 'cicloturismo',
+  'satelite', 'satelite_ruas',
+  'topografico', 'esri_topo', 'fisico',
+  'cinza_claro', 'cinza_escuro', 'pb', 'escuro', 'sepia',
+  'natgeo', 'oceanos',
+];
 
 /* ------------------------------------------------------------------ *
  * Roteirização
@@ -592,9 +735,11 @@ export const BaseRoteiroPage: React.FC = () => {
    * do zero a cada clique. Agora as quatro existem desde o início e a troca é
    * só um add/remove no mapa — instantâneo e sem efeito nenhum envolvido.
    */
-  const tilesRef = useRef<Record<BasemapId, L.TileLayer> | null>(null);
+  const tilesRef = useRef<Record<BasemapId, L.LayerGroup> | null>(null);
   /** Qual delas está no mapa agora (fonte da verdade do lado do Leaflet). */
   const basemapAtivoRef = useRef<BasemapId | null>(null);
+  /** Último estilo de ponto aplicado, para não reestilizar à toa. */
+  const estiloPontoRef = useRef<string>('');
   const layerRef = useRef<L.LayerGroup | null>(null);
   // Renderer de canvas: com milhares de pontos o SVG do Leaflet trava no
   // pan/zoom; no canvas o desenho é de uma vez só.
@@ -611,23 +756,59 @@ export const BaseRoteiroPage: React.FC = () => {
       preferCanvas: true,
       zoomControl: true,
       attributionControl: true,
+      // minZoom/maxZoom EXPLÍCITOS no mapa — esta é a correção do travamento.
+      //
+      // Sem eles, o Leaflet recalcula os limites de zoom a cada camada que
+      // entra ou sai (_updateZoomLevels). Como os 16 estilos têm tetos
+      // diferentes (19, 17, 16, 13, 8), toda troca mudava o alcance de zoom:
+      // disparava `zoomlevelschange` e, quando o teto novo era menor que o
+      // zoom atual, um `setZoom` animado. Cada um desses eventos faz o canvas
+      // REPROJETAR os 6.800 pontos (Canvas._onZoomEnd percorre todos os
+      // caminhos) — era isso que congelava a tela a cada clique.
+      //
+      // Com o alcance fixo, o vão de zoom nunca muda, o evento não dispara e
+      // a troca passa a ser só add/remove de tiles. O teto real de cada
+      // provedor vai em maxNativeZoom (abaixo), que faz o Leaflet ampliar o
+      // último nível disponível em vez de limitar o mapa inteiro.
+      minZoom: 3,
+      maxZoom: 19,
     });
     rendererRef.current = L.canvas({ padding: 0.5 });
     layerRef.current = L.layerGroup().addTo(map);
 
-    // Cria as quatro camadas agora e guarda; a troca depois é só add/remove.
-    const tiles = {} as Record<BasemapId, L.TileLayer>;
+    // Cria TODAS as camadas agora e guarda; a troca depois é só add/remove.
+    // Cada estilo é um LayerGroup (base + eventuais camadas de referência),
+    // para "satélite com ruas" entrar e sair como uma coisa só.
+    // Camada não adicionada ao mapa não cria DOM nem baixa tile (o Leaflet só
+    // inicializa no onAdd), então ter as 16 prontas não custa requisição.
+    const tiles = {} as Record<BasemapId, L.LayerGroup>;
     (Object.keys(BASEMAPS) as BasemapId[]).forEach((id) => {
       const cfg = BASEMAPS[id];
-      tiles[id] = L.tileLayer(cfg.url, {
+      const base = L.tileLayer(cfg.url, {
         attribution: cfg.attribution,
-        maxZoom: cfg.maxZoom,
+        // maxNativeZoom (e não maxZoom): "este provedor só tem tiles até
+        // aqui; acima disso, amplie o último nível". Assim um basemap de
+        // baixa resolução não restringe o zoom do mapa — e não mexe nos
+        // limites de zoom, que é o que causava o travamento.
+        maxNativeZoom: cfg.maxZoom,
+        maxZoom: 19,
         // O filtro de cor vai em className porque o Leaflet aplica essa classe
         // no CONTAINER DOS TILES (`'leaflet-layer ' + options.className`). Os
         // pontos ficam em outro pane (o canvas do overlayPane), então os
         // marcadores não são filtrados junto.
         className: cfg.className || '',
       });
+      const camadas: L.Layer[] = [base];
+      (cfg.overlays || []).forEach((url) => {
+        camadas.push(
+          L.tileLayer(url, {
+            maxNativeZoom: cfg.maxZoom,
+            maxZoom: 19,
+            className: cfg.className || '',
+          })
+        );
+      });
+      tiles[id] = L.layerGroup(camadas);
     });
     tilesRef.current = tiles;
     tiles[basemapRef.current].addTo(map);
@@ -664,8 +845,6 @@ export const BaseRoteiroPage: React.FC = () => {
     const anterior = basemapAtivoRef.current;
     if (anterior && tiles[anterior]) map.removeLayer(tiles[anterior]);
     tiles[id].addTo(map);
-    // A camada de fundo tem que ficar ATRÁS dos pontos.
-    tiles[id].bringToBack();
     basemapAtivoRef.current = id;
   }, []);
 
@@ -685,6 +864,12 @@ export const BaseRoteiroPage: React.FC = () => {
     const grupo = layerRef.current;
     if (!grupo) return;
     const { anelCor, anelPeso, opacidade } = estiloPorFundo(basemap);
+    // A maioria das trocas não muda o estilo do ponto (de "Mapa padrão" para
+    // "Ruas (Esri)", por exemplo, os dois são fundos claros). Nesses casos
+    // nem percorre os milhares de marcadores.
+    const assinatura = `${anelCor}|${anelPeso}|${opacidade}`;
+    if (estiloPontoRef.current === assinatura) return;
+    estiloPontoRef.current = assinatura;
     grupo.eachLayer((l) => {
       // O grupo também tem os rótulos (L.marker), que não têm setStyle.
       if (l instanceof L.CircleMarker) {
@@ -709,6 +894,7 @@ export const BaseRoteiroPage: React.FC = () => {
     // (era a origem do travamento). Um efeito separado, logo abaixo, ajusta o
     // estilo dos marcadores já existentes quando a camada muda.
     const { anelCor, anelPeso, opacidade } = estiloPorFundo(basemapRef.current);
+    estiloPontoRef.current = `${anelCor}|${anelPeso}|${opacidade}`;
     const outros = isDark ? OUTROS_COLOR.dark : OUTROS_COLOR.light;
     // Rótulo dentro do ponto (identidade sem depender da cor) só quando há
     // poucos pontos — acima disso vira mancha ilegível.
@@ -992,504 +1178,18 @@ export const BaseRoteiroPage: React.FC = () => {
     ['Sem coordenada', resumo.semCoordenada.toLocaleString('pt-BR')],
   ];
 
-  return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-            <h1 className="num" style={{ margin: 0, fontSize: 24, fontWeight: 700, color: t.text }}>
-              Base de Roteiro
-            </h1>
-            <span
-              style={{
-                fontSize: 11,
-                fontWeight: 700,
-                padding: '2px 8px',
-                borderRadius: 6,
-                background: `${t.primary}1F`,
-                color: t.primary,
-                border: `1px solid ${t.primary}40`,
-              }}
-            >
-              SAR
-            </span>
-          </div>
-          <p style={{ margin: 0, fontSize: 13, color: t.textSecondary }}>
-            Clientes roteirizados no mapa, por dia de visita, semana do mês, vendedor, equipe e cidade.
-          </p>
-        </div>
-        <ExportExcelButton onPrepareData={handleExport} filename="base-de-roteiro.xlsx" />
-      </div>
-
-      {loading ? (
-        <LoadingBlock label="Carregando a base de roteiro..." />
-      ) : error ? (
-        <ErrorBlock message={error} />
-      ) : rows.length === 0 ? (
-        <EmptyBlock
-          title="Nenhuma base de roteiro importada"
-          description='Importe a planilha em Administração › Metas & Definições, escolhendo o conjunto "Base de Roteiro". Ela precisa trazer latitude e longitude de cada cliente para os pontos aparecerem no mapa.'
-        />
-      ) : (
-        <>
-          {/* FILTROS */}
-          <div
-            style={{
-              display: 'flex',
-              gap: 10,
-              alignItems: 'flex-end',
-              flexWrap: 'wrap',
-              marginBottom: 14,
-              background: t.surface,
-              border: `1px solid ${t.border}`,
-              borderRadius: 12,
-              padding: 12,
-            }}
-          >
-            {(resp?.datasDisponiveis.length ?? 0) > 1 && (
-              <SingleSelectFilter
-                label="Importação"
-                options={(resp?.datasDisponiveis ?? []).map((d) => ({
-                  value: d,
-                  label: new Date(`${d}T12:00:00`).toLocaleDateString('pt-BR'),
-                }))}
-                value={data}
-                onChange={(v) => v && setData(v)}
-                allowClear={false}
-              />
-            )}
-
-            <SingleSelectFilter
-              label="Colorir por"
-              options={(Object.keys(COLORIR_LABEL) as ColorirPor[]).map((k) => ({
-                value: k,
-                label: COLORIR_LABEL[k],
-              }))}
-              value={colorirPor}
-              onChange={(v) => setColorirPor((v as ColorirPor) || 'vendedor')}
-              allowClear={false}
-            />
-
-            {canFilterEquipe && (filtros?.equipes.length ?? 0) > 0 && (
-              <SingleSelectFilter
-                label="Equipe"
-                options={(filtros?.equipes ?? []).map((e) => ({ value: e, label: e }))}
-                value={selectedEquipe}
-                onChange={setSelectedEquipe}
-                placeholder="Todas as equipes"
-                allLabel="Todas as equipes"
-              />
-            )}
-
-            {canFilterVendedor && (
-              <SingleSelectFilter
-                label="Vendedor"
-                options={(filtros?.vendedores ?? []).map((v) => ({
-                  value: v.codVendedor,
-                  label: `${v.vendedor} (${v.pontos})`,
-                }))}
-                value={selectedVendedor}
-                onChange={setSelectedVendedor}
-                placeholder="Todos os vendedores"
-                allLabel="Todos os vendedores"
-              />
-            )}
-
-            {(filtros?.municipios.length ?? 0) > 0 && (
-              <SingleSelectFilter
-                label="Cidade"
-                options={(filtros?.municipios ?? []).map((m) => ({ value: m, label: m }))}
-                value={selectedMunicipio}
-                onChange={setSelectedMunicipio}
-                placeholder="Todas as cidades"
-                allLabel="Todas as cidades"
-              />
-            )}
-
-            {diaOptions.length > 0 && (
-              <MultiSelectFilter
-                label="Dia"
-                options={diaOptions}
-                selected={selectedDias}
-                onChange={setSelectedDias}
-                placeholder="Todos os dias"
-              />
-            )}
-
-            {semanaOptions.length > 0 && (
-              <MultiSelectFilter
-                label="Semana"
-                options={semanaOptions}
-                selected={selectedSemanas}
-                onChange={setSelectedSemanas}
-                placeholder="Todas as semanas"
-              />
-            )}
-
-            <div style={{ flex: 1, minWidth: 190 }}>
-              <label
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  fontSize: 11,
-                  fontWeight: 600,
-                  color: t.textMuted,
-                  marginBottom: 4,
-                }}
-              >
-                <Search size={12} /> Buscar cliente
-              </label>
-              <input
-                type="text"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Código, razão social ou endereço"
-                style={{
-                  width: '100%',
-                  padding: '8px 10px',
-                  borderRadius: 8,
-                  border: `1px solid ${t.border}`,
-                  background: t.surfaceElevated,
-                  color: t.text,
-                  fontSize: 13,
-                }}
-              />
-            </div>
-          </div>
-
-          {/* Dia é ordinal (segunda→sexta): a legenda mostra o significado de 2..6 */}
-          {diaOptions.length > 0 && (
-            <div style={{ fontSize: 11.5, color: t.textMuted, marginBottom: 14 }}>
-              Convenção da planilha no campo “Dia”:{' '}
-              {diaOptions.map((d, i) => (
-                <span key={d}>
-                  {i > 0 ? ' · ' : ''}
-                  <strong style={{ color: t.textSecondary }}>{d}</strong> = {DIA_CURTO[Number(d)] || '?'}
-                </span>
-              ))}
-            </div>
-          )}
-
-          {/* KPIs */}
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
-              gap: 12,
-              marginBottom: 14,
-            }}
-          >
-            {kpiCards.map(([label, value]) => (
-              <div
-                key={label}
-                style={{
-                  background: t.surface,
-                  border: `1px solid ${t.border}`,
-                  borderRadius: 12,
-                  padding: '12px 14px',
-                }}
-              >
-                <div
-                  style={{
-                    fontSize: 10.5,
-                    fontWeight: 600,
-                    color: t.textMuted,
-                    marginBottom: 5,
-                    textTransform: 'uppercase',
-                    letterSpacing: 0.4,
-                  }}
-                >
-                  {label}
-                </div>
-                <div className="num" style={{ fontSize: 18, fontWeight: 700, color: t.text }}>
-                  {value}
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {resp?.truncado && (
-            <div
-              style={{
-                display: 'flex',
-                gap: 10,
-                alignItems: 'flex-start',
-                background: t.surfaceElevated,
-                border: `1px solid ${t.border}`,
-                borderRadius: 10,
-                padding: '10px 14px',
-                marginBottom: 14,
-                fontSize: 12.5,
-                color: t.textSecondary,
-              }}
-            >
-              <AlertCircle size={16} color={t.primary} style={{ flexShrink: 0, marginTop: 1 }} />
-              <span>
-                Esta base tem {resp.total.toLocaleString('pt-BR')} pontos e foi cortada no limite do mapa. Filtre por
-                equipe, vendedor ou cidade para ver o recorte completo.
-              </span>
-            </div>
-          )}
-
-          {/* MAPA + LEGENDA */}
-          <div
-            style={{
-              background: t.surface,
-              border: `1px solid ${t.border}`,
-              borderRadius: 12,
-              overflow: 'hidden',
-              marginBottom: 16,
-            }}
-          >
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                padding: '12px 16px',
-                borderBottom: `1px solid ${t.border}`,
-                flexWrap: 'wrap',
-              }}
-            >
-              <MapPin size={16} color={t.primary} />
-              <div style={{ fontSize: 14, fontWeight: 600, color: t.text }}>
-                Mapa dos clientes roteirizados
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11.5, color: t.textMuted }}>
-                <Palette size={12} />
-                cor por {COLORIR_LABEL[colorirPor].toLowerCase()}
-              </div>
-
-            </div>
-
-            {/* Seletor de camada de fundo — todas sem chave de API. Fica em
-                linha própria e rotulada: dentro do cabeçalho ele disputava
-                espaço com o título e, em tela estreita, era empurrado para
-                fora do alcance do olho. */}
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 10,
-                flexWrap: 'wrap',
-                padding: '10px 16px',
-                borderBottom: `1px solid ${t.border}`,
-              }}
-            >
-              <span
-                style={{
-                  fontSize: 11,
-                  fontWeight: 600,
-                  color: t.textMuted,
-                  textTransform: 'uppercase',
-                  letterSpacing: 0.4,
-                }}
-              >
-                Camada do mapa
-              </span>
-
-              <button
-                type="button"
-                onClick={() => setLegendaVisivel((v) => !v)}
-                aria-expanded={legendaVisivel}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  marginLeft: 'auto',
-                  padding: '5px 11px',
-                  borderRadius: 999,
-                  border: `1px solid ${t.border}`,
-                  background: legendaVisivel ? `${t.primary}14` : t.surfaceElevated,
-                  color: legendaVisivel ? t.primary : t.textSecondary,
-                  fontSize: 11.5,
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                {legendaVisivel ? <EyeOff size={12} /> : <Eye size={12} />}
-                {legendaVisivel ? 'Ocultar legenda' : `Legenda (${legenda.length})`}
-              </button>
-              <div
-                role="group"
-                aria-label="Camada do mapa"
-                style={{
-                  display: 'flex',
-                  gap: 2,
-                  padding: 2,
-                  background: t.bgSecondary,
-                  border: `1px solid ${t.border}`,
-                  borderRadius: 999,
-                }}
-              >
-                {BASEMAP_ORDEM.map((id) => {
-                  const ativo = basemap === id;
-                  return (
-                    <button
-                      key={id}
-                      type="button"
-                      onClick={() => trocarBasemap(id)}
-                      aria-pressed={ativo}
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: 5,
-                        padding: '5px 11px',
-                        borderRadius: 999,
-                        border: 'none',
-                        background: ativo ? t.primary : 'transparent',
-                        color: ativo ? '#fff' : t.textSecondary,
-                        fontSize: 11.5,
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      {id === 'satelite' ? <Satellite size={12} /> : <Layers size={12} />}
-                      {BASEMAPS[id].label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Legenda: identidade NUNCA fica só na cor — cada item tem
-                rótulo e contagem, e o clique esconde/mostra a categoria.
-                Isso vale ainda mais agora que cada setor tem tom próprio:
-                com dezenas de categorias, tons vizinhos se parecem, e é o
-                rótulo (aqui, no popup e na tabela) que diz quem é quem.
-                Altura limitada com rolagem própria para a legenda não
-                empurrar o mapa para fora da tela. */}
-            {legendaVisivel && (
-            <div
-              style={{
-                display: 'flex',
-                gap: 8,
-                flexWrap: 'wrap',
-                alignContent: 'flex-start',
-                maxHeight: 108,
-                overflowY: 'auto',
-                padding: '10px 16px',
-                borderBottom: `1px solid ${t.border}`,
-                background: t.bgSecondary,
-              }}
-            >
-              {legenda.map((item) => {
-                const off = hidden.has(item.chave);
-                return (
-                  <button
-                    key={item.chave}
-                    type="button"
-                    onClick={() => toggleLegenda(item.chave)}
-                    title={off ? 'Mostrar no mapa' : 'Esconder do mapa'}
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: 6,
-                      padding: '4px 10px',
-                      borderRadius: 999,
-                      border: `1px solid ${t.border}`,
-                      background: t.surface,
-                      color: off ? t.textMuted : t.text,
-                      opacity: off ? 0.5 : 1,
-                      fontSize: 11.5,
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      textDecoration: off ? 'line-through' : 'none',
-                    }}
-                  >
-                    <span
-                      style={{
-                        width: 10,
-                        height: 10,
-                        borderRadius: '50%',
-                        background: item.cor,
-                        border: `1px solid ${isDark ? '#0B0F17' : '#FFFFFF'}`,
-                        flexShrink: 0,
-                      }}
-                    />
-                    <span>{item.rotulo}</span>
-                    <span className="num" style={{ color: t.textMuted, fontWeight: 500 }}>
-                      {item.total.toLocaleString('pt-BR')}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-            )}
-
-            {/* Tema escuro do basemap: inverte os tiles claros do OSM em vez
-                de depender de um serviço de mapa com chave de API. A classe
-                fica no container de tiles (ver className no L.tileLayer), por
-                isso os pontos, popups e controles não são invertidos.
-                hue-rotate(180°) desfaz a troca de matiz da inversão, deixando
-                água e vegetação com a cor certa em vez de complementar. */}
-            <style>{`
-              .mapa-tiles-escuro {
-                filter: invert(1) hue-rotate(180deg) brightness(0.92) contrast(0.92) saturate(0.75);
-              }
-              /* Preto e branco: tira a cor do basemap para a COR DOS PONTOS
-                 ser a única informação cromática na tela. É a camada mais
-                 útil quando se está lendo setor/dia/semana pela cor. */
-              .mapa-tiles-cinza {
-                filter: grayscale(1) contrast(0.9) brightness(1.05);
-              }
-              /* O rodapé de atribuição do Leaflet é branco fixo e fica
-                 ilegível/estourado sobre o mapa escuro. */
-              .mapa-escuro .leaflet-control-attribution {
-                background: rgba(11, 15, 23, 0.78);
-                color: #9AA4B8;
-              }
-              .mapa-escuro .leaflet-control-attribution a { color: #9AA4B8; }
-              /* Botões de zoom seguem o tema (o padrão é branco). */
-              .mapa-escuro .leaflet-bar a {
-                background: #162032;
-                color: #F1F1F6;
-                border-bottom-color: #34365A;
-              }
-              .mapa-escuro .leaflet-bar a:hover { background: #1d2a42; }
-            `}</style>
-
-            {/* O container precisa de altura explícita: o Leaflet mede o div. */}
-            <div
-              ref={setMapEl}
-              /* Os controles seguem o FUNDO DO MAPA (escuro ou satélite),
-                 não o tema da página: no tema claro com satélite, controles
-                 brancos sumiam sobre a imagem. */
-              className={fundoEscuro ? 'mapa-escuro' : undefined}
-              style={{
-                width: '100%',
-                height: 'min(62vh, 620px)',
-                minHeight: 340,
-                background: t.bgSecondary,
-              }}
-            />
-
-            {resumo.semCoordenada > 0 && (
-              <div
-                style={{
-                  display: 'flex',
-                  gap: 8,
-                  alignItems: 'center',
-                  padding: '10px 16px',
-                  borderTop: `1px solid ${t.border}`,
-                  fontSize: 12,
-                  color: t.textSecondary,
-                }}
-              >
-                <Crosshair size={14} color={t.textMuted} style={{ flexShrink: 0 }} />
-                <span>
-                  {resumo.semCoordenada.toLocaleString('pt-BR')}{' '}
-                  {resumo.semCoordenada === 1 ? 'cliente do filtro está' : 'clientes do filtro estão'} sem
-                  latitude/longitude na planilha e não{' '}
-                  {resumo.semCoordenada === 1 ? 'aparece' : 'aparecem'} no mapa — eles continuam na tabela abaixo.
-                </span>
-              </div>
-            )}
-          </div>
-
+  /**
+   * Tabela + gráficos memoizados.
+   *
+   * São a parte cara da tela (até 500 linhas e 4 gráficos recharts). Sem
+   * isto, QUALQUER mudança de estado do componente — inclusive trocar a
+   * camada do mapa, que não tem nada a ver com eles — remontava tudo, e era
+   * isso que travava a tela a cada clique no seletor. Com o useMemo, React
+   * reaproveita a mesma árvore e só re-renderiza quando os dados mudam.
+   */
+  const conteudoPesado = useMemo(
+    () => (
+      <>
           {/* TABELA — visão alternativa ao mapa (e única para quem está sem coordenada) */}
           <div style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 12, overflow: 'hidden' }}>
             <div
@@ -1919,6 +1619,487 @@ export const BaseRoteiroPage: React.FC = () => {
               )}
             </div>
           </div>
+      </>
+    ),
+    // `basemap` de propósito FORA: trocar a camada não muda nada aqui.
+    [filtrados, roteirizacao, porFrequencia, porDia, porCidade, corDaCategoria, categoriaDe, t, isDark]
+  );
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+            <h1 className="num" style={{ margin: 0, fontSize: 24, fontWeight: 700, color: t.text }}>
+              Base de Roteiro
+            </h1>
+            <span
+              style={{
+                fontSize: 11,
+                fontWeight: 700,
+                padding: '2px 8px',
+                borderRadius: 6,
+                background: `${t.primary}1F`,
+                color: t.primary,
+                border: `1px solid ${t.primary}40`,
+              }}
+            >
+              SAR
+            </span>
+          </div>
+          <p style={{ margin: 0, fontSize: 13, color: t.textSecondary }}>
+            Clientes roteirizados no mapa, por dia de visita, semana do mês, vendedor, equipe e cidade.
+          </p>
+        </div>
+        <ExportExcelButton onPrepareData={handleExport} filename="base-de-roteiro.xlsx" />
+      </div>
+
+      {loading ? (
+        <LoadingBlock label="Carregando a base de roteiro..." />
+      ) : error ? (
+        <ErrorBlock message={error} />
+      ) : rows.length === 0 ? (
+        <EmptyBlock
+          title="Nenhuma base de roteiro importada"
+          description='Importe a planilha em Administração › Metas & Definições, escolhendo o conjunto "Base de Roteiro". Ela precisa trazer latitude e longitude de cada cliente para os pontos aparecerem no mapa.'
+        />
+      ) : (
+        <>
+          {/* FILTROS */}
+          <div
+            style={{
+              display: 'flex',
+              gap: 10,
+              alignItems: 'flex-end',
+              flexWrap: 'wrap',
+              marginBottom: 14,
+              background: t.surface,
+              border: `1px solid ${t.border}`,
+              borderRadius: 12,
+              padding: 12,
+            }}
+          >
+            {(resp?.datasDisponiveis.length ?? 0) > 1 && (
+              <SingleSelectFilter
+                label="Importação"
+                options={(resp?.datasDisponiveis ?? []).map((d) => ({
+                  value: d,
+                  label: new Date(`${d}T12:00:00`).toLocaleDateString('pt-BR'),
+                }))}
+                value={data}
+                onChange={(v) => v && setData(v)}
+                allowClear={false}
+              />
+            )}
+
+            <SingleSelectFilter
+              label="Colorir por"
+              options={(Object.keys(COLORIR_LABEL) as ColorirPor[]).map((k) => ({
+                value: k,
+                label: COLORIR_LABEL[k],
+              }))}
+              value={colorirPor}
+              onChange={(v) => setColorirPor((v as ColorirPor) || 'vendedor')}
+              allowClear={false}
+            />
+
+            {canFilterEquipe && (filtros?.equipes.length ?? 0) > 0 && (
+              <SingleSelectFilter
+                label="Equipe"
+                options={(filtros?.equipes ?? []).map((e) => ({ value: e, label: e }))}
+                value={selectedEquipe}
+                onChange={setSelectedEquipe}
+                placeholder="Todas as equipes"
+                allLabel="Todas as equipes"
+              />
+            )}
+
+            {canFilterVendedor && (
+              <SingleSelectFilter
+                label="Vendedor"
+                options={(filtros?.vendedores ?? []).map((v) => ({
+                  value: v.codVendedor,
+                  label: `${v.vendedor} (${v.pontos})`,
+                }))}
+                value={selectedVendedor}
+                onChange={setSelectedVendedor}
+                placeholder="Todos os vendedores"
+                allLabel="Todos os vendedores"
+              />
+            )}
+
+            {(filtros?.municipios.length ?? 0) > 0 && (
+              <SingleSelectFilter
+                label="Cidade"
+                options={(filtros?.municipios ?? []).map((m) => ({ value: m, label: m }))}
+                value={selectedMunicipio}
+                onChange={setSelectedMunicipio}
+                placeholder="Todas as cidades"
+                allLabel="Todas as cidades"
+              />
+            )}
+
+            {diaOptions.length > 0 && (
+              <MultiSelectFilter
+                label="Dia"
+                options={diaOptions}
+                selected={selectedDias}
+                onChange={setSelectedDias}
+                placeholder="Todos os dias"
+              />
+            )}
+
+            {semanaOptions.length > 0 && (
+              <MultiSelectFilter
+                label="Semana"
+                options={semanaOptions}
+                selected={selectedSemanas}
+                onChange={setSelectedSemanas}
+                placeholder="Todas as semanas"
+              />
+            )}
+
+            <div style={{ flex: 1, minWidth: 190 }}>
+              <label
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  fontSize: 11,
+                  fontWeight: 600,
+                  color: t.textMuted,
+                  marginBottom: 4,
+                }}
+              >
+                <Search size={12} /> Buscar cliente
+              </label>
+              <input
+                type="text"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Código, razão social ou endereço"
+                style={{
+                  width: '100%',
+                  padding: '8px 10px',
+                  borderRadius: 8,
+                  border: `1px solid ${t.border}`,
+                  background: t.surfaceElevated,
+                  color: t.text,
+                  fontSize: 13,
+                }}
+              />
+            </div>
+          </div>
+
+          {/* Dia é ordinal (segunda→sexta): a legenda mostra o significado de 2..6 */}
+          {diaOptions.length > 0 && (
+            <div style={{ fontSize: 11.5, color: t.textMuted, marginBottom: 14 }}>
+              Convenção da planilha no campo “Dia”:{' '}
+              {diaOptions.map((d, i) => (
+                <span key={d}>
+                  {i > 0 ? ' · ' : ''}
+                  <strong style={{ color: t.textSecondary }}>{d}</strong> = {DIA_CURTO[Number(d)] || '?'}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {/* KPIs */}
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+              gap: 12,
+              marginBottom: 14,
+            }}
+          >
+            {kpiCards.map(([label, value]) => (
+              <div
+                key={label}
+                style={{
+                  background: t.surface,
+                  border: `1px solid ${t.border}`,
+                  borderRadius: 12,
+                  padding: '12px 14px',
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 10.5,
+                    fontWeight: 600,
+                    color: t.textMuted,
+                    marginBottom: 5,
+                    textTransform: 'uppercase',
+                    letterSpacing: 0.4,
+                  }}
+                >
+                  {label}
+                </div>
+                <div className="num" style={{ fontSize: 18, fontWeight: 700, color: t.text }}>
+                  {value}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {resp?.truncado && (
+            <div
+              style={{
+                display: 'flex',
+                gap: 10,
+                alignItems: 'flex-start',
+                background: t.surfaceElevated,
+                border: `1px solid ${t.border}`,
+                borderRadius: 10,
+                padding: '10px 14px',
+                marginBottom: 14,
+                fontSize: 12.5,
+                color: t.textSecondary,
+              }}
+            >
+              <AlertCircle size={16} color={t.primary} style={{ flexShrink: 0, marginTop: 1 }} />
+              <span>
+                Esta base tem {resp.total.toLocaleString('pt-BR')} pontos e foi cortada no limite do mapa. Filtre por
+                equipe, vendedor ou cidade para ver o recorte completo.
+              </span>
+            </div>
+          )}
+
+          {/* MAPA + LEGENDA */}
+          <div
+            style={{
+              background: t.surface,
+              border: `1px solid ${t.border}`,
+              borderRadius: 12,
+              overflow: 'hidden',
+              marginBottom: 16,
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '12px 16px',
+                borderBottom: `1px solid ${t.border}`,
+                flexWrap: 'wrap',
+              }}
+            >
+              <MapPin size={16} color={t.primary} />
+              <div style={{ fontSize: 14, fontWeight: 600, color: t.text }}>
+                Mapa dos clientes roteirizados
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11.5, color: t.textMuted }}>
+                <Palette size={12} />
+                cor por {COLORIR_LABEL[colorirPor].toLowerCase()}
+              </div>
+
+            </div>
+
+            {/* Seletor de camada de fundo — todas sem chave de API. Fica em
+                linha própria e rotulada: dentro do cabeçalho ele disputava
+                espaço com o título e, em tela estreita, era empurrado para
+                fora do alcance do olho. */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                flexWrap: 'wrap',
+                padding: '10px 16px',
+                borderBottom: `1px solid ${t.border}`,
+              }}
+            >
+              <span
+                style={{
+                  fontSize: 11,
+                  fontWeight: 600,
+                  color: t.textMuted,
+                  textTransform: 'uppercase',
+                  letterSpacing: 0.4,
+                }}
+              >
+                Camada do mapa
+              </span>
+
+              <button
+                type="button"
+                onClick={() => setLegendaVisivel((v) => !v)}
+                aria-expanded={legendaVisivel}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  marginLeft: 'auto',
+                  padding: '5px 11px',
+                  borderRadius: 999,
+                  border: `1px solid ${t.border}`,
+                  background: legendaVisivel ? `${t.primary}14` : t.surfaceElevated,
+                  color: legendaVisivel ? t.primary : t.textSecondary,
+                  fontSize: 11.5,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {legendaVisivel ? <EyeOff size={12} /> : <Eye size={12} />}
+                {legendaVisivel ? 'Ocultar legenda' : `Legenda (${legenda.length})`}
+              </button>
+              <div style={{ minWidth: 230 }}>
+                <SingleSelectFilter
+                  label=""
+                  options={BASEMAP_ORDEM.map((id) => ({
+                    value: id,
+                    label: `${BASEMAPS[id].grupo} · ${BASEMAPS[id].label}`,
+                  }))}
+                  value={basemap}
+                  onChange={(v) => trocarBasemap((v as BasemapId) || 'padrao')}
+                  allowClear={false}
+                />
+              </div>
+            </div>
+
+            {/* Legenda: identidade NUNCA fica só na cor — cada item tem
+                rótulo e contagem, e o clique esconde/mostra a categoria.
+                Isso vale ainda mais agora que cada setor tem tom próprio:
+                com dezenas de categorias, tons vizinhos se parecem, e é o
+                rótulo (aqui, no popup e na tabela) que diz quem é quem.
+                Altura limitada com rolagem própria para a legenda não
+                empurrar o mapa para fora da tela. */}
+            {legendaVisivel && (
+            <div
+              style={{
+                display: 'flex',
+                gap: 8,
+                flexWrap: 'wrap',
+                alignContent: 'flex-start',
+                maxHeight: 108,
+                overflowY: 'auto',
+                padding: '10px 16px',
+                borderBottom: `1px solid ${t.border}`,
+                background: t.bgSecondary,
+              }}
+            >
+              {legenda.map((item) => {
+                const off = hidden.has(item.chave);
+                return (
+                  <button
+                    key={item.chave}
+                    type="button"
+                    onClick={() => toggleLegenda(item.chave)}
+                    title={off ? 'Mostrar no mapa' : 'Esconder do mapa'}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      padding: '4px 10px',
+                      borderRadius: 999,
+                      border: `1px solid ${t.border}`,
+                      background: t.surface,
+                      color: off ? t.textMuted : t.text,
+                      opacity: off ? 0.5 : 1,
+                      fontSize: 11.5,
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      textDecoration: off ? 'line-through' : 'none',
+                    }}
+                  >
+                    <span
+                      style={{
+                        width: 10,
+                        height: 10,
+                        borderRadius: '50%',
+                        background: item.cor,
+                        border: `1px solid ${isDark ? '#0B0F17' : '#FFFFFF'}`,
+                        flexShrink: 0,
+                      }}
+                    />
+                    <span>{item.rotulo}</span>
+                    <span className="num" style={{ color: t.textMuted, fontWeight: 500 }}>
+                      {item.total.toLocaleString('pt-BR')}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            )}
+
+            {/* Tema escuro do basemap: inverte os tiles claros do OSM em vez
+                de depender de um serviço de mapa com chave de API. A classe
+                fica no container de tiles (ver className no L.tileLayer), por
+                isso os pontos, popups e controles não são invertidos.
+                hue-rotate(180°) desfaz a troca de matiz da inversão, deixando
+                água e vegetação com a cor certa em vez de complementar. */}
+            <style>{`
+              .mapa-tiles-escuro {
+                filter: invert(1) hue-rotate(180deg) brightness(0.92) contrast(0.92) saturate(0.75);
+              }
+              /* Preto e branco: tira a cor do basemap para a COR DOS PONTOS
+                 ser a única informação cromática na tela. É a camada mais
+                 útil quando se está lendo setor/dia/semana pela cor. */
+              .mapa-tiles-cinza {
+                filter: grayscale(1) contrast(0.9) brightness(1.05);
+              }
+              /* Sépia: fundo quente e baixo contraste, em que qualquer cor de
+                 ponto salta. Também é só filtro sobre o OSM, sem outro serviço. */
+              .mapa-tiles-sepia {
+                filter: sepia(0.85) saturate(0.8) contrast(0.92) brightness(1.02);
+              }
+              /* O rodapé de atribuição do Leaflet é branco fixo e fica
+                 ilegível/estourado sobre o mapa escuro. */
+              .mapa-escuro .leaflet-control-attribution {
+                background: rgba(11, 15, 23, 0.78);
+                color: #9AA4B8;
+              }
+              .mapa-escuro .leaflet-control-attribution a { color: #9AA4B8; }
+              /* Botões de zoom seguem o tema (o padrão é branco). */
+              .mapa-escuro .leaflet-bar a {
+                background: #162032;
+                color: #F1F1F6;
+                border-bottom-color: #34365A;
+              }
+              .mapa-escuro .leaflet-bar a:hover { background: #1d2a42; }
+            `}</style>
+
+            {/* O container precisa de altura explícita: o Leaflet mede o div. */}
+            <div
+              ref={setMapEl}
+              /* Os controles seguem o FUNDO DO MAPA (escuro ou satélite),
+                 não o tema da página: no tema claro com satélite, controles
+                 brancos sumiam sobre a imagem. */
+              className={fundoEscuro ? 'mapa-escuro' : undefined}
+              style={{
+                width: '100%',
+                height: 'min(62vh, 620px)',
+                minHeight: 340,
+                background: t.bgSecondary,
+              }}
+            />
+
+            {resumo.semCoordenada > 0 && (
+              <div
+                style={{
+                  display: 'flex',
+                  gap: 8,
+                  alignItems: 'center',
+                  padding: '10px 16px',
+                  borderTop: `1px solid ${t.border}`,
+                  fontSize: 12,
+                  color: t.textSecondary,
+                }}
+              >
+                <Crosshair size={14} color={t.textMuted} style={{ flexShrink: 0 }} />
+                <span>
+                  {resumo.semCoordenada.toLocaleString('pt-BR')}{' '}
+                  {resumo.semCoordenada === 1 ? 'cliente do filtro está' : 'clientes do filtro estão'} sem
+                  latitude/longitude na planilha e não{' '}
+                  {resumo.semCoordenada === 1 ? 'aparece' : 'aparecem'} no mapa — eles continuam na tabela abaixo.
+                </span>
+              </div>
+            )}
+          </div>
+
+          {conteudoPesado}
         </>
       )}
     </div>

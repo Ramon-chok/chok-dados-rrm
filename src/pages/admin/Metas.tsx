@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+﻿import React, { useState } from 'react';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 import {
@@ -23,9 +23,6 @@ import * as XLSX from 'xlsx';
 import {
   getErrorMessage,
   submitImportChunked,
-  fetchImportHistory,
-  clearImportHistory,
-  ImportLogEntry,
   ApiError,
   IMPORT_CHUNK_SIZE,
 } from '../../lib/api';
@@ -349,53 +346,16 @@ const IMPORT_TYPES: ImportTypeOption[] = [
   },
 ];
 
-interface HistoryItem {
-  id: string;
-  tipo: string;
-  arquivo: string;
-  usuario: string;
-  dataHora: string;
-  total: number;
-  validos: number;
-  atualizados: number;
-  novos: number;
-  rejeitados: number;
-  status: 'Concluído' | 'Concluído com Avisos' | 'Falha';
-}
-
 // Tipos compostos (Top Clientes, Dados App, Não Positivados) enviam um POST
 // por aba com tipo = "<id-do-tipo>__<chave-da-aba>" — aqui resolvemos de volta
 // para "Rótulo do Tipo — Rótulo da Aba" ao exibir o histórico.
-function labelForTipo(tipo: string): string {
+export function labelForTipo(tipo: string): string {
   const [baseId, sheetKey] = tipo.split('__');
   const typeCfg = IMPORT_TYPES.find((t) => t.id === baseId);
   if (!typeCfg) return tipo;
   if (!sheetKey) return typeCfg.label;
   const sheetCfg = typeCfg.sheets.find((s) => s.key === sheetKey);
   return sheetCfg ? `${typeCfg.label} — ${sheetCfg.label}` : typeCfg.label;
-}
-
-// Converte um registro de auditoria vindo da API (server/routes/imports.ts)
-// para o formato que esta tela já exibia — mantém a UI existente intacta.
-function toHistoryItem(entry: ImportLogEntry): HistoryItem {
-  const statusMap: Record<ImportLogEntry['status'], HistoryItem['status']> = {
-    CONCLUIDO: 'Concluído',
-    CONCLUIDO_COM_AVISOS: 'Concluído com Avisos',
-    FALHA: 'Falha',
-  };
-  return {
-    id: `imp-${entry.id}`,
-    tipo: labelForTipo(entry.tipo),
-    arquivo: entry.arquivo || '—',
-    usuario: entry.usuario_nome || '—',
-    dataHora: new Date(entry.data_importacao).toLocaleString('pt-BR'),
-    total: entry.total_linhas,
-    validos: entry.total_linhas - entry.rejeitados,
-    atualizados: entry.atualizados,
-    novos: entry.novos,
-    rejeitados: entry.rejeitados,
-    status: statusMap[entry.status] || 'Falha',
-  };
 }
 
 type SheetParsedData = {
@@ -553,11 +513,7 @@ export const MetasPage: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [importProgress, setImportProgress] = useState<ImportProgressState | null>(null);
   const [resultSummary, setResultSummary] = useState<any | null>(null);
-  const [history, setHistory] = useState<HistoryItem[]>([]);
-  const [isLoadingHistory, setIsLoadingHistory] = useState<boolean>(true);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [isClearingHistory, setIsClearingHistory] = useState(false);
-  const [historyActionError, setHistoryActionError] = useState<string | null>(null);
   // Data que os dados REPRESENTAM (regra 10) — pode ser diferente do dia do
   // upload, por isso é sempre editável e nunca assumida silenciosamente.
   const [dataReferencia, setDataReferencia] = useState<string>(() => new Date().toISOString().slice(0, 10));
@@ -565,47 +521,6 @@ export const MetasPage: React.FC = () => {
 
   const currentTypeConfig = IMPORT_TYPES.find((item) => item.id === selectedType)!;
   const isMultiSheet = currentTypeConfig.sheets.length > 1;
-
-  const loadHistory = async () => {
-    setIsLoadingHistory(true);
-    try {
-      const entries = await fetchImportHistory(50);
-      setHistory(entries.map(toHistoryItem));
-    } catch {
-      // Histórico é auxiliar: se falhar, a lista só fica vazia.
-    } finally {
-      setIsLoadingHistory(false);
-    }
-  };
-
-  useEffect(() => {
-    loadHistory();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const handleClearHistory = async () => {
-    if (history.length === 0) return;
-    if (
-      !window.confirm(
-        'Limpar todo o histórico de importações? Esta ação não remove os dados já importados nas tabelas de negócio, apenas os registros de auditoria do histórico.'
-      )
-    ) {
-      return;
-    }
-
-    setIsClearingHistory(true);
-    setHistoryActionError(null);
-    try {
-      await clearImportHistory();
-      setHistory([]);
-    } catch (err) {
-      const message =
-        getErrorMessage(err, 'Falha ao limpar o histórico de importações.');
-      setHistoryActionError(message);
-    } finally {
-      setIsClearingHistory(false);
-    }
-  };
 
   // Handle file selection (CSV/XLSX) — lê todas as abas exigidas pelo tipo
   // selecionado (uma única aba "livre" para tipos simples, ou N abas com
@@ -908,7 +823,6 @@ export const MetasPage: React.FC = () => {
         erros: combined.erros,
       });
       setStep(4);
-      loadHistory();
     } catch (err) {
       setSubmitError(
         err instanceof ApiError
@@ -1804,123 +1718,6 @@ export const MetasPage: React.FC = () => {
           </div>
         </div>
       )}
-
-      {/* HISTÓRICO DE IMPORTAÇÕES (Requirement 40) */}
-      <div style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: '12px', overflow: 'hidden' }}>
-        <div style={{ padding: '16px 20px', borderBottom: `1px solid ${t.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Clock size={17} color={t.primary} />
-            <div style={{ fontSize: '15px', fontWeight: 600, color: t.text }}>
-              Histórico de Importações
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={handleClearHistory}
-            disabled={isClearingHistory || isLoadingHistory || history.length === 0}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '8px 12px',
-              borderRadius: '8px',
-              border: '1px solid rgba(227, 6, 19, 0.3)',
-              background: 'rgba(227, 6, 19, 0.1)',
-              color: '#E30613',
-              fontSize: '12.5px',
-              fontWeight: 600,
-              cursor: isClearingHistory || isLoadingHistory || history.length === 0 ? 'not-allowed' : 'pointer',
-              opacity: isClearingHistory || isLoadingHistory || history.length === 0 ? 0.55 : 1,
-            }}
-          >
-            <Trash2 size={14} />
-            {isClearingHistory ? 'Limpando...' : 'Limpar histórico'}
-          </button>
-        </div>
-
-        {historyActionError && (
-          <div
-            style={{
-              margin: '12px 16px 0',
-              color: '#e23f3f',
-              background: '#e23f3f15',
-              border: '1px solid #e23f3f30',
-              borderRadius: '8px',
-              padding: '10px 14px',
-              fontSize: '12.5px',
-              fontWeight: 500,
-            }}
-          >
-            {historyActionError}
-          </div>
-        )}
-
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
-            <thead>
-              <tr style={{ color: t.textMuted, background: t.bgSecondary }}>
-                {['Tipo de Dado', 'Arquivo', 'Usuário', 'Data e Hora', 'Registros', 'Status'].map((h) => (
-                  <th key={h} style={{ textAlign: 'left', padding: '12px 16px', borderBottom: `1px solid ${t.border}`, fontWeight: 500 }}>
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {history.map((item) => (
-                <tr key={item.id} style={{ borderBottom: `1px solid ${t.border}` }}>
-                  <td style={{ padding: '12px 16px', fontWeight: 600, color: t.text }}>{item.tipo}</td>
-                  <td style={{ padding: '12px 16px', color: t.textSecondary }}>{item.arquivo}</td>
-                  <td style={{ padding: '12px 16px', color: t.textSecondary }}>{item.usuario}</td>
-                  <td style={{ padding: '12px 16px', color: t.textMuted, fontSize: '12px' }}>{item.dataHora}</td>
-                  <td className="num" style={{ padding: '12px 16px', color: t.text }}>
-                    {item.validos.toLocaleString('pt-BR')} / {item.total.toLocaleString('pt-BR')}
-                  </td>
-                  <td style={{ padding: '12px 16px' }}>
-                    <span
-                      style={{
-                        fontSize: '11.5px',
-                        fontWeight: 600,
-                        padding: '3px 8px',
-                        borderRadius: '6px',
-                        background:
-                          item.status === 'Concluído'
-                            ? 'rgba(61, 214, 140, 0.12)'
-                            : item.status === 'Concluído com Avisos'
-                            ? 'rgba(232, 179, 57, 0.12)'
-                            : 'rgba(227, 6, 19, 0.12)',
-                        color:
-                          item.status === 'Concluído'
-                            ? '#3DD68C'
-                            : item.status === 'Concluído com Avisos'
-                            ? '#E8B339'
-                            : t.primaryHover,
-                      }}
-                    >
-                      ● {item.status}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-              {!isLoadingHistory && history.length === 0 && (
-                <tr>
-                  <td colSpan={6} style={{ padding: '30px 16px', textAlign: 'center', color: t.textMuted, fontSize: '13px' }}>
-                    Nenhuma importação registrada ainda. As cargas realizadas aqui ou pela automação Python aparecerão
-                    neste histórico.
-                  </td>
-                </tr>
-              )}
-              {isLoadingHistory && (
-                <tr>
-                  <td colSpan={6} style={{ padding: '30px 16px', textAlign: 'center', color: t.textMuted, fontSize: '13px' }}>
-                    Carregando histórico de importações...
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
     </div>
   );
 };

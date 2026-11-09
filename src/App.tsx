@@ -23,6 +23,7 @@ import { SettingsPage } from './pages/account/Settings';
 import { CreditosPage } from './pages/account/Creditos';
 import { UsersPage } from './pages/admin/Users';
 import { MetasPage } from './pages/admin/Metas';
+import { HistoricoImportacoesPage } from './pages/admin/HistoricoImportacoes';
 import { ShieldAlert, ArrowLeft } from 'lucide-react';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 
@@ -164,6 +165,8 @@ function MainApp() {
         return <UsersPage />;
       case 'targets':
         return <MetasPage />;
+      case 'import-history':
+        return <HistoricoImportacoesPage />;
       default:
         return <QuadroVendasPage />;
     }

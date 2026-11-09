@@ -101,5 +101,6 @@ export type PageId =
   | 'credits'
   // Administração
   | 'users'
-  | 'targets';
+  | 'targets'
+  | 'import-history';
 
