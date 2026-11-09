@@ -4,7 +4,7 @@
 // duplicidade de chave antes da gravacao.
 import type { PoolClient } from 'pg';
 import { ImportTypeConfig } from './importTypes.js';
-import { parseBoolean, parseCoordinate, parseDateOnly, parseDuration, parseInteger, parseNumeric, parseText, parseTimeOfDay } from './parse.js';
+import { parseBoolean, parseCoordinate, parseDateOnly, parseDuration, parseInteger, parseNumeric, parseText, parseTimeOfDay, parseWeek } from './parse.js';
 
 export interface RowError {
   linha: number;
@@ -61,6 +61,9 @@ export function mapAndValidateRows(
           break;
         case 'coord':
           parsed = parseCoordinate(rawValue);
+          break;
+        case 'week':
+          parsed = parseWeek(rawValue);
           break;
         case 'integer':
           parsed = parseInteger(rawValue);

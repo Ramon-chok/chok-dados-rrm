@@ -24,6 +24,7 @@ from app.parse import (
     parse_numeric,
     parse_text,
     parse_time_of_day,
+    parse_week,
 )
 
 CHUNK_SIZE = 500
@@ -99,6 +100,8 @@ def map_and_validate_rows(
                 parsed_ok, parsed_val = parse_numeric(raw_value)
             elif col.kind == "coord":
                 parsed_ok, parsed_val = parse_coordinate(raw_value)
+            elif col.kind == "week":
+                parsed_ok, parsed_val = parse_week(raw_value)
             elif col.kind == "integer":
                 parsed_ok, parsed_val = parse_integer(raw_value)
             elif col.kind == "date":

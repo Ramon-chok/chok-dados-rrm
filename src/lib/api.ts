@@ -1165,7 +1165,6 @@ export interface BaseRoteiroPonto {
   vendedor: string | null;
   equipe: string | null;
   municipio: string | null;
-  uf: string | null;
   bairro: string | null;
   endereco: string | null;
   /** null = cliente sem geocodificação na planilha (não vai para o mapa). */

@@ -83,7 +83,19 @@ export default defineConfig(() => {
       proxy: {
         '/api': {
           target: `http://127.0.0.1:8000`,
-          changeOrigin: true,
+          // changeOrigin FALSE de propósito: com `true`, o proxy reescreve o
+          // cabeçalho Host para "127.0.0.1:8000", e isso quebra a proteção
+          // anti-CSRF do backend (RequestGuardMiddleware em
+          // backend/app/hardening.py). Ela libera a requisição quando o
+          // Origin do navegador é o MESMO host da requisição — exatamente o
+          // caso do proxy do Vite — mas com o Host reescrito a comparação
+          // nunca batia e todo POST autenticado por cookie (importação,
+          // criação de usuário...) voltava 403 "Origem não permitida"
+          // sempre que a página era aberta em algo diferente de
+          // "localhost:3000" (127.0.0.1, IP da rede, outra porta).
+          // Com `false`, o Host chega como o navegador mandou e o fallback
+          // funciona para qualquer endereço de desenvolvimento.
+          changeOrigin: false,
         },
       },
     },

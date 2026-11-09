@@ -86,6 +86,30 @@ export function parseCoordinate(raw: unknown): ParseResult<number> {
   return checkCoordRange(value, raw);
 }
 
+/**
+ * Combinacao de semanas do mes da Base de Roteiro (espelho de
+ * app.parse.parse_week): "1", "2", "3", "4", "1,3", "2,4", "1234".
+ *
+ * O Excel le "1,3"/"2,4" como NUMERO (1.3/2.4) quando a planilha de origem
+ * exporta com virgula decimal — aqui o separador volta a ser a virgula, senao
+ * o filtro de semana do mapa mostraria "1.3".
+ */
+export function parseWeek(raw: unknown): ParseResult<string> {
+  if (raw === undefined || raw === null || raw === '') return { ok: true, value: null };
+  if (typeof raw === 'boolean') return { ok: false, error: 'semana inválida' };
+  if (typeof raw === 'number') {
+    if (!Number.isFinite(raw)) return { ok: false, error: `semana inválida: "${raw}"` };
+    if (Number.isInteger(raw)) return { ok: true, value: String(raw) };
+    return { ok: true, value: String(raw).replace('.', ',') };
+  }
+  const s = String(raw).trim();
+  if (s === '') return { ok: true, value: null };
+  const groups = s.match(/\d+/g);
+  if (!groups) return parseText(s);
+  if (groups.length === 1) return { ok: true, value: groups[0] };
+  return { ok: true, value: groups.join(',') };
+}
+
 // Fora de [-180, 180] nao e coordenada decimal — quase sempre e a virgula
 // decimal perdida na exportacao da planilha. Rejeitar aqui da uma linha de
 // erro no historico em vez de um ponto no meio do oceano no mapa.

@@ -19,7 +19,9 @@ export type ColumnKind =
   | 'time'
   | 'duration'
   // Latitude/longitude: heuristica decimal propria (ver parseCoordinate).
-  | 'coord';
+  | 'coord'
+  // Combinacao de semanas "1,3"/"2,4"/"1234" (ver parseWeek).
+  | 'week';
 
 export interface ImportColumn {
   name: string;
@@ -529,13 +531,12 @@ export const IMPORT_TYPE_CONFIGS: Record<string, ImportTypeConfig> = {
       { name: 'vendedor', kind: 'text' },
       { name: 'equipe', kind: 'text' },
       { name: 'municipio', kind: 'text' },
-      { name: 'uf', kind: 'text' },
       { name: 'bairro', kind: 'text' },
       { name: 'endereco', kind: 'text' },
       { name: 'latitude', kind: 'coord' },
       { name: 'longitude', kind: 'coord' },
       { name: 'dia', kind: 'integer' },
-      { name: 'semana', kind: 'text' },
+      { name: 'semana', kind: 'week' },
       { name: 'sequencia', kind: 'integer' },
       { name: 'frequencia', kind: 'text' },
     ],

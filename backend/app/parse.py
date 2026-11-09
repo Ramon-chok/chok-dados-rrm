@@ -111,6 +111,51 @@ def parse_coordinate(raw: object) -> ParseResult[float]:
     return _check_coord_range(value, raw)
 
 
+def parse_week(raw: object) -> ParseResult[str]:
+    """Combinação de semanas do mês da Base de Roteiro: "1", "2", "3", "4",
+    "1,3", "2,4", "1234".
+
+    O Excel interpreta "1,3" e "2,4" como NÚMERO (1.3 e 2.4) quando a planilha
+    vem de um sistema que exporta com vírgula decimal — a célula chega aqui
+    como float e um parse_text simples gravaria "1.3", que depois aparece
+    errado no filtro de semana do mapa. Aqui o separador volta a ser a vírgula:
+
+      1.3  -> "1,3"      2.4   -> "2,4"
+      3    -> "3"        1234  -> "1234"
+      "1,3"-> "1,3"      "1 e 3" -> "1,3"
+
+    Texto sem nenhum dígito é devolvido como veio (não se perde informação).
+    """
+    if raw is None or raw == "":
+        return True, None
+    if isinstance(raw, bool):
+        return False, "semana inválida"
+
+    if isinstance(raw, (int, float)):
+        if isinstance(raw, float):
+            if not math.isfinite(raw):
+                return False, f'semana inválida: "{raw}"'
+            if raw.is_integer():
+                return True, str(int(raw))
+            # 1.3 -> "1,3" (o ponto era a vírgula da planilha de origem)
+            return True, repr(raw).replace(".", ",")
+        return True, str(int(raw))
+
+    s = str(raw).strip()
+    if s == "":
+        return True, None
+
+    groups = re.findall(r"\d+", s)
+    if not groups:
+        # Não é uma combinação de semanas — preserva o texto original.
+        ok, value = parse_text(s)
+        return (True, value) if ok else (False, value)  # type: ignore[return-value]
+    if len(groups) == 1:
+        # Um único bloco de dígitos: "3", "1234" — fica como está.
+        return True, groups[0]
+    return True, ",".join(groups)
+
+
 def _check_coord_range(value: float, raw: object) -> ParseResult[float]:
     # Fora de [-180, 180] não é coordenada decimal — quase sempre é a vírgula
     # decimal perdida na exportação da planilha. Rejeitar aqui dá uma linha de

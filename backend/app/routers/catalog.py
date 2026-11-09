@@ -1122,7 +1122,7 @@ def sar_base_roteiro(
                    b.cod_vendedor,
                    COALESCE(b.vendedor, v.nome, b.cod_vendedor) AS vendedor,
                    COALESCE(b.equipe, v.equipe) AS equipe,
-                   b.municipio, b.uf, b.bairro, b.endereco,
+                   b.municipio, b.bairro, b.endereco,
                    b.latitude, b.longitude, b.dia, b.semana,
                    b.sequencia, b.frequencia
             FROM base_roteiro b
@@ -1237,7 +1237,6 @@ def sar_base_roteiro(
                 "vendedor": txt(r["vendedor"]),
                 "equipe": txt(r["equipe"]),
                 "municipio": txt(r["municipio"]),
-                "uf": txt(r["uf"]),
                 "bairro": txt(r["bairro"]),
                 "endereco": txt(r["endereco"]),
                 "latitude": coord(r["latitude"]),

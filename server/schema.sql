@@ -688,7 +688,6 @@ CREATE TABLE IF NOT EXISTS base_roteiro (
   vendedor          TEXT,
   equipe            TEXT,
   municipio         TEXT,
-  uf                TEXT,
   bairro            TEXT,
   endereco          TEXT,
   -- NUMERIC(10,7): ~1cm de resolução, suficiente para ponto de venda, e
@@ -715,7 +714,6 @@ ALTER TABLE base_roteiro ADD COLUMN IF NOT EXISTS nome_fantasia TEXT;
 ALTER TABLE base_roteiro ADD COLUMN IF NOT EXISTS vendedor TEXT;
 ALTER TABLE base_roteiro ADD COLUMN IF NOT EXISTS equipe TEXT;
 ALTER TABLE base_roteiro ADD COLUMN IF NOT EXISTS municipio TEXT;
-ALTER TABLE base_roteiro ADD COLUMN IF NOT EXISTS uf TEXT;
 ALTER TABLE base_roteiro ADD COLUMN IF NOT EXISTS bairro TEXT;
 ALTER TABLE base_roteiro ADD COLUMN IF NOT EXISTS endereco TEXT;
 ALTER TABLE base_roteiro ADD COLUMN IF NOT EXISTS latitude NUMERIC(10,7);
@@ -760,3 +758,4 @@ ALTER TABLE verba_indenizatoria ADD COLUMN IF NOT EXISTS verba_indenizatoria NUM
 ALTER TABLE verba_indenizatoria ADD COLUMN IF NOT EXISTS desconto NUMERIC(14,2);
 ALTER TABLE verba_indenizatoria ADD COLUMN IF NOT EXISTS reembolso NUMERIC(14,2);
 ALTER TABLE verba_indenizatoria ADD COLUMN IF NOT EXISTS a_pagar NUMERIC(14,2);
+

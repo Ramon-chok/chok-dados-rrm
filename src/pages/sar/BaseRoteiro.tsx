@@ -411,7 +411,7 @@ export const BaseRoteiroPage: React.FC = () => {
            <hr style="margin:6px 0;border:none;border-top:1px solid rgba(128,128,128,.35)" />
            <div><b>Vendedor:</b> ${esc(p.vendedor)} (${esc(p.codVendedor)})</div>
            <div><b>Equipe:</b> ${esc(p.equipe)}</div>
-           <div><b>Cidade:</b> ${esc(p.municipio)}${p.uf ? ' / ' + esc(p.uf) : ''}</div>
+           <div><b>Cidade:</b> ${esc(p.municipio)}</div>
            <div><b>Bairro:</b> ${esc(p.bairro)}</div>
            <div><b>Endereço:</b> ${esc(p.endereco)}</div>
            <hr style="margin:6px 0;border:none;border-top:1px solid rgba(128,128,128,.35)" />
@@ -494,7 +494,6 @@ export const BaseRoteiroPage: React.FC = () => {
         Vendedor: p.vendedor || '',
         Equipe: p.equipe || '',
         Município: p.municipio || '',
-        UF: p.uf || '',
         Bairro: p.bairro || '',
         Endereço: p.endereco || '',
         Latitude: p.latitude ?? '',
@@ -975,10 +974,7 @@ export const BaseRoteiroPage: React.FC = () => {
                           <td style={{ ...cellStyle, whiteSpace: 'normal', minWidth: 190 }}>{nomeCliente(p)}</td>
                           <td style={cellStyle}>{p.vendedor || '—'}</td>
                           <td style={{ ...cellStyle, color: t.textSecondary }}>{p.equipe || '—'}</td>
-                          <td style={cellStyle}>
-                            {p.municipio || '—'}
-                            {p.uf ? `/${p.uf}` : ''}
-                          </td>
+                          <td style={cellStyle}>{p.municipio || '—'}</td>
                           <td style={cellStyle}>
                             {p.dia !== null ? `${p.dia} · ${DIA_CURTO[p.dia] || '?'}` : '—'}
                           </td>

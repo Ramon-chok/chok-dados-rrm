@@ -5,7 +5,20 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-ColumnKind = Literal["text", "numeric", "integer", "date", "boolean", "jsonb", "time", "duration", "coord"]
+ColumnKind = Literal[
+	"text",
+	"numeric",
+	"integer",
+	"date",
+	"boolean",
+	"jsonb",
+	"time",
+	"duration",
+	# Latitude/longitude e combinação de semanas: heurísticas próprias
+	# (ver app.parse.parse_coordinate / parse_week).
+	"coord",
+	"week",
+]
 
 
 @dataclass(frozen=True)
@@ -515,7 +528,6 @@ IMPORT_TYPE_CONFIGS: dict[str, ImportTypeConfig] = {
 			ImportColumn("vendedor", "text"),
 			ImportColumn("equipe", "text"),
 			ImportColumn("municipio", "text"),
-			ImportColumn("uf", "text"),
 			ImportColumn("bairro", "text"),
 			ImportColumn("endereco", "text"),
 			# coord (não numeric): a heurística decimal de parse_numeric é a
@@ -523,7 +535,9 @@ IMPORT_TYPE_CONFIGS: dict[str, ImportTypeConfig] = {
 			ImportColumn("latitude", "coord"),
 			ImportColumn("longitude", "coord"),
 			ImportColumn("dia", "integer"),
-			ImportColumn("semana", "text"),
+			# week (não text): o Excel transforma "1,3"/"2,4" em 1.3/2.4 e um
+			# parse_text gravaria "1.3". Ver app.parse.parse_week.
+			ImportColumn("semana", "week"),
 			ImportColumn("sequencia", "integer"),
 			ImportColumn("frequencia", "text"),
 		),

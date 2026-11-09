@@ -70,11 +70,24 @@ interface ImportSheetOption {
    */
   headerRow?: number;
   /**
-   * Dica de correspondência coluna do sistema -> nome exato do cabeçalho na
-   * planilha real (quando o nome real usa acentos/pontuação/ordem diferente
-   * do nome de sistema e o casamento automático por substring não funciona).
+   * Dica de correspondência coluna do sistema -> cabeçalho na planilha real
+   * (quando o nome real usa acentos/pontuação/ordem diferente do nome de
+   * sistema e o casamento automático por substring não funciona).
+   *
+   * Aceita uma lista de apelidos: o mesmo tipo de importação precisa casar
+   * tanto com o modelo baixado nesta tela quanto com o arquivo que o sistema
+   * de origem exporta (ex.: "CÓDIGO CLIENTE" no modelo e "SOLD cliente" no
+   * relatório real). A comparação ignora acento, caixa e quebras de linha.
    */
-  headerHints?: Record<string, string>;
+  headerHints?: Record<string, string | string[]>;
+  /**
+   * Colunas sem as quais a linha é rejeitada pelo backend (chave lógica do
+   * tipo em backend/app/import_types.py, menos data_referencia, que vem do
+   * campo Data de Referência). A tela bloqueia o processamento enquanto
+   * alguma delas estiver sem mapeamento, em vez de deixar o usuário enviar e
+   * receber a planilha inteira rejeitada.
+   */
+  keyColumns?: string[];
 }
 
 interface ImportTypeOption {
@@ -112,6 +125,7 @@ const IMPORT_TYPES: ImportTypeOption[] = [
         // Nomes de sistema — devem bater com backend/app/import_types.py,
         // entrada "metas" (tabela metas_mensais).
         columns: ['ano_mes', 'cod_vendedor', 'fabricante', 'meta_faturamento', 'meta_cobertura'],
+        keyColumns: ['ano_mes', 'cod_vendedor', 'fabricante'],
         headerHints: {
           ano_mes: 'ANO/MÊS',
           cod_vendedor: 'CÓDIGO VENDEDOR',
@@ -146,15 +160,18 @@ const IMPORT_TYPES: ImportTypeOption[] = [
           'reembolso',
           'a_pagar',
         ],
+        keyColumns: ['cod_vendedor'],
         headerHints: {
-          cod_vendedor: 'CÓDIGO VENDEDOR',
-          vendedor: 'NOME',
-          equipe: 'EQUIPE',
-          km_total: 'KM TOTAL',
-          verba_indenizatoria: 'VERBA INDENIZATÓRIA',
-          desconto: 'DESCONTO',
-          reembolso: 'REEMBOLSO',
-          a_pagar: 'A PAGAR',
+          // Cada coluna aceita vários apelidos: o 1º é o do modelo baixado
+          // aqui, os seguintes cobrem os nomes dos relatórios de origem.
+          cod_vendedor: ['CÓDIGO VENDEDOR', 'CODIGO', 'CÓDIGO', 'COD VENDEDOR'],
+          vendedor: ['NOME', 'VENDEDOR', 'COLABORADOR'],
+          equipe: ['EQUIPE', 'SUPERVISÃO', 'SUPERVISAO'],
+          km_total: ['KM TOTAL', 'KM RODADO', 'RODADO', 'KM'],
+          verba_indenizatoria: ['VERBA INDENIZATÓRIA', 'VERBA INDENIZATORIA', 'VERBA'],
+          desconto: ['DESCONTO', 'DESCONTOS'],
+          reembolso: ['REEMBOLSO', 'REEMBOLSOS'],
+          a_pagar: ['A PAGAR', 'TOTAL A PAGAR', 'VALOR A PAGAR'],
         },
       },
     ],
@@ -170,8 +187,12 @@ const IMPORT_TYPES: ImportTypeOption[] = [
         // key interna usada no payload (tipo = "raiox"). O nome da aba no
         // Excel continua sendo "Acompanhamento".
         key: 'raiox',
+        // Preferência, não exigência: não achando esta aba, o assistente usa
+        // a aba de dados do arquivo e avisa na tela (o relatório real vem com
+        // a aba "RelatorioResumoTrabalhoDiario").
         sheetName: 'Acompanhamento',
         label: 'Acompanhamento',
+        keyColumns: ['cod_vendedor'],
 
         // Nomes de sistema (devem bater com backend/app/import_types.py,
         // entrada "raiox"). A planilha real repete alguns rótulos de coluna
@@ -272,7 +293,8 @@ const IMPORT_TYPES: ImportTypeOption[] = [
     sheets: [
       {
         key: 'base_roteiro',
-        // Vazio = usa a primeira aba do arquivo, sem exigir nome específico.
+        // A aba de dados costuma ser a 1ª ("Roteiro" no modelo_roteiro, que
+        // ainda traz uma aba "Instruções" depois dela).
         sheetName: '',
         label: 'Base de Roteiro',
         // Nomes de sistema — devem bater com backend/app/import_types.py,
@@ -285,7 +307,6 @@ const IMPORT_TYPES: ImportTypeOption[] = [
           'vendedor',
           'equipe',
           'municipio',
-          'uf',
           'bairro',
           'endereco',
           'latitude',
@@ -295,27 +316,33 @@ const IMPORT_TYPES: ImportTypeOption[] = [
           'sequencia',
           'frequencia',
         ],
+        // Só cliente e vendedor são obrigatórios. Nome do vendedor e equipe,
+        // quando a planilha não traz (caso do modelo_roteiro), são resolvidos
+        // pelo cadastro de vendedores na leitura (ver COALESCE em
+        // /sar/base-roteiro).
+        keyColumns: ['cod_cliente', 'cod_vendedor'],
         headerHints: {
-          cod_cliente: 'CÓDIGO CLIENTE',
-          razao_social: 'RAZÃO SOCIAL',
-          nome_fantasia: 'NOME FANTASIA',
-          // Precisa vir antes de "vendedor" na lista de colunas acima: o
+          // "SOLD cliente"/"SOLD vendedor" são os nomes do relatório real de
+          // roteirização; os demais apelidos cobrem o modelo baixado aqui.
+          cod_cliente: ['CÓDIGO CLIENTE', 'SOLD cliente', 'COD CLIENTE', 'CÓDIGO DO PDV', 'CODIGO CLIENTE'],
+          razao_social: ['RAZÃO SOCIAL', 'Nome do cliente', 'NOME DO PDV', 'CLIENTE'],
+          nome_fantasia: ['NOME FANTASIA', 'FANTASIA'],
+          // cod_vendedor vem antes de vendedor na lista de colunas acima: o
           // auto-match consome o cabeçalho encontrado, então "CÓDIGO
-          // VENDEDOR" sai de circulação antes da dica "VENDEDOR" procurar
-          // por correspondência parcial.
-          cod_vendedor: 'CÓDIGO VENDEDOR',
-          vendedor: 'VENDEDOR',
-          equipe: 'EQUIPE',
-          municipio: 'MUNICÍPIO',
-          uf: 'UF',
-          bairro: 'BAIRRO',
-          endereco: 'ENDEREÇO',
-          latitude: 'LATITUDE',
-          longitude: 'LONGITUDE',
-          dia: 'DIA',
-          semana: 'SEMANA',
-          sequencia: 'SEQUÊNCIA',
-          frequencia: 'FREQUÊNCIA',
+          // VENDEDOR" sai de circulação antes de a dica "VENDEDOR" procurar
+          // correspondência parcial.
+          cod_vendedor: ['CÓDIGO VENDEDOR', 'SOLD vendedor', 'COD VENDEDOR', 'CODIGO VENDEDOR'],
+          vendedor: ['VENDEDOR', 'Nome do Colaborador', 'COLABORADOR'],
+          equipe: ['EQUIPE', 'SUPERVISÃO', 'REGIONAL'],
+          municipio: ['MUNICÍPIO', 'Cidade', 'MUNICIPIO'],
+          bairro: ['BAIRRO'],
+          endereco: ['ENDEREÇO', 'ENDERECO', 'LOGRADOURO'],
+          latitude: ['LATITUDE', 'LAT'],
+          longitude: ['LONGITUDE', 'LONG', 'LNG'],
+          dia: ['DIA', 'DIA DA SEMANA', 'DIA VISITA'],
+          semana: ['SEMANA'],
+          sequencia: ['SEQUÊNCIA', 'SEQUENCIA', 'SEQ', 'ORDEM'],
+          frequencia: ['FREQUÊNCIA', 'FREQUENCIA', 'PERIODICIDADE'],
         },
       },
     ],
@@ -371,7 +398,139 @@ function toHistoryItem(entry: ImportLogEntry): HistoryItem {
   };
 }
 
-type SheetParsedData = { headers: string[]; rows: Record<string, any>[] };
+type SheetParsedData = {
+  headers: string[];
+  rows: Record<string, any>[];
+  /** Nome da aba realmente usada no arquivo (pode não ser a esperada). */
+  sheetNameUsado: string;
+  /** Linha (1-based) onde o cabeçalho foi encontrado. */
+  headerRowUsado: number;
+  /** true = a aba esperada não existia e caiu numa alternativa. */
+  sheetSubstituida: boolean;
+};
+
+/**
+ * Normaliza um texto de cabeçalho para comparação: tira acentos, colapsa
+ * espaços/quebras de linha e passa para minúsculas.
+ *
+ * Relatórios reais trazem quebra de linha DENTRO do título da coluna (ex.:
+ * "Rodado\nRoteiro", "Previsto \nInicial" no RelatorioResumoTrabalhoDiario),
+ * então comparar o texto cru nunca casa com a dica configurada.
+ */
+function normalizeHeader(value: unknown): string {
+  return String(value ?? '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '');
+}
+
+/**
+ * Estado do mapeamento de uma aba: o que ficou sem cabeçalho de origem e,
+ * dentro disso, quais são colunas de chave (que fariam o backend rejeitar
+ * TODAS as linhas).
+ */
+function diagnosticarMapeamento(
+  sheetCfg: ImportSheetOption,
+  mapping: Record<string, string>
+): { mapeadas: number; total: number; semMapeamento: string[]; chavesFaltando: string[] } {
+  const cols = sheetCfg.columns;
+  const semMapeamento = cols.filter((c) => !mapping[c]);
+  const chaves = sheetCfg.keyColumns ?? [];
+  return {
+    mapeadas: cols.length - semMapeamento.length,
+    total: cols.length,
+    semMapeamento,
+    chavesFaltando: chaves.filter((c) => !mapping[c]),
+  };
+}
+
+/** Limpa o texto do cabeçalho preservando a grafia (só colapsa espaços/\n). */
+function cleanHeader(value: unknown): string {
+  return String(value ?? '').replace(/\s+/g, ' ').trim();
+}
+
+/** Quantas linhas abaixo do topo procurar o cabeçalho verdadeiro. */
+const HEADER_SCAN_DEPTH = 25;
+
+/**
+ * A aba com mais linhas preenchidas — usada quando o nome esperado não existe
+ * no arquivo. Arquivos reais costumam ter a aba de dados e outras de apoio
+ * ("Instruções", "Capa"), e a de dados é sempre a maior.
+ */
+function escolherAbaComMaisLinhas(wb: XLSX.WorkBook): string | undefined {
+  let melhor: string | undefined;
+  let maior = -1;
+  wb.SheetNames.forEach((n) => {
+    const ref = wb.Sheets[n]?.['!ref'];
+    if (!ref) return;
+    const range = XLSX.utils.decode_range(ref);
+    const linhas = range.e.r - range.s.r;
+    if (linhas > maior) {
+      maior = linhas;
+      melhor = n;
+    }
+  });
+  return melhor ?? wb.SheetNames[0];
+}
+
+/**
+ * Descobre em que linha está o cabeçalho de verdade.
+ *
+ * Planilhas de sistema quase nunca começam na linha 1: o
+ * RelatorioResumoTrabalhoDiario.xls tem 9 linhas de título/filtro e só então o
+ * cabeçalho. Em vez de exigir que o usuário conte linhas, pontuamos as
+ * primeiras linhas pelo número de colunas esperadas que aparecem nelas e
+ * escolhemos a melhor; empate ou nenhuma correspondência cai na primeira
+ * linha que tiver pelo menos duas células preenchidas.
+ */
+function detectHeaderRow(data: any[][], sheetCfg: ImportSheetOption): number {
+  // headerRow explícito na configuração manda — é informação de quem conhece
+  // a planilha, não um palpite.
+  if (sheetCfg.headerRow) return sheetCfg.headerRow;
+
+  const esperados = new Set<string>();
+  sheetCfg.columns.forEach((c) => {
+    esperados.add(normalizeHeader(c));
+    const hint = sheetCfg.headerHints?.[c];
+    if (hint) esperados.add(normalizeHeader(hint));
+  });
+
+  let melhorLinha = 0;
+  let melhorNota = 0;
+  const limite = Math.min(data.length, HEADER_SCAN_DEPTH);
+
+  for (let i = 0; i < limite; i++) {
+    const row = data[i] || [];
+    const celulas = Array.from(row, (c) => normalizeHeader(c)).filter((c) => c !== '');
+    if (celulas.length < 2) continue;
+    // Conta quantas células casam (igual ou contida) com algo esperado.
+    let nota = 0;
+    celulas.forEach((cel) => {
+      for (const esp of esperados) {
+        if (cel === esp || cel.includes(esp) || esp.includes(cel)) {
+          nota++;
+          break;
+        }
+      }
+    });
+    if (nota > melhorNota) {
+      melhorNota = nota;
+      melhorLinha = i;
+    }
+  }
+
+  if (melhorNota >= 2) return melhorLinha + 1;
+
+  // Nenhuma correspondência: usa a primeira linha "cheia" (ignora títulos
+  // soltos de 1 célula), para o usuário ao menos conseguir mapear à mão.
+  for (let i = 0; i < limite; i++) {
+    const celulas = Array.from(data[i] || [], (c) => cleanHeader(c)).filter((c) => c !== '');
+    if (celulas.length >= 2) return i + 1;
+  }
+  return 1;
+}
 
 /**
  * Metas & Definições (apenas ADMIN).
@@ -468,13 +627,29 @@ export const MetasPage: React.FC = () => {
         const missingSheets: string[] = [];
 
         currentTypeConfig.sheets.forEach((sheetCfg) => {
+          // Escolha da aba, do mais específico para o mais tolerante. Antes,
+          // não achar a aba com o nome exato era erro fatal e o upload morria
+          // ali — o arquivo real do SAR tem a aba
+          // "RelatorioResumoTrabalhoDiario", não "Acompanhamento". Agora o
+          // nome é só uma preferência: não achando, usa uma alternativa e
+          // avisa, deixando o usuário trocar a aba na tela.
           let wsName: string | undefined;
+          let substituida = false;
+
           if (!sheetCfg.sheetName) {
             wsName = wb.SheetNames[0];
           } else {
-            wsName = wb.SheetNames.find(
-              (n) => n.trim().toLowerCase() === sheetCfg.sheetName.trim().toLowerCase()
-            );
+            const alvo = normalizeHeader(sheetCfg.sheetName);
+            wsName =
+              wb.SheetNames.find((n) => normalizeHeader(n) === alvo) ||
+              wb.SheetNames.find((n) => normalizeHeader(n).includes(alvo)) ||
+              wb.SheetNames.find((n) => alvo.includes(normalizeHeader(n)));
+            if (!wsName) {
+              // Última tentativa: a aba com mais linhas é quase sempre a de
+              // dados (as outras são "Instruções", "Capa", etc.).
+              wsName = escolherAbaComMaisLinhas(wb);
+              substituida = !!wsName;
+            }
           }
 
           if (!wsName) {
@@ -484,12 +659,17 @@ export const MetasPage: React.FC = () => {
 
           const ws = wb.Sheets[wsName];
           const data = XLSX.utils.sheet_to_json(ws, { header: 1 }) as any[][];
-          if (!data || data.length === 0) return;
+          if (!data || data.length === 0) {
+            missingSheets.push(sheetCfg.sheetName || sheetCfg.label);
+            return;
+          }
 
-          // Algumas planilhas reais têm linhas de filtro/pivot antes do
-          // cabeçalho de verdade (ex.: aba "top_clientes" do arquivo Top
-          // Clientes) — headerRow indica em que linha (1-based) ele está.
-          const headerRowIdx = (sheetCfg.headerRow ?? 1) - 1;
+          // Algumas planilhas reais têm linhas de filtro/pivot/título antes do
+          // cabeçalho de verdade (a aba "top_clientes" do Top Clientes começa
+          // na linha 4; o RelatorioResumoTrabalhoDiario.xls, na linha 10).
+          // headerRow na configuração manda; sem ele, detectHeaderRow acha.
+          const headerRowNum = detectHeaderRow(data, sheetCfg);
+          const headerRowIdx = headerRowNum - 1;
           // Array.from (em vez de .map) é essencial aqui: quando a linha de
           // cabeçalho tem células totalmente vazias no meio, o SheetJS
           // devolve um array esparso (buracos reais, não `undefined`). Como
@@ -498,7 +678,10 @@ export const MetasPage: React.FC = () => {
           // auto-match (que NÃO pula buracos) quebraria ao chamar
           // .toLowerCase() nesse undefined. Array.from materializa os
           // buracos como undefined "de verdade", que o map interno then trata.
-          const rawHeaders = Array.from(data[headerRowIdx] || [], (h: any) => String(h || '').trim());
+          // cleanHeader (e não String().trim()): o cabeçalho real pode ter
+          // quebra de linha no meio do título ("Rodado\nRoteiro"), que viraria
+          // um nome impossível de casar e feio no <select> do mapeamento.
+          const rawHeaders = Array.from(data[headerRowIdx] || [], (h: any) => cleanHeader(h));
 
           // A mesma planilha real pode repetir um nome de coluna (ex.: duas
           // colunas "% Cresc."). Sem desambiguar, a segunda sobrescreveria a
@@ -525,13 +708,20 @@ export const MetasPage: React.FC = () => {
             .slice(headerRowIdx + 1)
             .filter((row) => (row || []).some((cell) => cell !== undefined && cell !== ''));
           const parsedRows = dataRows.map(rowToObj);
-          newSheetsData[sheetCfg.key] = { headers, rows: parsedRows };
+          newSheetsData[sheetCfg.key] = {
+            headers,
+            rows: parsedRows,
+            sheetNameUsado: wsName!,
+            headerRowUsado: headerRowNum,
+            sheetSubstituida: substituida,
+          };
 
           // Auto match columns (inclui as ocultas — elas continuam sendo enviadas).
-          // Primeiro tenta a dica de cabeçalho real (headerHints) quando existe,
-          // com igualdade exata tendo prioridade sobre correspondência parcial.
-          // Cabeçalhos já usados não são reatribuídos (evita duas colunas de
-          // sistema apontarem para o mesmo "Realizado Faseamento").
+          // Tenta cada apelido de headerHints e, por último, o nome de sistema;
+          // igualdade (normalizada: sem acento, sem caixa, espaços colapsados)
+          // tem prioridade sobre correspondência parcial. Cabeçalhos já usados
+          // não são reatribuídos (evita duas colunas de sistema apontarem para
+          // o mesmo "Realizado Faseamento").
           const autoMap: Record<string, string> = {};
           const usedHeaders = new Set<string>();
           const takeMatch = (pred: (h: string) => boolean): string | undefined => {
@@ -540,15 +730,22 @@ export const MetasPage: React.FC = () => {
             return hit;
           };
           sheetCfg.columns.forEach((req) => {
-            const candidates = [sheetCfg.headerHints?.[req], req].filter(Boolean) as string[];
+            const hint = sheetCfg.headerHints?.[req];
+            // headerHints aceita um apelido ou uma lista deles: o mesmo tipo
+            // precisa casar tanto com o modelo baixado daqui quanto com o
+            // arquivo que o sistema de origem exporta (ex.: "CÓDIGO CLIENTE"
+            // no modelo e "SOLD cliente" no relatório real).
+            const candidates = [...(Array.isArray(hint) ? hint : hint ? [hint] : []), req].map(
+              (c) => normalizeHeader(c)
+            );
             let matched: string | undefined;
             for (const cand of candidates) {
-              matched = takeMatch((h) => h.toLowerCase() === cand.toLowerCase());
+              matched = takeMatch((h) => normalizeHeader(h) === cand);
               if (matched) break;
             }
             if (!matched) {
               for (const cand of candidates) {
-                matched = takeMatch((h) => h.toLowerCase().includes(cand.toLowerCase()));
+                matched = takeMatch((h) => normalizeHeader(h).includes(cand));
                 if (matched) break;
               }
             }
@@ -589,6 +786,29 @@ export const MetasPage: React.FC = () => {
     const hasAnyRows = currentTypeConfig.sheets.some((s) => (sheetsData[s.key]?.rows.length || 0) > 0);
     if (!hasAnyRows) {
       setSubmitError('Nenhuma linha de dados encontrada no arquivo carregado.');
+      return;
+    }
+
+    // Trava antes de enviar: sem a chave mapeada o backend rejeita 100% das
+    // linhas e o usuário só descobre no fim, com a planilha toda recusada.
+    const bloqueios = currentTypeConfig.sheets
+      .filter((s) => (sheetsData[s.key]?.rows.length || 0) > 0)
+      .map((s) => ({ s, diag: diagnosticarMapeamento(s, columnMappings[s.key] || {}) }))
+      .filter(({ diag }) => diag.chavesFaltando.length > 0);
+
+    if (bloqueios.length > 0) {
+      const detalhe = bloqueios
+        .map(({ s, diag }) =>
+          isMultiSheet
+            ? `[${s.label}] ${diag.chavesFaltando.join(', ')}`
+            : diag.chavesFaltando.join(', ')
+        )
+        .join(' · ');
+      setSubmitError(
+        `Falta mapear coluna(s) obrigatória(s): ${detalhe}. ` +
+          'Sem elas o sistema não consegue identificar a linha e rejeitaria o arquivo inteiro. ' +
+          'Escolha o cabeçalho correspondente da sua planilha nos campos acima.'
+      );
       return;
     }
 
@@ -1274,6 +1494,7 @@ export const MetasPage: React.FC = () => {
             const displayCols = sheetCfg.visibleColumns ?? sheetCfg.columns;
             const previewRows = sheetData.rows.slice(0, 5);
             const visibleHeaders = Array.from(new Set(displayCols.map((c) => mapping[c]).filter(Boolean)));
+            const diag = diagnosticarMapeamento(sheetCfg, mapping);
 
             return (
               <div key={sheetCfg.key} style={{ marginBottom: '28px' }}>
@@ -1283,6 +1504,110 @@ export const MetasPage: React.FC = () => {
                     <span style={{ fontSize: '14px', fontWeight: 700, color: t.text }}>{sheetCfg.label}</span>
                     <span style={{ fontSize: '11.5px', color: t.textMuted }}>
                       (aba "{sheetCfg.sheetName || sheetData.headers[0]}")
+                    </span>
+                  </div>
+                )}
+
+                {/* DIAGNÓSTICO DA LEITURA: qual aba, qual linha de cabeçalho e
+                    o que ficou sem mapear. Sem isso o usuário não tem como
+                    saber por que a importação rejeitaria o arquivo. */}
+                <div
+                  style={{
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    gap: '8px 16px',
+                    alignItems: 'center',
+                    background: t.bgSecondary,
+                    border: `1px solid ${t.border}`,
+                    borderRadius: '10px',
+                    padding: '10px 14px',
+                    marginBottom: '12px',
+                    fontSize: '12px',
+                    color: t.textSecondary,
+                  }}
+                >
+                  <span>
+                    Aba lida: <strong style={{ color: t.text }}>"{sheetData.sheetNameUsado}"</strong>
+                  </span>
+                  <span>
+                    Cabeçalho na linha <strong style={{ color: t.text }}>{sheetData.headerRowUsado}</strong>
+                  </span>
+                  <span>
+                    Linhas de dados:{' '}
+                    <strong style={{ color: t.text }}>{sheetData.rows.length.toLocaleString('pt-BR')}</strong>
+                  </span>
+                  <span
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 5,
+                      fontWeight: 700,
+                      color: diag.chavesFaltando.length > 0 ? t.primary : t.text,
+                    }}
+                  >
+                    {diag.chavesFaltando.length > 0 ? <AlertTriangle size={13} /> : <CheckCircle2 size={13} />}
+                    {diag.mapeadas}/{diag.total} colunas mapeadas
+                  </span>
+                </div>
+
+                {sheetData.sheetSubstituida && (
+                  <div
+                    style={{
+                      display: 'flex',
+                      gap: '8px',
+                      alignItems: 'flex-start',
+                      background: 'rgba(234, 179, 8, 0.10)',
+                      border: '1px solid rgba(234, 179, 8, 0.30)',
+                      borderRadius: '8px',
+                      padding: '10px 14px',
+                      marginBottom: '12px',
+                      fontSize: '12.5px',
+                      color: t.text,
+                    }}
+                  >
+                    <AlertTriangle size={15} color="#eab308" style={{ flexShrink: 0, marginTop: '1px' }} />
+                    <span>
+                      O arquivo não tem a aba <strong>"{sheetCfg.sheetName}"</strong>. Foi usada a aba{' '}
+                      <strong>"{sheetData.sheetNameUsado}"</strong>, que é a que tem mais linhas. Confira a amostra
+                      abaixo antes de processar.
+                    </span>
+                  </div>
+                )}
+
+                {diag.semMapeamento.length > 0 && (
+                  <div
+                    style={{
+                      display: 'flex',
+                      gap: '8px',
+                      alignItems: 'flex-start',
+                      background:
+                        diag.chavesFaltando.length > 0 ? 'rgba(227, 6, 19, 0.08)' : 'rgba(234, 179, 8, 0.10)',
+                      border: `1px solid ${
+                        diag.chavesFaltando.length > 0 ? 'rgba(227, 6, 19, 0.25)' : 'rgba(234, 179, 8, 0.30)'
+                      }`,
+                      borderRadius: '8px',
+                      padding: '10px 14px',
+                      marginBottom: '12px',
+                      fontSize: '12.5px',
+                      color: t.text,
+                      lineHeight: 1.5,
+                    }}
+                  >
+                    <AlertTriangle
+                      size={15}
+                      color={diag.chavesFaltando.length > 0 ? t.primary : '#eab308'}
+                      style={{ flexShrink: 0, marginTop: '1px' }}
+                    />
+                    <span>
+                      {diag.chavesFaltando.length > 0 ? (
+                        <>
+                          <strong>Obrigatórias sem mapeamento: {diag.chavesFaltando.join(', ')}.</strong> Enquanto
+                          faltarem, o processamento fica bloqueado — sem elas o arquivo inteiro seria rejeitado.{' '}
+                        </>
+                      ) : null}
+                      Sem correspondência na sua planilha:{' '}
+                      <strong>{diag.semMapeamento.join(', ')}</strong>. As que não existirem no seu arquivo podem
+                      ficar em “— não mapear —”: entram vazias e não impedem a importação.
                     </span>
                   </div>
                 )}
@@ -1300,10 +1625,21 @@ export const MetasPage: React.FC = () => {
                     marginBottom: '16px',
                   }}
                 >
-                  {displayCols.map((req) => (
+                  {displayCols.map((req) => {
+                    const ehChave = (sheetCfg.keyColumns ?? []).includes(req);
+                    const semMapa = !mapping[req];
+                    return (
                     <div key={req}>
                       <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: t.textSecondary, marginBottom: '6px' }}>
                         Coluna do Sistema: <span style={{ color: t.primary }}>{req}</span>
+                        {ehChave && (
+                          <span
+                            title="Obrigatória: sem ela a linha é rejeitada"
+                            style={{ color: t.primary, fontWeight: 700 }}
+                          >
+                            {' '}*
+                          </span>
+                        )}
                       </label>
                       <select
                         value={mapping[req] || ''}
@@ -1317,12 +1653,19 @@ export const MetasPage: React.FC = () => {
                           width: '100%',
                           padding: '8px 10px',
                           borderRadius: '6px',
-                          border: `1px solid ${t.border}`,
-                          background: t.surface,
-                          color: t.text,
+                          // Realce quando falta a chave: é o que bloqueia o envio.
+                          border: `1px solid ${semMapa && ehChave ? t.primary : t.border}`,
+                          background: semMapa && ehChave ? `${t.primary}0D` : t.surface,
+                          color: semMapa ? t.textMuted : t.text,
                           fontSize: '13px',
                         }}
                       >
+                        {/* A opção vazia é essencial: sem ela, uma coluna que
+                            o auto-match não encontrou (valor "") não casava
+                            com nenhuma <option> e o navegador exibia o 1º
+                            cabeçalho, fazendo parecer mapeada — e não havia
+                            como desmapear de propósito. */}
+                        <option value="">— não mapear —</option>
                         {sheetData.headers.map((col) => (
                           <option key={col} value={col}>
                             {col}
@@ -1330,7 +1673,8 @@ export const MetasPage: React.FC = () => {
                         ))}
                       </select>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
 
                 {/* SAMPLE PREVIEW TABLE */}

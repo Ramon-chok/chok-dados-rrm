@@ -101,7 +101,6 @@ importsRouter.post('/', requireApiKey, async (req: Request, res: Response) => {
   }
 
   const rowOffset = body.rowOffset ?? 0;
-  const { valid, errors } = mapAndValidateRows(cfg, body.mapping, body.rows, rowOffset);
   const dataImportacao = new Date();
   const totalLinhas = body.rows.length;
   const clearBefore = chunkIndex === 0;
@@ -113,6 +112,13 @@ importsRouter.post('/', requireApiKey, async (req: Request, res: Response) => {
   // para sempre sem nunca enviar resposta.
   let client: PoolClient | undefined;
   try {
+    // mapAndValidateRows PRECISA ficar dentro do try: fora dele, qualquer
+    // exceção de parsing escapava do catch desta rota — que é quem gera o
+    // código de referência e grava a tentativa no histórico — e caía no
+    // middleware genérico do app, que responde "Erro interno inesperado."
+    // sem código e sem deixar rastro em `importacoes`. Era um erro
+    // impossível de diagnosticar pela tela.
+    const { valid, errors } = mapAndValidateRows(cfg, body.mapping, body.rows, rowOffset);
     client = await pool.connect();
     await client.query('BEGIN');
 
