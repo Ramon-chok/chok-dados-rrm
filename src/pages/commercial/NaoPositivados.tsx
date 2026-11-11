@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 import { useGlobalFilter } from '../../context/GlobalFilterContext';
-import { ExportExcelButton } from '../../components/common/ExportExcelButton';
 import { EmptyBlock, ErrorBlock, LoadingBlock } from '../../components/common/DataState';
 import { MultiSelectFilter } from '../../components/common/MultiSelectFilter';
 import { SingleSelectFilter } from '../../components/common/SingleSelectFilter';
@@ -30,7 +29,7 @@ const SUCCESS_GREEN = { light: '#0EA968', dark: '#1FAE6E' };
 export const NaoPositivadosPage: React.FC = () => {
   const { t, mode } = useTheme();
   const { currentUser } = useAuth();
-  const { selectedPeriod, startDate, endDate, ano, mes, periodType } = useGlobalFilter();
+  const { startDate, endDate, ano, mes, periodType } = useGlobalFilter();
 
   const role = currentUser?.role;
   // Mesmo critério do Dashboard: Admin/Gerência podem escolher equipe e
@@ -148,22 +147,6 @@ export const NaoPositivadosPage: React.FC = () => {
   const lastColLabel = selectedCategoria || 'Valor Total';
   const lastColValue = (c: NaoPositivadoRow) =>
     selectedCategoria ? Number(c.fabricantes?.[selectedCategoria]) || 0 : totalValor(c);
-  const handleExport = () => [
-    {
-      sheetName: 'Não Positivados',
-      data: filtered.map((c) => ({
-        'Cód. Cliente': c.codCliente,
-        'Razão Social': c.razaoSocial,
-        'Nome Fantasia': c.nomeFantasia,
-        Município: c.municipio,
-        ...(effectiveNivel === 'vendedor' ? { Vendedor: c.vendedor, Equipe: c.equipe } : {}),
-        ...(effectiveNivel === 'equipe' ? { Equipe: c.equipe } : {}),
-        [lastColLabel]: lastColValue(c),
-        Período: selectedPeriod,
-      })),
-    },
-  ];
-
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
@@ -213,7 +196,6 @@ export const NaoPositivadosPage: React.FC = () => {
               allLabel="Todas as categorias"
             />
           )}
-          <ExportExcelButton getSheets={handleExport} fileName="nao-positivados" />
         </div>
       </div>
 

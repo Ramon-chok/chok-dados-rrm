@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTheme } from '../../context/ThemeContext';
-import { ExportExcelButton } from '../../components/common/ExportExcelButton';
 import { SingleSelectFilter } from '../../components/common/SingleSelectFilter';
 import {
   clearImportHistory,
@@ -8,7 +7,7 @@ import {
   getErrorMessage,
   ImportLogEntry,
 } from '../../lib/api';
-import { labelForTipo } from './Metas';
+import { labelForTipo } from './importTypes';
 import { Clock, FileCheck, RefreshCw, Search, Trash2, XCircle } from 'lucide-react';
 
 type StatusLabel = 'Concluído' | 'Concluído com Avisos' | 'Falha';
@@ -69,7 +68,7 @@ const LIMITE = 200;
 /**
  * Histórico de Importações (ADMIN).
  *
- * Saiu da tela de Metas & Definições, onde ficava embaixo do assistente: o
+ * Saiu da tela de Dados e Exportações, onde ficava embaixo do assistente: o
  * histórico é consulta e auditoria, não faz parte do fluxo de enviar uma
  * planilha, e crescia a página toda sem necessidade. Aqui ele ganha espaço,
  * filtro por tipo e por status, busca e exportação.
@@ -162,25 +161,6 @@ export const HistoricoImportacoesPage: React.FC = () => {
     [filtrados]
   );
 
-  const handleExport = () => [
-    {
-      sheetName: 'Histórico',
-      data: filtrados.map((i) => ({
-        'Tipo de Dado': i.tipo,
-        Arquivo: i.arquivo,
-        Usuário: i.usuario,
-        'Data e Hora': i.dataHora,
-        'Total de Linhas': i.total,
-        Válidos: i.validos,
-        Novos: i.novos,
-        Atualizados: i.atualizados,
-        Rejeitados: i.rejeitados,
-        Status: i.status,
-        Erro: i.mensagemErro || '',
-      })),
-    },
-  ];
-
   const th: React.CSSProperties = {
     textAlign: 'left',
     padding: '11px 14px',
@@ -213,7 +193,7 @@ export const HistoricoImportacoesPage: React.FC = () => {
             Histórico de Importações
           </h1>
           <p style={{ margin: 0, fontSize: 13, color: t.textSecondary }}>
-            Auditoria de todas as cargas — as feitas em Metas &amp; Definições e as da automação. Mostra as{' '}
+            Auditoria de todas as cargas — as feitas em Dados e Exportações e as da automação. Mostra as{' '}
             {LIMITE} mais recentes.
           </p>
         </div>
@@ -240,7 +220,6 @@ export const HistoricoImportacoesPage: React.FC = () => {
             <RefreshCw size={15} />
             Atualizar
           </button>
-          <ExportExcelButton onPrepareData={handleExport} filename="historico-importacoes.xlsx" />
         </div>
       </div>
 
@@ -442,7 +421,7 @@ export const HistoricoImportacoesPage: React.FC = () => {
                 <tr>
                   <td colSpan={9} style={{ padding: '30px 16px', textAlign: 'center', color: t.textMuted }}>
                     {itens.length === 0
-                      ? 'Nenhuma importação registrada ainda. As cargas feitas em Metas & Definições ou pela automação aparecerão aqui.'
+                      ? 'Nenhuma importação registrada ainda. As cargas feitas em Dados e Exportações ou pela automação aparecerão aqui.'
                       : 'Nenhuma importação encontrada com os filtros atuais.'}
                   </td>
                 </tr>

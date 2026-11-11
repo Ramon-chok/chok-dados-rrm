@@ -13,7 +13,6 @@ import {
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 import { ScrollableChart } from '../../components/common/ScrollableChart';
-import { ExportExcelButton } from '../../components/common/ExportExcelButton';
 import { EmptyBlock, ErrorBlock, LoadingBlock } from '../../components/common/DataState';
 import { SingleSelectFilter } from '../../components/common/SingleSelectFilter';
 import {
@@ -173,23 +172,6 @@ export const VerbaIndenizatoriaPage: React.FC = () => {
     [filtered]
   );
 
-  const handleExport = () => [
-    {
-      sheetName: 'Verba Indenizatória',
-      data: filtered.map((r) => ({
-        Código: r.codVendedor,
-        Nome: r.vendedor,
-        Equipe: r.equipe || '',
-        'KM Total': r.kmTotal,
-        'Verba Indenizatória': r.verbaIndenizatoria,
-        Desconto: r.desconto,
-        Reembolso: r.reembolso,
-        'A Pagar': r.aPagar,
-        ...(mode === 'periodo' ? { 'Fechamentos somados': r.periodos } : {}),
-      })),
-    },
-  ];
-
   const anoOptions = anosDisponiveis.map((a) => ({ value: String(a), label: String(a) }));
   const mesOptions = MESES.map((label, idx) => ({ value: String(idx + 1), label }));
 
@@ -266,7 +248,6 @@ export const VerbaIndenizatoriaPage: React.FC = () => {
               : ' Valores do fechamento do dia selecionado.'}
           </p>
         </div>
-        <ExportExcelButton onPrepareData={handleExport} filename="verba-indenizatoria.xlsx" />
       </div>
 
       {/* FILTROS: dia específico tem prioridade sobre mês/ano (ver fetch acima) */}
@@ -412,7 +393,7 @@ export const VerbaIndenizatoriaPage: React.FC = () => {
       ) : rows.length === 0 ? (
         <EmptyBlock
           title="Nenhuma verba indenizatória importada para este período"
-          description='Importe a planilha em Administração › Metas & Definições, escolhendo o conjunto "Verba Indenizatória". A Data de Referência define o período do fechamento.'
+          description='Importe a planilha em Administração › Dados e Exportações, escolhendo o conjunto "Verba Indenizatória". A Data de Referência define o período do fechamento.'
         />
       ) : (
         <>

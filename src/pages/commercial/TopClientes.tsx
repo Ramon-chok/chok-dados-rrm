@@ -2,7 +2,6 @@
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 import { useGlobalFilter } from '../../context/GlobalFilterContext';
-import { ExportExcelButton } from '../../components/common/ExportExcelButton';
 import { EmptyBlock, ErrorBlock, LoadingBlock } from '../../components/common/DataState';
 import { getErrorMessage, fetchTopCustomers, TopCustomerRow } from '../../lib/api';
 import { SingleSelectFilter } from '../../components/common/SingleSelectFilter';
@@ -12,7 +11,7 @@ const fmt = (v: number) => `R$ ${v.toLocaleString('pt-BR', { maximumFractionDigi
 export const TopClientesPage: React.FC = () => {
   const { t, mode } = useTheme();
   const { currentUser } = useAuth();
-  const { selectedPeriod, startDate, endDate } = useGlobalFilter();
+  const { startDate, endDate } = useGlobalFilter();
   const [rows, setRows] = useState<TopCustomerRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -77,11 +76,6 @@ export const TopClientesPage: React.FC = () => {
 
   const maxPart = useMemo(() => Math.max(1, ...filteredRows.map((c) => c.part)), [filteredRows]);
 
-  const handleExport = () => [{
-    sheetName: `Top ${topN}`,
-    data: filteredRows.map((c) => ({ Posição: c.pos, Código: c.codigo, Cliente: c.nome, Vendedor: c.vendedor, Equipe: c.equipe, Faturamento: c.faturamento, 'Participação %': c.part, Período: selectedPeriod })),
-  }];
-
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
@@ -117,7 +111,6 @@ export const TopClientesPage: React.FC = () => {
               allLabel="Todos os vendedores"
             />
           )}
-          <ExportExcelButton getSheets={handleExport} fileName="top-clientes" />
         </div>
       </div>
       {loading && <LoadingBlock />}

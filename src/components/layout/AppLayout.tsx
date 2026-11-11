@@ -32,6 +32,7 @@ import {
   Route,
   DollarSign,
   Clock,
+  Database,
 } from 'lucide-react';
 import { ScrollToTopButton } from './ScrollToTopButton';
 import { SessionTimer } from './SessionTimer';
@@ -134,7 +135,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, c
       label: 'Administração',
       items: [
         { id: 'users', name: 'Usuários & RBAC', icon: <Users size={17} />, adminOnly: true },
-        { id: 'targets', name: 'Metas & Definições', icon: <Target size={17} />, adminOnly: true },
+        { id: 'targets', name: 'Dados e Exportações', icon: <Database size={17} />, adminOnly: true },
         { id: 'import-history', name: 'Histórico de Importações', icon: <Clock size={17} />, adminOnly: true },
       ],
     },
@@ -168,7 +169,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, c
     settings: 'Configurações',
     credits: 'Créditos',
     users: 'Usuários & RBAC',
-    targets: 'Metas & Definições',
+    targets: 'Dados e Exportações',
   };
 
   return (

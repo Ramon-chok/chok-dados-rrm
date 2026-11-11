@@ -15,7 +15,6 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
-import { ExportExcelButton } from '../../components/common/ExportExcelButton';
 import { EmptyBlock, ErrorBlock, LoadingBlock } from '../../components/common/DataState';
 import { SingleSelectFilter } from '../../components/common/SingleSelectFilter';
 import { MultiSelectFilter } from '../../components/common/MultiSelectFilter';
@@ -1113,32 +1112,8 @@ export const BaseRoteiroPage: React.FC = () => {
   };
 
   /* ---------------------------------------------------------------- *
-   * Export / opções de filtro
+   * Opções de filtro
    * ---------------------------------------------------------------- */
-
-  const handleExport = () => [
-    {
-      sheetName: 'Base de Roteiro',
-      data: filtrados.map((p) => ({
-        'Código Cliente': p.codCliente || '',
-        'Razão Social': p.razaoSocial || '',
-        'Nome Fantasia': p.nomeFantasia || '',
-        'Código Vendedor': p.codVendedor || '',
-        Vendedor: p.vendedor || '',
-        Equipe: p.equipe || '',
-        Município: p.municipio || '',
-        Bairro: p.bairro || '',
-        Endereço: p.endereco || '',
-        Latitude: p.latitude ?? '',
-        Longitude: p.longitude ?? '',
-        Dia: p.dia ?? '',
-        'Dia da semana': p.dia !== null ? DIA_LABEL[p.dia] || '' : '',
-        Semana: p.semana || '',
-        Sequência: p.sequencia ?? '',
-        Frequência: p.frequencia || '',
-      })),
-    },
-  ];
 
   const diaOptions = (filtros?.dias ?? []).map((d) => String(d));
   const semanaOptions = filtros?.semanas ?? [];
@@ -1651,7 +1626,6 @@ export const BaseRoteiroPage: React.FC = () => {
             Clientes roteirizados no mapa, por dia de visita, semana do mês, vendedor, equipe e cidade.
           </p>
         </div>
-        <ExportExcelButton onPrepareData={handleExport} filename="base-de-roteiro.xlsx" />
       </div>
 
       {loading ? (
@@ -1661,7 +1635,7 @@ export const BaseRoteiroPage: React.FC = () => {
       ) : rows.length === 0 ? (
         <EmptyBlock
           title="Nenhuma base de roteiro importada"
-          description='Importe a planilha em Administração › Metas & Definições, escolhendo o conjunto "Base de Roteiro". Ela precisa trazer latitude e longitude de cada cliente para os pontos aparecerem no mapa.'
+          description='Importe a planilha em Administração › Dados e Exportações, escolhendo o conjunto "Base de Roteiro". Ela precisa trazer latitude e longitude de cada cliente para os pontos aparecerem no mapa.'
         />
       ) : (
         <>

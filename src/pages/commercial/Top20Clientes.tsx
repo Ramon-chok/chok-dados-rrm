@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 import { useGlobalFilter } from '../../context/GlobalFilterContext';
-import { ExportExcelButton } from '../../components/common/ExportExcelButton';
 import { EmptyBlock, ErrorBlock, LoadingBlock } from '../../components/common/DataState';
 import { SingleSelectFilter } from '../../components/common/SingleSelectFilter';
 import {
@@ -21,7 +20,7 @@ const crescColor = (v: number, t: any) => (v >= 0 ? '#3DD68C' : t.complementaryR
 export const Top20ClientesPage: React.FC = () => {
   const { t } = useTheme();
   const { currentUser } = useAuth();
-  const { selectedPeriod, startDate, endDate, ano, mes, periodType } = useGlobalFilter();
+  const { startDate, endDate, ano, mes, periodType } = useGlobalFilter();
 
   const role = currentUser?.role;
   // Mesmo critério do Dashboard: Admin/Gerência podem escolher equipe e
@@ -92,30 +91,6 @@ export const Top20ClientesPage: React.FC = () => {
     };
   }, [ano, mes, startDate, endDate, periodType, canFilterEquipe, canFilterVendedor, selectedEquipe, selectedVendedor]);
 
-  const handleExport = () => [
-    {
-      sheetName: 'Top 20 Clientes',
-      data: rows.map((r) => ({
-        'Data Referência': fmtDate(r.dataReferencia),
-        Nível: r.nivel,
-        Gerência: r.gerencia,
-        Equipe: r.equipe,
-        'Cód. Vendedor': r.codVendedor,
-        Vendedor: r.nomeVendedor,
-        Pasta: r.pasta,
-        'Cód. Cliente': r.codCliente,
-        'Cliente/Redes': r.clienteRedes,
-        'Trimestre 25': r.trimestre25,
-        'Trimestre 26': r.trimestre26,
-        '% Cresc. Trimestre': r.pctCrescTrimestre,
-        'Mês 25': r.mes25,
-        'Mês 26': r.mes26,
-        '% Cresc. Mês': r.pctCrescMes,
-        Período: selectedPeriod,
-      })),
-    },
-  ];
-
   const thStyle: React.CSSProperties = {
     padding: '10px 12px',
     fontSize: 11,
@@ -179,7 +154,6 @@ export const Top20ClientesPage: React.FC = () => {
               allLabel="Todos os vendedores"
             />
           )}
-          <ExportExcelButton getSheets={handleExport} fileName="top-20-clientes" />
         </div>
       </div>
 

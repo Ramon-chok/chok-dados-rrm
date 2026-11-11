@@ -3,7 +3,6 @@ import { useTheme } from '../context/ThemeContext';
 import { ScrollableChart } from '../components/common/ScrollableChart';
 import { useAuth } from '../context/AuthContext';
 import { useGlobalFilter } from '../context/GlobalFilterContext';
-import { ExportExcelButton } from '../components/common/ExportExcelButton';
 import { EmptyBlock, ErrorBlock, LoadingBlock } from '../components/common/DataState';
 import { SingleSelectFilter } from '../components/common/SingleSelectFilter';
 import {
@@ -251,53 +250,6 @@ export const DashboardPage: React.FC = () => {
       ]
     : [];
 
-  const handleExport = () => [
-    {
-      sheetName: 'KPIs',
-      data: kpis
-        ? [
-            { Indicador: 'Meta Faturamento', Valor: kpis.meta },
-            { Indicador: 'Realizado Faturamento', Valor: kpis.realizado },
-            { Indicador: 'Atingimento Faturamento %', Valor: kpis.atingimento },
-            { Indicador: 'GAP Faturamento', Valor: kpis.gap },
-            { Indicador: 'Meta Cobertura', Valor: kpis.metaCobertura },
-            { Indicador: 'Realizado Cobertura', Valor: kpis.realizadoCobertura },
-            { Indicador: 'Atingimento Cobertura %', Valor: kpis.pctCobertura },
-            { Indicador: 'GAP Cobertura', Valor: kpis.gapCobertura },
-            { Indicador: 'Meta Sortimento', Valor: kpis.metaSortimento },
-            { Indicador: 'Realizado Sortimento', Valor: kpis.realizadoSortimento },
-            { Indicador: 'Atingimento Sortimento %', Valor: kpis.pctSortimento },
-            { Indicador: 'GAP Sortimento', Valor: kpis.gapSortimento },
-            { Indicador: 'Margem Total %', Valor: kpis.margem },
-          ].map((k) => ({ ...k, Período: selectedPeriod }))
-        : [],
-    },
-    {
-      sheetName: 'Top Clientes',
-      data: (data?.topClientes || []).map((c, i) => ({
-        Posição: i + 1,
-        'É Rede': c.eRede ? 'Sim' : 'Não',
-        Código: c.codigo || '—',
-        Cliente: c.nome,
-        Equipe: c.equipe,
-        Faturamento: c.valor,
-      })),
-    },
-    {
-      sheetName: 'Fabricantes',
-      data: (data?.fabricantes || []).map((f) => ({
-        Fabricante: f.fabricante,
-        Meta: f.meta,
-        Realizado: f.realizado,
-        'Atingimento %': f.pctR,
-        'Meta Cobertura': f.metaCobertura,
-        'Realizado Cobertura': f.realizadoCobertura,
-        'Atingimento Cobertura %': f.pctCob,
-        'Margem %': f.pctMargem,
-      })),
-    },
-  ];
-
   // ─── Estilos base reutilizáveis ─────────────────────────────
   const cardStyle: React.CSSProperties = {
     background: t.surface,
@@ -485,7 +437,6 @@ export const DashboardPage: React.FC = () => {
               allLabel="Todos os vendedores"
             />
           )}
-          <ExportExcelButton getSheets={handleExport} fileName={`dashboard-${selectedPeriod}`} />
         </div>
       </div>
 

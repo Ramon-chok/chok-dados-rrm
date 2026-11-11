@@ -147,7 +147,7 @@ export interface ClienteFabricantesResponse {
  * Origem dos valores REALIZADOS devolvidos pelos quadros:
  *  - "api"   → vieram da API externa (ERP/BI) configurada no backend;
  *  - "banco" → ainda saem das tabelas locais (API externa não configurada).
- * As METAS são sempre as importadas pelo ADMIN em "Metas & Definições".
+ * As METAS são sempre as importadas pelo ADMIN em "Dados e Exportações".
  */
 export type FonteRealizado = 'api' | 'banco';
 

@@ -2,7 +2,6 @@
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 import { useGlobalFilter } from '../../context/GlobalFilterContext';
-import { ExportExcelButton } from '../../components/common/ExportExcelButton';
 import { EmptyBlock, ErrorBlock, LoadingBlock } from '../../components/common/DataState';
 import { SingleSelectFilter } from '../../components/common/SingleSelectFilter';
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
@@ -129,19 +128,6 @@ export const ObjetivosPage: React.FC = () => {
       (r.codVendedor || '').toLowerCase().includes(q)
     );
   }, [rows, query]);
-
-  const handleExport = () => [{
-    sheetName: 'Objetivos',
-    data: filtered.map((r) => ({
-      'Ano-Mês': r.anoMes,
-      'Cód. Vendedor': r.codVendedor,
-      Vendedor: r.vendedor,
-      Equipe: r.equipe,
-      Fabricante: r.fabricante,
-      'Meta Faturamento': r.metaFaturamento,
-      'Meta Cobertura': r.metaCobertura,
-    })),
-  }];
 
   /** Totais da tabela, para dar a ordem de grandeza antes de ler linha a linha. */
   const totais = useMemo(() => {
@@ -335,7 +321,6 @@ export const ObjetivosPage: React.FC = () => {
             Metas mensais por vendedor e categoria, e o acompanhamento das metas de faseamento e desafio.
           </p>
         </div>
-        <ExportExcelButton onPrepareData={handleExport} filename="objetivos.xlsx" />
       </div>
 
       {/* FILTROS — em barra própria, como nas demais telas. Antes ficavam
@@ -440,7 +425,7 @@ export const ObjetivosPage: React.FC = () => {
       {!loading && !error && filtered.length === 0 && (
         <EmptyBlock
           title="Nenhuma meta no período"
-          description="Importe a planilha em Administração › Metas & Definições, ou ajuste o período e os filtros acima."
+          description="Importe a planilha em Administração › Dados e Exportações, ou ajuste o período e os filtros acima."
         />
       )}
       {!loading && !error && filtered.length > 0 && (
