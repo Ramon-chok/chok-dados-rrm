@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ThemeProvider, useTheme } from './context/ThemeContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { GlobalFilterProvider } from './context/GlobalFilterContext';
@@ -13,6 +13,9 @@ import { TopClientesPage } from './pages/commercial/TopClientes';
 import { SortimentosPage } from './pages/commercial/Sortimentos';
 import { CatalogoPage } from './pages/commercial/Catalogo';
 import { ObjetivosPage } from './pages/commercial/Objetivos';
+import { CalendarioComercialPage } from './pages/commercial/CalendarioComercial';
+import { ComparativosPage } from './pages/commercial/Comparativos';
+import { ComprasPage } from './pages/commercial/Compras';
 import { RaioXPage } from './pages/sar/RaioX';
 import { BaseRoteiroPage } from './pages/sar/BaseRoteiro';
 import { VerbaIndenizatoriaPage } from './pages/sar/VerbaIndenizatoria';
@@ -36,9 +39,13 @@ import { ErrorBoundary } from './components/common/ErrorBoundary';
  * perfil realmente pode abrir.
  */
 const PAGINAS_INICIAIS: PageId[] = [
+  // Seção 5 do escopo: o Dashboard é a página inicial de TODOS os perfis — o
+  // conteúdo dele é que muda conforme o acesso. Por isso ele passou para o
+  // topo desta lista; os demais continuam como alternativa para um perfil que,
+  // por configuração, fique sem `dashboard.view`.
+  'dashboard',
   'sales-board',
   'categories',
-  'dashboard',
   'not-positivated',
   'top-20-customers',
   'top-customers',
@@ -48,13 +55,30 @@ const PAGINAS_INICIAIS: PageId[] = [
   'sar-raio-x',
   'sar-base-roteiro',
   'sar-verba-indenizatoria',
+  'commercial-calendar',
+  'comparisons',
+  'purchasing',
   'profile',
 ];
+
+/** Contexto que uma tela pode receber ao ser aberta pela pesquisa inteligente. */
+export interface NavContext {
+  fabricante?: string;
+  categoria?: string;
+}
 
 function MainApp() {
   const { isAuthenticated, currentUser, canAccessPage, isLoading } = useAuth();
   const { t } = useTheme();
   const [currentPage, setCurrentPage] = useState<PageId | null>(null);
+  // Preenchido pela pesquisa inteligente (ex.: "abrir o fabricante X").
+  const [navContext, setNavContext] = useState<NavContext>({});
+
+  /** Navega e, opcionalmente, já entrega um contexto para a tela destino. */
+  const navegar = (pagina: PageId, contexto?: NavContext) => {
+    setNavContext(contexto || {});
+    setCurrentPage(pagina);
+  };
 
   /** Primeira tela do menu que este perfil pode abrir. */
   const paginaInicial = (): PageId =>
@@ -207,6 +231,12 @@ function MainApp() {
         return <CatalogoPage />;
       case 'objectives':
         return <ObjetivosPage />;
+      case 'commercial-calendar':
+        return <CalendarioComercialPage />;
+      case 'comparisons':
+        return <ComparativosPage />;
+      case 'purchasing':
+        return <ComprasPage />;
       case 'sar-raio-x':
         return <RaioXPage />;
       case 'sar-base-roteiro':
@@ -234,7 +264,7 @@ function MainApp() {
   };
 
   return (
-    <AppLayout currentPage={currentPage} onNavigate={setCurrentPage}>
+    <AppLayout currentPage={currentPage} onNavigate={navegar}>
       {/* Erro em uma página não derruba o layout; trocar de página tenta de novo. */}
       <ErrorBoundary resetKey={currentPage}>{renderContent()}</ErrorBoundary>
     </AppLayout>

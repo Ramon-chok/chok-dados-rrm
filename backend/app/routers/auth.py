@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 import jwt
@@ -8,13 +8,22 @@ import hmac
 from fastapi import APIRouter, Depends, HTTPException, Request, status, Response
 from typing import Any
 
+from app import sessions
 from app.db import get_connection
 from app.errors import PublicServerError, log_exception
 from app.config import get_settings
 from app.schemas import LoginRequest, LoginResponse, UserOut
-from app.hardening import login_throttle
+from app.hardening import client_ip, login_throttle
 from app.sanitize import clean_text
-from app.security import create_access_token, get_current_user, revoke_token, set_auth_cookie, verify_password, require_roles
+from app.security import (
+    create_access_token,
+    decode_token,
+    get_current_user,
+    revoke_token,
+    set_auth_cookie,
+    verify_password,
+    require_roles,
+)
 from pydantic import BaseModel, Field
 from fastapi import Body
 from app.mail import test_smtp_connection, send_test_email
@@ -48,8 +57,32 @@ def _touch_last_login(user_id: str) -> None:
         conn.commit()
 
 
+def _abrir_sessao(request: Request | None, token: str, user: dict[str, Any], remember_me: bool) -> None:
+    """Registra a sessão recém-aberta (Seção 4). Nunca impede o login."""
+    if request is None:
+        return
+    try:
+        payload = decode_token(token)
+    except Exception:
+        return
+    try:
+        with get_connection() as conn:
+            sessions.registrar_login(
+                conn,
+                user_id=str(user["id"]),
+                email=user.get("email"),
+                jti=payload.get("jti"),
+                remember_me=remember_me,
+                ip=client_ip(request.scope),
+                user_agent=request.headers.get("user-agent"),
+            )
+    except Exception:
+        # Histórico é auditoria, não pode derrubar a autenticação.
+        pass
+
+
 @router.post("/login")
-def login(payload: LoginRequest, response: Response) -> object:
+def login(payload: LoginRequest, response: Response, request: Request = None) -> object:
     # payload.email is treated as a generic identifier: can be an e-mail or user code
     identifier_raw = (payload.email or "").strip()
     identifier_lower = identifier_raw.lower()
@@ -216,13 +249,14 @@ def login(payload: LoginRequest, response: Response) -> object:
     )
     # Cookie HttpOnly: persistente só se "manter conectado" estiver marcado.
     set_auth_cookie(response, token, expires_in, payload.rememberMe)
+    _abrir_sessao(request, token, data, bool(payload.rememberMe))
 
     return LoginResponse(token=token, tokenType="Bearer", expiresIn=expires_in, user=user_to_out(data))
 
 
 
 @router.post("/2fa-login")
-def twofa_login(payload: TwoFALoginRequest, response: Response):
+def twofa_login(payload: TwoFALoginRequest, response: Response, request: Request = None):
     """Completa o login usando `tempToken` retornado por /login e o `code` do 2FA."""
     temp = payload.tempToken
     code = clean_text(payload.code, 32)
@@ -358,6 +392,7 @@ def twofa_login(payload: TwoFALoginRequest, response: Response):
         extra={"sellerCode": data.get("seller_code"), "team": data.get("team")},
     )
     set_auth_cookie(response, token, expires_in, remember_me)
+    _abrir_sessao(request, token, data, bool(remember_me))
 
     return LoginResponse(token=token, tokenType="Bearer", expiresIn=expires_in, user=user_to_out(data))
 
@@ -377,11 +412,22 @@ def session_info(request: Request, _user: dict = Depends(get_current_user)) -> d
     sendo imposta aqui no backend (decode_token); o contador é só a interface.
     """
     payload = getattr(request.state, "token_payload", None) or {}
+    # Quanto falta para a desconexão automática por inatividade (Seção 4).
+    # É o MESMO limite que o servidor aplica em get_current_user — o contador da
+    # tela é só o reflexo dele, nunca a regra.
+    restante = None
+    try:
+        with get_connection() as conn:
+            restante = sessions.segundos_restantes_inatividade(conn, payload.get("jti"))
+    except Exception:
+        restante = None
     return {
         "startedAt": datetime.fromtimestamp(int(payload.get("iat", 0)), UTC).isoformat(),
         "expiresAt": datetime.fromtimestamp(int(payload.get("exp", 0)), UTC).isoformat(),
         "serverTime": datetime.now(UTC).isoformat(),
         "rememberMe": bool(payload.get("rm", False)),
+        "idleLimitSeconds": sessions.IDLE_LIMIT_SECONDS,
+        "idleRemainingSeconds": restante,
     }
 
 
@@ -408,13 +454,44 @@ def email_test(payload: dict = Body(...), _admin: dict[str, Any] = Depends(requi
         ) from exc
 
 
+def _fechar_sessao_log(token: str | None, motivo: str) -> None:
+    """Fecha a linha de `sessoes_log` do token que está saindo (best-effort)."""
+    if not token:
+        return
+    try:
+        payload = decode_token(token)
+    except Exception:
+        # Token já expirado também precisa fechar o histórico: lê sem validar exp.
+        try:
+            import jwt as _jwt
+
+            settings = get_settings()
+            payload = _jwt.decode(
+                token, settings.jwt_secret, algorithms=[settings.jwt_algorithm], options={"verify_exp": False}
+            )
+        except Exception:
+            return
+    try:
+        with get_connection() as conn:
+            sessions.encerrar(conn, payload.get("jti"), motivo)
+    except Exception:
+        pass
+
+
 @router.post("/logout")
-def logout(request: Request, response: Response) -> dict[str, bool]:
+def logout(request: Request, response: Response, motivo: str = "logout") -> dict[str, bool]:
     """Encerra a sessão: REVOGA o JWT no servidor (não só apaga o cookie) e limpa o cookie.
-    Não exige autenticação válida: sempre limpa o cookie."""
+    Não exige autenticação válida: sempre limpa o cookie.
+
+    `motivo` alimenta o histórico de sessões (Seção 4): "logout" quando o
+    usuário clicou em sair, "inatividade" quando o front desconectou sozinho e
+    "expiracao" quando o tempo total acabou.
+    """
     settings = get_settings()
     cookie_name = settings.jwt_cookie_name or "chok_auth_token"
     token = request.cookies.get(cookie_name)
+    motivo_ok = motivo if motivo in (sessions.MOTIVO_LOGOUT, sessions.MOTIVO_INATIVIDADE, sessions.MOTIVO_EXPIRACAO) else sessions.MOTIVO_LOGOUT
+    _fechar_sessao_log(token or (request.headers.get("authorization", "")[7:].strip() or None), motivo_ok)
     auth_header = request.headers.get("authorization", "")
     if auth_header.lower().startswith("bearer "):
         try:

@@ -23,7 +23,7 @@ from app.hardening import (
     RequestGuardMiddleware,
     SecurityHeadersMiddleware,
 )
-from app.routers import analytics, auth, board, catalog, imports, users, twofa
+from app.routers import analytics, auth, board, catalog, imports, insights, purchasing, users, twofa
 
 settings = get_settings()
 origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
@@ -150,3 +150,7 @@ app.include_router(analytics.router, prefix="/api")
 app.include_router(board.router, prefix="/api")
 app.include_router(catalog.router, prefix="/api")
 app.include_router(twofa.router, prefix="/api")
+# Rotas da evolução (KPIs dia/mês, busca, fabricantes, comparativos, calendário).
+app.include_router(insights.router, prefix="/api")
+# Módulo de Compras (perfil Comprador) — Seção 3.
+app.include_router(purchasing.router, prefix="/api")

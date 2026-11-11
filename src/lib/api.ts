@@ -1,4 +1,4 @@
-﻿import { authHeader, clearAuthToken } from './authToken';
+import { authHeader, clearAuthToken } from './authToken';
 
 // Cliente HTTP único do frontend — só fala com o backend (/api/*).
 // Todas as páginas autenticadas enviam Authorization: Bearer <JWT>.
@@ -716,14 +716,21 @@ export interface SessionInfoResponse {
   /** ISO — relógio do servidor, para corrigir diferença de horário do navegador. */
   serverTime: string;
   rememberMe: boolean;
+  /** Janela de inatividade aplicada pelo servidor (segundos). */
+  idleLimitSeconds?: number;
+  /** Quanto falta para a desconexão automática por inatividade (segundos). */
+  idleRemainingSeconds?: number | null;
 }
 
 export function apiSession(): Promise<SessionInfoResponse> {
   return request<SessionInfoResponse>('/auth/session');
 }
 
-export function apiLogout(): Promise<{ ok: boolean }> {
-  return request<{ ok: boolean }>('/auth/logout', { method: 'POST' }).catch(() => ({ ok: true }));
+/** Motivo do fim da sessão, gravado no histórico (`sessoes_log`). */
+export type LogoutReason = 'logout' | 'inatividade' | 'expiracao';
+
+export function apiLogout(motivo: LogoutReason = 'logout'): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>(`/auth/logout${qs({ motivo })}`, { method: 'POST' }).catch(() => ({ ok: true }));
 }
 
 export function apiListUsers(): Promise<import('../types').User[]> {

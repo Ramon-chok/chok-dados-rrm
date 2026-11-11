@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import hmac
 import secrets
@@ -11,6 +11,7 @@ from fastapi import Depends, Header, HTTPException, status, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.config import get_settings
+from app import sessions
 from app.db import get_connection
 
 bearer_scheme = HTTPBearer(auto_error=False)
@@ -40,7 +41,12 @@ USER_SELECT = """
 
 # Espelho de src/types.ts (Permission). "dashboard.view" cobre o grupo Principal
 # (Dashboard + Visão Macro) e NÃO é concedido ao VENDEDOR: esses painéis são
-# apenas para ADMIN, GERENTE e SUPERVISOR.
+# apenas para os perfis de gestão.
+#
+# Os quatro papéis originais (ADMIN/GERENTE/SUPERVISOR/VENDEDOR) mantêm exatamente
+# as permissões que já tinham; os acrescentados na evolução entram ao lado deles.
+# "margin.view" é o que libera margem/custo — quem não a tem recebe margem nula
+# do backend, não apenas um campo escondido na tela.
 ROLE_PERMISSIONS: dict[str, list[str]] = {
     "ADMIN": ["admin.full_access"],
     "GERENTE": [
@@ -51,6 +57,14 @@ ROLE_PERMISSIONS: dict[str, list[str]] = {
         "customers.view",
         "products.view",
         "settings.view",
+        "margin.view",
+        "manufacturers.view",
+        "comparisons.view",
+        "simulations.run",
+        "calendar.view",
+        "calendar.edit",
+        "sar.view",
+        "search.global",
     ],
     "SUPERVISOR": [
         "sales-board.view",
@@ -59,22 +73,159 @@ ROLE_PERMISSIONS: dict[str, list[str]] = {
         "targets.view",
         "customers.view",
         "products.view",
+        "manufacturers.view",
+        "calendar.view",
+        "sar.view",
+        "search.global",
     ],
     "VENDEDOR": [
         "sales-board.view",
         "categories.view",
+        # Seção 5 do escopo: "todos os usuários têm o Dashboard como página
+        # inicial", com o conteúdo mudando conforme o perfil. O Vendedor passou
+        # a ter acesso — e `scope_filters` continua travando a consulta no
+        # próprio código dele, então ele só vê os próprios números.
+        "dashboard.view",
         "targets.view",
         "customers.view",
         "products.view",
+        "calendar.view",
+        "sar.view",
+        "search.global",
+    ],
+    # Visão geral e consolidada de vendas, equipes, fabricantes e categorias,
+    # com faturamento, margem, cobertura e investimentos + comparativos/simulações.
+    "GERENTE_COMERCIAL": [
+        "sales-board.view",
+        "categories.view",
+        "dashboard.view",
+        "targets.view",
+        "customers.view",
+        "products.view",
+        "settings.view",
+        "margin.view",
+        "manufacturers.view",
+        "purchasing.view",
+        "comparisons.view",
+        "simulations.run",
+        "calendar.view",
+        "calendar.edit",
+        "sar.view",
+        "search.global",
+    ],
+    # Vendas de todas as equipes/vendedores: faturamento, metas, cobertura,
+    # rankings e comparativos. Sem o módulo de compras.
+    "GERENTE_VENDAS": [
+        "sales-board.view",
+        "categories.view",
+        "dashboard.view",
+        "targets.view",
+        "customers.view",
+        "products.view",
+        "manufacturers.view",
+        "comparisons.view",
+        "simulations.run",
+        "calendar.view",
+        "calendar.edit",
+        "sar.view",
+        "search.global",
+    ],
+    # Fornecedores, negociações, pedidos de compra, custos, descontos,
+    # bonificações e investimentos — por isso margem/custo liberados.
+    "COMPRADOR": [
+        "categories.view",
+        "dashboard.view",
+        "targets.view",
+        "products.view",
+        "customers.view",
+        "margin.view",
+        "manufacturers.view",
+        "purchasing.view",
+        "purchasing.edit",
+        "calendar.view",
+        "calendar.edit",
+        "sar.view",
+        "search.global",
+    ],
+    # Dados comerciais autorizados + acompanhamento de fabricantes/categorias.
+    # Sem margem (não é dado de responsabilidade do analista por padrão).
+    "ANALISTA": [
+        "sales-board.view",
+        "categories.view",
+        "dashboard.view",
+        "targets.view",
+        "customers.view",
+        "products.view",
+        "manufacturers.view",
+        "calendar.view",
+        "calendar.edit",
+        "sar.view",
+        "search.global",
+    ],
+    # Produtividade diária, Raio-X, visitas, positivação, roteiro, VDI e km.
+    "SAR": [
+        "dashboard.view",
+        "customers.view",
+        "products.view",
+        "sar.view",
+        "calendar.view",
+        "calendar.edit",
+        "search.global",
     ],
 }
 
 ROLE_LABELS = {
     "ADMIN": "Administrador",
     "GERENTE": "Gerência",
+    "GERENTE_COMERCIAL": "Gerente Comercial",
+    "GERENTE_VENDAS": "Gerente de Vendas",
     "SUPERVISOR": "Supervisor",
     "VENDEDOR": "Vendedor",
+    "COMPRADOR": "Comprador",
+    "ANALISTA": "Analista",
+    "SAR": "SAR",
 }
+
+#: Papéis com visão consolidada (não travam equipe/vendedor no escopo de dados).
+ROLES_VISAO_GERAL = ("ADMIN", "GERENTE", "GERENTE_COMERCIAL", "GERENTE_VENDAS")
+
+#: Descrição do escopo mostrada na faixa "Escopo Ativo" para os perfis de apoio.
+ROLE_APOIO_LABEL_HINT = {
+    "COMPRADOR": "Compras (Fornecedores, negociações, custos e investimentos de toda a empresa)",
+    "ANALISTA": "Análise (Dados comerciais autorizados das categorias acompanhadas)",
+    "SAR": "SAR (Produtividade, roteiro e positivação de todas as equipes)",
+}
+
+#: Papéis que enxergam toda a empresa mas são de apoio (compras/análise/SAR):
+#: também não travam escopo, pois acompanham fabricantes e operação inteira.
+ROLES_APOIO_GLOBAL = ("COMPRADOR", "ANALISTA", "SAR")
+
+
+def has_permission(user: dict[str, Any], permission: str) -> bool:
+    """Checagem de permissão no SERVIDOR (não confia no que a tela manda)."""
+    role = str(user.get("role") or "")
+    if role == "ADMIN":
+        return True
+    granted = permissions_for(role, list(user.get("extra_permissions") or []))
+    return "admin.full_access" in granted or permission in granted
+
+
+def require_permission(permission: str):
+    """Dependency FastAPI: 403 quando o perfil não tem a permissão pedida.
+
+    Usada nas rotas novas (comparativos, compras, calendário) para que trocar a
+    URL na mão não dê acesso a nada fora da responsabilidade do usuário.
+    """
+
+    def _dep(user: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
+        if not has_permission(user, permission):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Sem permissão para esta operação.",
+            )
+        return user
+
+    return _dep
 
 
 def hash_password(plain: str) -> str:
@@ -272,10 +423,26 @@ def get_current_user(
     with get_connection() as conn:
         _ensure_revocation_table(conn)
         revoked = conn.execute("SELECT 1 FROM tokens_revogados WHERE jti = %s", (str(jti),)).fetchone()
-        row = None if revoked else conn.execute(USER_SELECT + " WHERE id::text = %s", (str(user_id),)).fetchone()
+        # Inatividade (40 min) é imposta AQUI, no servidor: fechar a aba, mexer no
+        # relógio do navegador ou chamar a API direto não contorna a regra.
+        encerrada = None if revoked else sessions.verificar_e_marcar_atividade(conn, str(jti))
+        row = (
+            None
+            if revoked or encerrada
+            else conn.execute(USER_SELECT + " WHERE id::text = %s", (str(user_id),)).fetchone()
+        )
 
     if revoked:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Sessão encerrada. Faça login novamente.")
+    if encerrada:
+        # Revoga o JWT para que ele não volte a valer nem com o cookie em mãos.
+        revoke_token(token)
+        detalhe = (
+            "Sessão encerrada por inatividade. Faça login novamente."
+            if encerrada == sessions.MOTIVO_INATIVIDADE
+            else "Sessão encerrada. Faça login novamente."
+        )
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=detalhe)
     if not row:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Usuário não encontrado.")
     if row["status"] != "Ativo":

@@ -1,4 +1,4 @@
-﻿import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { User, Permission, PageId, Role } from '../types';
 import {
   getErrorMessage,
@@ -14,6 +14,7 @@ import {
   setUnauthorizedHandler,
 } from '../lib/api';
 import { clearAuthToken } from '../lib/authToken';
+import { IDLE_TIMEOUT_MS, useIdleLogout } from '../hooks/useIdleLogout';
 
 /** Tempos da sessão, já em epoch ms do relógio do navegador (corrigido pelo servidor). */
 export interface SessionTimes {
@@ -25,6 +26,9 @@ export interface SessionTimes {
 /** Aviso mostrado na tela de login depois de uma desconexão automática. */
 const SESSION_EXPIRED_NOTICE = 'Sua sessão atingiu o tempo máximo e foi encerrada. Faça login novamente.';
 const SESSION_ENDED_NOTICE = 'Sua sessão foi encerrada. Faça login novamente.';
+/** Seção 4 — aviso após a desconexão automática por 40 minutos parado. */
+const SESSION_IDLE_NOTICE =
+  'Você ficou 40 minutos sem atividade e a sessão foi encerrada por segurança. Faça login novamente.';
 
 /** setTimeout aceita no máximo ~24,8 dias; acima disso reagenda em etapas. */
 const MAX_TIMEOUT_MS = 2_147_000_000;
@@ -53,6 +57,12 @@ interface AuthContextType {
   session: SessionTimes | null;
   sessionNotice: string | null;
   clearSessionNotice: () => void;
+  /** true enquanto falta menos de 1 min para a desconexão por inatividade. */
+  idleWarning: boolean;
+  /** Segundos restantes mostrados no aviso de inatividade. */
+  idleSecondsLeft: number;
+  /** "Continuar conectado": zera o contador de inatividade da tela. */
+  keepSessionAlive: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -84,12 +94,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!authenticatedRef.current) return;
     hardLogout();
     setSessionNotice(SESSION_EXPIRED_NOTICE);
-    void apiLogout();
+    // O motivo alimenta o histórico de sessões (sessoes_log).
+    void apiLogout('expiracao');
+  }, [hardLogout]);
+
+  /**
+   * Seção 4 — 40 minutos sem atividade encerram a sessão.
+   *
+   * Aqui é só o espelho na tela: o backend aplica o mesmo limite por conta
+   * própria e passa a responder 401. Fazer os dois mantém a janela do usuário
+   * limpa (sem dados na tela de quem já saiu) sem depender do JavaScript para
+   * a segurança em si.
+   */
+  const expireByIdle = useCallback(() => {
+    if (!authenticatedRef.current) return;
+    hardLogout();
+    setSessionNotice(SESSION_IDLE_NOTICE);
+    void apiLogout('inatividade');
   }, [hardLogout]);
 
   useEffect(() => {
     authenticatedRef.current = !!currentUser;
   }, [currentUser]);
+
+  const {
+    warning: idleWarning,
+    secondsLeft: idleSecondsLeft,
+    reset: keepSessionAlive,
+  } = useIdleLogout({
+    enabled: !!currentUser,
+    timeoutMs: IDLE_TIMEOUT_MS,
+    onIdle: expireByIdle,
+  });
 
   // Busca os tempos da sessão sempre que um usuário entra (login, 2FA ou cookie existente).
   useEffect(() => {
@@ -233,7 +269,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     clearApiCache();
     hardLogout();
     // then notify backend to clear HttpOnly cookie (fire-and-forget)
-    void apiLogout().catch(() => {
+    void apiLogout('logout').catch(() => {
       /* ignore errors */
     });
   };
@@ -244,27 +280,41 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return currentUser.permissions?.includes(permission) ?? false;
   };
 
-  /** Perfis que enxergam o grupo Principal (Dashboard e Visão Macro). */
-  const PRINCIPAL_ROLES: Role[] = ['ADMIN', 'GERENTE', 'SUPERVISOR'];
+  /**
+   * Perfis que enxergam a Visão Macro e os quadros consolidados (Quadro de
+   * Vendas e Categorias): eles mostram o desempenho de toda a estrutura.
+   * O Dashboard saiu desta lista — pela Seção 5 do escopo ele é a página
+   * inicial de TODOS os perfis, com o conteúdo recortado pelo backend.
+   */
+  const PERFIS_CONSOLIDADO: Role[] = [
+    'ADMIN',
+    'GERENTE',
+    'GERENTE_COMERCIAL',
+    'GERENTE_VENDAS',
+    'SUPERVISOR',
+    'ANALISTA',
+  ];
 
+  /**
+   * Esta função decide o que aparece no MENU e qual tela abre.
+   * Ela NÃO é a trava de segurança: cada endpoint confere a permissão e o
+   * escopo do usuário no servidor, então trocar a URL (ou este arquivo, no
+   * navegador do usuário) não libera dado nenhum.
+   */
   const canAccessPage = (pageId: PageId): boolean => {
     if (!currentUser) return false;
-
-    // Telas de gestão: só ADMIN, GERENTE e SUPERVISOR. O Vendedor não vê
-    // Dashboard, Visão Macro nem os quadros de Vendas e Categorias — estes
-    // dois consolidam o desempenho de toda a equipe, que não é escopo dele.
-    if (
-      pageId === 'dashboard' ||
-      pageId === 'macro-view' ||
-      pageId === 'sales-board' ||
-      pageId === 'categories'
-    ) {
-      return PRINCIPAL_ROLES.includes(currentUser.role);
-    }
-
     if (currentUser.role === 'ADMIN') return true;
 
     switch (pageId) {
+      // Dashboard: todos têm, cada um com o próprio recorte.
+      case 'dashboard':
+        return hasPermission('dashboard.view');
+
+      case 'macro-view':
+      case 'sales-board':
+      case 'categories':
+        return PERFIS_CONSOLIDADO.includes(currentUser.role) && hasPermission('dashboard.view');
+
       case 'not-positivated':
       case 'top-20-customers':
       case 'top-customers':
@@ -276,20 +326,41 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           hasPermission('products.view') ||
           hasPermission('targets.view')
         );
+
+      // Calendário comercial e semanas SAR (Seção 8).
+      case 'commercial-calendar':
+        return hasPermission('calendar.view');
+
+      // Comparativos e simulações (Seção 9) — exclusivo de gerência.
+      case 'comparisons':
+        return hasPermission('comparisons.view');
+
+      // Compras (Seção 3): Comprador edita; Gerente Comercial só acompanha.
+      case 'purchasing':
+        return hasPermission('purchasing.view');
+
+      // Telas operacionais do SAR: seguem liberadas a qualquer perfil logado,
+      // como sempre foram. Os dados que cada um enxerga continuam recortados
+      // pelo escopo aplicado no backend (equipe do supervisor, código do
+      // vendedor), então ninguém vê produtividade fora da sua alçada.
       case 'sar-raio-x':
       case 'sar-base-roteiro':
       case 'sar-verba-indenizatoria':
         return true;
+
       case 'users':
         return hasPermission('users.view');
+
       // Importação de metas/definições e a auditoria dela: só o administrador.
       case 'targets':
       case 'import-history':
         return false;
+
       case 'credits':
       case 'profile':
       case 'settings':
         return true;
+
       default:
         return true;
     }
@@ -316,6 +387,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         session,
         sessionNotice,
         clearSessionNotice: () => setSessionNotice(null),
+        idleWarning,
+        idleSecondsLeft,
+        keepSessionAlive,
       }}
     >
       {children}

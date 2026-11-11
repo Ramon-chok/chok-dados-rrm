@@ -1,10 +1,27 @@
-﻿export type Role = 'ADMIN' | 'GERENTE' | 'SUPERVISOR' | 'VENDEDOR';
+export type Role =
+  // Perfis originais do sistema (preservados)
+  | 'ADMIN'
+  | 'GERENTE'
+  | 'SUPERVISOR'
+  | 'VENDEDOR'
+  // Perfis acrescentados na evolução (Seção 3 do escopo)
+  | 'GERENTE_COMERCIAL'
+  | 'GERENTE_VENDAS'
+  | 'COMPRADOR'
+  | 'ANALISTA'
+  | 'SAR';
+
+/** Papéis com visão consolidada de todas as equipes (não travam equipe/vendedor). */
+export const ROLES_VISAO_GERAL: Role[] = ['ADMIN', 'GERENTE', 'GERENTE_COMERCIAL', 'GERENTE_VENDAS'];
+
+/** Papéis que podem abrir Comparativos & Simulações (Seção 9 — exclusivo). */
+export const ROLES_COMPARATIVOS: Role[] = ['ADMIN', 'GERENTE', 'GERENTE_COMERCIAL', 'GERENTE_VENDAS'];
 
 export type Permission =
   // Quadro de Vendas e Categorias (itens avulsos no topo do menu)
   | 'sales-board.view'
   | 'categories.view'
-  // Principal (Dashboard / Visão Macro) — restrito a ADMIN, GERENTE e SUPERVISOR
+  // Principal (Dashboard / Visão Macro)
   | 'dashboard.view'
   // Metas/definições importadas pelo ADMIN e comparadas com os dados das APIs
   | 'targets.view'
@@ -20,7 +37,25 @@ export type Permission =
   | 'settings.view'
   | 'settings.edit'
   | 'audit.view'
-  | 'admin.full_access';
+  | 'admin.full_access'
+  // ── Novas permissões da evolução ────────────────────────────
+  /** Ver margem/custo. Sem ela a margem é omitida pelo backend. */
+  | 'margin.view'
+  /** Módulo de compras: fornecedores, negociações, investimentos. */
+  | 'purchasing.view'
+  | 'purchasing.edit'
+  /** Leitura de desempenho por fabricante/categoria (API `/insights/fabricante*`). */
+  | 'manufacturers.view'
+  /** Comparativos e simulações (gerentes). */
+  | 'comparisons.view'
+  | 'simulations.run'
+  /** Calendário comercial e semanas SAR. */
+  | 'calendar.view'
+  | 'calendar.edit'
+  /** Telas operacionais do SAR (Raio-X, roteiro, verba). */
+  | 'sar.view'
+  /** Pesquisa inteligente global. */
+  | 'search.global';
 
 export interface DataScope {
   level: 'VENDEDOR' | 'SUPERVISOR' | 'GERENTE' | 'EMPRESA';
@@ -75,6 +110,19 @@ export interface ThemeColors {
   accentBlueLight: string;
   complementaryRed: string;
   hover: string;
+  // ── Tokens acrescentados na padronização visual (GA 360) ────
+  /** Verde-água/turquesa: detalhe de destaque do padrão GA 360. */
+  accentTeal: string;
+  accentTealLight: string;
+  /** Semânticas de status, para não repetir hex solto nas telas. */
+  success: string;
+  warning: string;
+  danger: string;
+  /** Gradiente de cabeçalho/realce (azul-marinho → turquesa). */
+  gradientFrom: string;
+  gradientTo: string;
+  /** Sombra padrão dos cards. */
+  shadow: string;
 }
 
 export type PageId =
@@ -91,6 +139,9 @@ export type PageId =
   | 'sortiments'
   | 'catalog'
   | 'objectives'
+  | 'commercial-calendar'
+  | 'comparisons'
+  | 'purchasing'
   // SAR
   | 'sar-raio-x'
   | 'sar-base-roteiro'
@@ -103,4 +154,3 @@ export type PageId =
   | 'users'
   | 'targets'
   | 'import-history';
-

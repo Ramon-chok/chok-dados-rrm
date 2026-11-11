@@ -8,7 +8,19 @@ from pydantic import BaseModel, Field, field_validator
 
 from app.sanitize import clean_email, clean_optional, clean_text
 
-Role = Literal["ADMIN", "GERENTE", "SUPERVISOR", "VENDEDOR"]
+Role = Literal[
+    # Perfis originais (preservados)
+    "ADMIN",
+    "GERENTE",
+    "SUPERVISOR",
+    "VENDEDOR",
+    # Perfis acrescentados na evolução — espelham src/types.ts
+    "GERENTE_COMERCIAL",
+    "GERENTE_VENDAS",
+    "COMPRADOR",
+    "ANALISTA",
+    "SAR",
+]
 ImportStatus = Literal["CONCLUIDO", "CONCLUIDO_COM_AVISOS", "FALHA"]
 
 _EMAIL_RE = re.compile(r"^[^\s@<>\"'`;,()\\]+@[^\s@<>\"'`;,()\\]+\.[^\s@<>\"'`;,()\\]{2,}$")
