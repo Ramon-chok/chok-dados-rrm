@@ -84,6 +84,7 @@ export type PageId =
   // Principal
   | 'dashboard'
   | 'macro-view'
+  | 'ai-chat'
   // Comercial
   | 'not-positivated'
   | 'top-20-customers'
@@ -103,4 +104,3 @@ export type PageId =
   | 'users'
   | 'targets'
   | 'import-history';
-
