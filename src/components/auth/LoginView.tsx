@@ -350,7 +350,7 @@ export const LoginView: React.FC = () => {
               textWrap: 'balance',
             }}
           >
-            O comercial do grupo, organizado numa só tela.
+            O comercial da Chok Distribuidora, organizado numa só tela.
           </h1>
 
           <p
