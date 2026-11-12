@@ -132,6 +132,7 @@ export type PageId =
   // Principal
   | 'dashboard'
   | 'macro-view'
+  | 'ai-chat'
   // Comercial
   | 'not-positivated'
   | 'top-20-customers'

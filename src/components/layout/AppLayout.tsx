@@ -33,6 +33,7 @@ import {
   Route,
   DollarSign,
   Clock,
+  Bot,
   Database,
   CalendarDays,
   Scale,
@@ -69,6 +70,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, c
   const { currentUser, setIsLogoutModalOpen, canAccessPage, idleWarning, idleSecondsLeft, keepSessionAlive } =
     useAuth();
   const { mode, toggleTheme, t } = useTheme();
+  const isAiChatPage = currentPage === 'ai-chat';
 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
@@ -129,6 +131,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, c
       items: [
         { id: 'dashboard', name: 'Dashboard', icon: <LayoutGrid size={17} /> },
         { id: 'macro-view', name: 'Visão Macro', icon: <Compass size={17} /> },
+        { id: 'ai-chat', name: 'Chok IA', icon: <Bot size={17} /> },
       ],
     },
     {
@@ -224,6 +227,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, c
     'sales-board': 'Quadro de Vendas',
     categories: 'Categorias',
     'macro-view': 'Visão Macro',
+    'ai-chat': 'Chok IA',
     dashboard: 'Dashboard',
     'not-positivated': 'Não Positivados',
     'top-20-customers': 'TOP 20 Clientes',
@@ -252,6 +256,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, c
         color: t.text,
         fontFamily: "'Inter', sans-serif",
         minHeight: '100vh',
+        height: isAiChatPage ? '100vh' : undefined,
         display: 'flex',
         position: 'relative',
       }}
@@ -585,12 +590,11 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, c
 
       {/* Main Content Area */}
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
-        {/* Top Header */}
         <header
           style={{
             height: '68px',
             borderBottom: `1px solid ${t.border}`,
-            display: 'flex',
+            display: isAiChatPage ? 'none' : 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
             padding: '0 28px',
@@ -700,7 +704,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, c
         </header>
 
         {/* Data Scope Banner for non-admin profiles */}
-        {currentUser && currentUser.role !== 'ADMIN' && (
+        {!isAiChatPage && currentUser && currentUser.role !== 'ADMIN' && (
           <div
             style={{
               padding: '8px 28px',
@@ -765,10 +769,23 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, c
         )}
 
         {/* Main Content View */}
-        <main style={{ flex: 1, padding: '28px' }} className="content-pad">
+        <main
+          style={{
+            flex: 1,
+            minHeight: 0,
+            display: isAiChatPage ? 'flex' : undefined,
+            padding: isAiChatPage ? 0 : '28px',
+          }}
+          className="content-pad"
+        >
           {children}
         </main>
 
+        {!isAiChatPage && (
+          <>
+            <Footer />
+            <ScrollToTopButton />
+          </>
         <Footer />
         <ScrollToTopButton />
 
@@ -892,4 +909,3 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, c
     </div>
   );
 };
-

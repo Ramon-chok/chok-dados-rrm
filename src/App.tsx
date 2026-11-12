@@ -27,6 +27,7 @@ import { CreditosPage } from './pages/account/Creditos';
 import { UsersPage } from './pages/admin/Users';
 import { MetasPage } from './pages/admin/Metas';
 import { HistoricoImportacoesPage } from './pages/admin/HistoricoImportacoes';
+import { AiChatPage } from './pages/AiChat';
 import { ShieldAlert, ArrowLeft } from 'lucide-react';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 
@@ -46,6 +47,8 @@ const PAGINAS_INICIAIS: PageId[] = [
   'dashboard',
   'sales-board',
   'categories',
+  'dashboard',
+  'ai-chat',
   'not-positivated',
   'top-20-customers',
   'top-customers',
@@ -217,6 +220,8 @@ function MainApp() {
         return <CategoriasPage />;
       case 'macro-view':
         return <VisaoMacroPage />;
+      case 'ai-chat':
+        return <AiChatPage />;
       case 'dashboard':
         return <DashboardPage />;
       case 'not-positivated':
@@ -284,4 +289,3 @@ export default function App() {
     </ThemeProvider>
   );
 }
-
