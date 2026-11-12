@@ -1,6 +1,5 @@
 ﻿import React, { useEffect, useMemo, useState } from 'react';
 import { useTheme } from '../../context/ThemeContext';
-import { ExportExcelButton } from '../../components/common/ExportExcelButton';
 import { EmptyBlock, ErrorBlock, LoadingBlock } from '../../components/common/DataState';
 import { SingleSelectFilter } from '../../components/common/SingleSelectFilter';
 import { getErrorMessage, fetchSortimento, SortimentoRow } from '../../lib/api';
@@ -47,20 +46,6 @@ export const SortimentosPage: React.FC = () => {
     [rows]
   );
 
-  const handleExport = () => [
-    {
-      sheetName: 'Sortimentos',
-      data: rows.map((p) => ({
-        Código: p.codigo,
-        Produto: p.produto,
-        Fabricante: p.fabricante,
-        Categoria: p.categoria,
-        Linha: p.linha,
-        'Atualizado em': p.atualizadoEm,
-      })),
-    },
-  ];
-
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
@@ -72,7 +57,6 @@ export const SortimentosPage: React.FC = () => {
             Lista importada da planilha de sortimento ({rows.length.toLocaleString('pt-BR')} itens).
           </p>
         </div>
-        <ExportExcelButton getSheets={handleExport} fileName="sortimentos" />
       </div>
       <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
         <div

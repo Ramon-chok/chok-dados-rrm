@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import { RoleBadge } from '../../components/auth/RoleBadge';
@@ -6,6 +6,23 @@ import { EmptyBlock, ErrorBlock, LoadingBlock } from '../../components/common/Da
 import { Role } from '../../types';
 import { Search, Plus, X, User, MapPin, Briefcase, Eye, EyeOff, Pencil, Trash2, Ban, CheckCircle2 } from 'lucide-react';
 import { getErrorMessage, apiCreateUser, apiUpdateUser, apiDeleteUser, apiSetUserStatus } from '../../lib/api';
+
+/**
+ * Perfis disponíveis para cadastro — espelho de `Role` em src/types.ts e de
+ * ROLE_PERMISSIONS no backend. Uma lista só, usada no filtro e nos dois
+ * formulários, para nenhum perfil novo ficar invisível ao administrador.
+ */
+const PERFIS: Array<{ id: Role; rotulo: string }> = [
+  { id: 'ADMIN', rotulo: 'Administrador' },
+  { id: 'GERENTE', rotulo: 'Gerência' },
+  { id: 'GERENTE_COMERCIAL', rotulo: 'Gerente Comercial' },
+  { id: 'GERENTE_VENDAS', rotulo: 'Gerente de Vendas' },
+  { id: 'SUPERVISOR', rotulo: 'Supervisor' },
+  { id: 'VENDEDOR', rotulo: 'Vendedor' },
+  { id: 'COMPRADOR', rotulo: 'Comprador' },
+  { id: 'ANALISTA', rotulo: 'Analista' },
+  { id: 'SAR', rotulo: 'SAR' },
+];
 
 export const UsersPage: React.FC = () => {
   const { availableUsers, currentUser, refreshUsers } = useAuth();
@@ -390,7 +407,7 @@ export const UsersPage: React.FC = () => {
         </div>
 
         <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', paddingBottom: '4px' }}>
-          {['TODOS', 'ADMIN', 'GERENTE', 'SUPERVISOR', 'VENDEDOR'].map((r) => {
+          {['TODOS', ...PERFIS.map((p) => p.id)].map((r) => {
             const isActive = roleFilter === r;
             return (
               <button 
@@ -773,8 +790,8 @@ export const UsersPage: React.FC = () => {
                     <div style={{ gridColumn: 'span 6' }}>
                       <label style={labelStyle}>Perfil de acesso</label>
                       <select value={createRole} disabled={createLoading} onChange={(e) => setCreateRole(e.target.value as Role)} style={{ ...inputStyle, cursor: 'pointer' }}>
-                        {['ADMIN', 'GERENTE', 'SUPERVISOR', 'VENDEDOR'].map(r => (
-                          <option key={r} value={r}>{r}</option>
+                        {PERFIS.map((p) => (
+                          <option key={p.id} value={p.id}>{p.rotulo}</option>
                         ))}
                       </select>
                     </div>
@@ -1091,8 +1108,8 @@ export const UsersPage: React.FC = () => {
                     <div style={{ gridColumn: 'span 3' }}>
                       <label style={labelStyle}>Perfil de acesso</label>
                       <select value={editRole} disabled={editLoading} onChange={(e) => setEditRole(e.target.value as Role)} style={{ ...inputStyle, cursor: 'pointer' }}>
-                        {['ADMIN', 'GERENTE', 'SUPERVISOR', 'VENDEDOR'].map(r => (
-                          <option key={r} value={r}>{r}</option>
+                        {PERFIS.map((p) => (
+                          <option key={p.id} value={p.id}>{p.rotulo}</option>
                         ))}
                       </select>
                     </div>

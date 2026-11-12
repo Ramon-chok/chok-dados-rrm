@@ -13,7 +13,6 @@ import {
 import { useTheme } from '../../context/ThemeContext';
 import { ScrollableChart } from '../../components/common/ScrollableChart';
 import { useAuth } from '../../context/AuthContext';
-import { ExportExcelButton } from '../../components/common/ExportExcelButton';
 import { EmptyBlock, ErrorBlock, LoadingBlock } from '../../components/common/DataState';
 import { SingleSelectFilter } from '../../components/common/SingleSelectFilter';
 import { getErrorMessage, fetchRaioX, fetchRaioXDetalhe, RaioXDetalheRow, RaioXRow } from '../../lib/api';
@@ -252,34 +251,6 @@ export const RaioXPage: React.FC = () => {
     [filtered]
   );
 
-  const handleExport = () => [
-    {
-      sheetName: 'RaioX',
-      data: filtered.map((r) => ({
-        Código: r.codVendedor,
-        Vendedor: r.vendedor,
-        Equipe: r.equipe,
-        Dias: r.diasComDados,
-        'Visitas Prev.': r.visitasPrevistas,
-        'Visitas Real.': r.visitasRealizadas,
-        'Fora de Rota': r.visitasForaRota,
-        '% Fora Rota': r.percForaRota,
-        '% GPS': r.percGps,
-        Pedidos: r.pedidos,
-        '% Positivação': r.percPositivacao,
-        Produtividade: r.produtividade,
-        Início: fmtHora(r.horaInicio),
-        Fim: fmtHora(r.horaFim),
-        'T. Campo': fmtHora(r.tempoCampo),
-        'Acumulado Prev.': r.acumuladoPrevista,
-        'Acumulado Real.': r.acumuladoRealizadas,
-        'Acumulado %': r.acumuladoPorcentagem,
-        '% Positivação Acumulada': r.percPositivacaoAcumulado,
-        Apontamentos: r.apontamentosInconsistencia || '',
-      })),
-    },
-  ];
-
   const anoOptions = anosDisponiveis.map((a) => ({ value: String(a), label: String(a) }));
   const mesOptions = MESES.map((label, idx) => ({ value: String(idx + 1), label }));
 
@@ -325,7 +296,6 @@ export const RaioXPage: React.FC = () => {
             Acompanhamento diário de vendedores importado da planilha Raio-X (aba "Acompanhamento").
           </p>
         </div>
-        <ExportExcelButton onPrepareData={handleExport} filename="raio-x-sar.xlsx" />
       </div>
 
       {/* FILTROS: dia tem prioridade sobre mês/ano — ver comentário no fetch acima */}

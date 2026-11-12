@@ -3,7 +3,6 @@ import { useTheme } from '../context/ThemeContext';
 import { ScrollableChart } from '../components/common/ScrollableChart';
 import { useAuth } from '../context/AuthContext';
 import { useGlobalFilter } from '../context/GlobalFilterContext';
-import { ExportExcelButton } from '../components/common/ExportExcelButton';
 import { EmptyBlock, ErrorBlock, LoadingBlock } from '../components/common/DataState';
 import { SingleSelectFilter } from '../components/common/SingleSelectFilter';
 import {
@@ -33,6 +32,9 @@ import {
   Cell,
 } from 'recharts';
 import { ChevronDown, ChevronRight } from 'lucide-react';
+import { KpiSwipe } from '../components/dashboard/KpiSwipe';
+import { TopClientesCard } from '../components/dashboard/TopClientesCard';
+import { KpisDiaMesResponse, fetchKpisDiaMes } from '../lib/insights';
 import {
   AttainmentGauge,
   AttainmentRanking,
@@ -60,6 +62,11 @@ export const DashboardPage: React.FC = () => {
   const [data, setData] = useState<DashboardResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Seção 5 — indicadores do carrossel DIA x MÊS. Vêm de /insights/kpis, que
+  // usa a MESMA agregação de /dashboard para o mês (os dois painéis nunca
+  // divergem) e restringe a uma data só para a leitura do dia.
+  const [kpisDiaMes, setKpisDiaMes] = useState<KpisDiaMesResponse | null>(null);
 
   const role = currentUser?.role;
   // Admin/Gerência podem escolher equipe e vendedor livremente; Supervisor só
@@ -121,6 +128,30 @@ export const DashboardPage: React.FC = () => {
       setSelectedVendedor('');
     }
   }, [vendedorOptions, selectedVendedor]);
+
+  // Carrossel DIA/MÊS: falha aqui não derruba o dashboard — o restante da tela
+  // segue funcionando e o bloco simplesmente não aparece.
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const res = await fetchKpisDiaMes({
+          ano: periodType === 'personalizado' ? undefined : ano,
+          mes: periodType === 'mensal' ? mes : undefined,
+          start: startDate || undefined,
+          end: endDate || undefined,
+          equipe: canFilterEquipe && selectedEquipe ? selectedEquipe : undefined,
+          vendedor: canFilterVendedor && selectedVendedor ? selectedVendedor : undefined,
+        });
+        if (mounted) setKpisDiaMes(res);
+      } catch {
+        if (mounted) setKpisDiaMes(null);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [ano, mes, startDate, endDate, periodType, canFilterEquipe, canFilterVendedor, selectedEquipe, selectedVendedor]);
 
   useEffect(() => {
     let mounted = true;
@@ -188,135 +219,9 @@ export const DashboardPage: React.FC = () => {
     [data]
   );
 
-  const cardGroups = kpis
-    ? [
-        [
-          {
-            kind: 'main' as const,
-            title: 'Faturamento',
-            meta: kpis.meta,
-            realizado: kpis.realizado,
-            pct: kpis.atingimento,
-            formatter: fmt,
-          },
-          {
-            kind: 'gap' as const,
-            title: 'GAP Faturamento',
-            gap: kpis.gap,
-            pct: kpis.atingimento - 100,
-            formatter: fmt,
-          },
-        ],
-        [
-          {
-            kind: 'main' as const,
-            title: 'Cobertura',
-            meta: kpis.metaCobertura,
-            realizado: kpis.realizadoCobertura,
-            pct: kpis.pctCobertura,
-            formatter: fmtInt,
-          },
-          {
-            kind: 'gap' as const,
-            title: 'GAP Cobertura',
-            gap: kpis.gapCobertura,
-            pct: kpis.pctCobertura - 100,
-            formatter: fmtInt,
-          },
-        ],
-        [
-          {
-            kind: 'main' as const,
-            title: 'Sortimento',
-            meta: kpis.metaSortimento,
-            realizado: kpis.realizadoSortimento,
-            pct: kpis.pctSortimento,
-            formatter: fmt,
-          },
-          {
-            kind: 'gap' as const,
-            title: 'GAP Sortimento',
-            gap: kpis.gapSortimento,
-            pct: kpis.pctSortimento - 100,
-            formatter: fmt,
-          },
-        ],
-        [
-          {
-            kind: 'single' as const,
-            title: 'Margem Total',
-            value: kpis.margem,
-          },
-        ],
-      ]
-    : [];
-
-  const handleExport = () => [
-    {
-      sheetName: 'KPIs',
-      data: kpis
-        ? [
-            { Indicador: 'Meta Faturamento', Valor: kpis.meta },
-            { Indicador: 'Realizado Faturamento', Valor: kpis.realizado },
-            { Indicador: 'Atingimento Faturamento %', Valor: kpis.atingimento },
-            { Indicador: 'GAP Faturamento', Valor: kpis.gap },
-            { Indicador: 'Meta Cobertura', Valor: kpis.metaCobertura },
-            { Indicador: 'Realizado Cobertura', Valor: kpis.realizadoCobertura },
-            { Indicador: 'Atingimento Cobertura %', Valor: kpis.pctCobertura },
-            { Indicador: 'GAP Cobertura', Valor: kpis.gapCobertura },
-            { Indicador: 'Meta Sortimento', Valor: kpis.metaSortimento },
-            { Indicador: 'Realizado Sortimento', Valor: kpis.realizadoSortimento },
-            { Indicador: 'Atingimento Sortimento %', Valor: kpis.pctSortimento },
-            { Indicador: 'GAP Sortimento', Valor: kpis.gapSortimento },
-            { Indicador: 'Margem Total %', Valor: kpis.margem },
-          ].map((k) => ({ ...k, Período: selectedPeriod }))
-        : [],
-    },
-    {
-      sheetName: 'Top Clientes',
-      data: (data?.topClientes || []).map((c, i) => ({
-        Posição: i + 1,
-        'É Rede': c.eRede ? 'Sim' : 'Não',
-        Código: c.codigo || '—',
-        Cliente: c.nome,
-        Equipe: c.equipe,
-        Faturamento: c.valor,
-      })),
-    },
-    {
-      sheetName: 'Fabricantes',
-      data: (data?.fabricantes || []).map((f) => ({
-        Fabricante: f.fabricante,
-        Meta: f.meta,
-        Realizado: f.realizado,
-        'Atingimento %': f.pctR,
-        'Meta Cobertura': f.metaCobertura,
-        'Realizado Cobertura': f.realizadoCobertura,
-        'Atingimento Cobertura %': f.pctCob,
-        'Margem %': f.pctMargem,
-      })),
-    },
-  ];
-
   // ─── Estilos base reutilizáveis ─────────────────────────────
-  const cardStyle: React.CSSProperties = {
-    background: t.surface,
-    border: `1px solid ${t.border}`,
-    borderRadius: 12,
-    padding: '14px 16px',
-    flex: 1,
-    minWidth: 0,
-  };
-  const cardTitleStyle: React.CSSProperties = {
-    fontSize: 11.5,
-    color: t.textMuted,
-    marginBottom: 8,
-    fontWeight: 600,
-    textTransform: 'uppercase',
-    letterSpacing: '0.04em',
-  };
-  const statLabelStyle: React.CSSProperties = { fontSize: 10.5, color: t.textMuted, marginBottom: 2 };
-  const statValueStyle: React.CSSProperties = { fontSize: 15, fontWeight: 700, color: t.text };
+  // (cardStyle/cardTitleStyle/statLabel/statValue saíram junto com a seção
+  //  "Indicadores de Performance" — eram usados só por ela.)
   const sectionTitleStyle: React.CSSProperties = {
     fontSize: 13,
     fontWeight: 700,
@@ -336,7 +241,6 @@ export const DashboardPage: React.FC = () => {
     border: `1px solid ${t.primary}30`,
   };
 
-  const posColor = (v: number) => (v >= 0 ? '#3DD68C' : t.primaryHover);
   const pctColor = (v: number) => (v >= 100 ? '#3DD68C' : v >= 80 ? '#F59E0B' : t.primaryHover);
 
   // ─── Fabricantes: expandir para ver a quebra por equipe/vendedor ───
@@ -485,7 +389,6 @@ export const DashboardPage: React.FC = () => {
               allLabel="Todos os vendedores"
             />
           )}
-          <ExportExcelButton getSheets={handleExport} fileName={`dashboard-${selectedPeriod}`} />
         </div>
       </div>
 
@@ -514,92 +417,36 @@ export const DashboardPage: React.FC = () => {
       {error && <ErrorBlock message={error} />}
       {!loading && !error && !data && <EmptyBlock />}
 
+      {/* ═══════════════════════════════════════════
+          SEÇÃO 0: INDICADORES DIA x MÊS (carrossel — Seção 5 do escopo)
+          Fica no topo de propósito: é o que o usuário precisa ver com o menor
+          número de toques. Deslize lateral, abas ou setas alternam a leitura.
+      ═══════════════════════════════════════════ */}
+      {!loading && !error && kpisDiaMes && (
+        <KpiSwipe dados={kpisDiaMes} periodoLabel={selectedPeriod} />
+      )}
+
+      {/* TOP 5 clientes com alternância dia / mês / período personalizado. */}
+      {!loading && !error && kpisDiaMes && (
+        <div style={{ marginBottom: 24 }}>
+          <TopClientesCard
+            ano={periodType === 'personalizado' ? undefined : ano}
+            mes={periodType === 'mensal' ? mes : undefined}
+            start={startDate || undefined}
+            end={endDate || undefined}
+            diaSugerido={kpisDiaMes.referencia.diaSelecionado}
+            equipe={canFilterEquipe && selectedEquipe ? selectedEquipe : undefined}
+            vendedor={canFilterVendedor && selectedVendedor ? selectedVendedor : undefined}
+          />
+        </div>
+      )}
+
       {!loading && !error && data && kpis && (
         <>
-          {/* ═══════════════════════════════════════════
-              SEÇÃO 1: KPIs
-          ═══════════════════════════════════════════ */}
-          <div style={{ marginBottom: 24 }}>
-            <div style={sectionTitleStyle}>
-              Indicadores de Performance
-              <span style={sectionBadgeStyle}>{selectedPeriod}</span>
-            </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16 }}>
-              {cardGroups.map((group, gi) => (
-                <div
-                  key={gi}
-                  style={{
-                    display: 'flex',
-                    gap: 12,
-                    flex: group.length > 1 ? '1 1 380px' : '1 1 160px',
-                  }}
-                >
-                  {group.map((card, ci) => {
-                    if (card.kind === 'main') {
-                      return (
-                        <div key={ci} style={cardStyle}>
-                          <div style={cardTitleStyle}>{card.title}</div>
-                          <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
-                            <div style={{ minWidth: 70 }}>
-                              <div style={statLabelStyle}>Meta</div>
-                              <div className="num" style={statValueStyle}>
-                                {card.formatter(card.meta)}
-                              </div>
-                            </div>
-                            <div style={{ minWidth: 70 }}>
-                              <div style={statLabelStyle}>Realizado</div>
-                              <div className="num" style={statValueStyle}>
-                                {card.formatter(card.realizado)}
-                              </div>
-                            </div>
-                            <div style={{ minWidth: 60 }}>
-                              <div style={statLabelStyle}>Atingimento</div>
-                              <div className="num" style={{ ...statValueStyle, color: t.primary }}>
-                                {fmtPct(card.pct)}
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    }
-                    if (card.kind === 'gap') {
-                      return (
-                        <div key={ci} style={cardStyle}>
-                          <div style={cardTitleStyle}>{card.title}</div>
-                          <div
-                            className="num"
-                            style={{
-                              fontSize: 17,
-                              fontWeight: 700,
-                              color: posColor(card.gap),
-                              marginBottom: 3,
-                            }}
-                          >
-                            {card.formatter(card.gap)}
-                          </div>
-                          <div
-                            className="num"
-                            style={{ fontSize: 12, fontWeight: 600, color: posColor(card.pct) }}
-                          >
-                            {card.pct >= 0 ? '+' : ''}
-                            {fmtPct(card.pct)}
-                          </div>
-                        </div>
-                      );
-                    }
-                    return (
-                      <div key={ci} style={cardStyle}>
-                        <div style={cardTitleStyle}>{card.title}</div>
-                        <div className="num" style={{ fontSize: 18, fontWeight: 700, color: t.text }}>
-                          {fmtPct(card.value)}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              ))}
-            </div>
-          </div>
+          {/* A seção "Indicadores de Performance" (meta/realizado/GAP em cards)
+              foi retirada: ela repetia Faturamento, Cobertura e Sortimento que
+              já aparecem no carrossel DIA/MÊS no topo da tela. Os mesmos
+              números seguem disponíveis logo abaixo, na Visão Gráfica. */}
 
           {/* ═══════════════════════════════════════════
               SEÇÃO 1B: VISÃO GRÁFICA (clicar leva ao detalhe nas tabelas)

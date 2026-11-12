@@ -7,6 +7,8 @@
     padding: 0;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    background: var(--ga-bg, #070B12);
+    color: var(--ga-text, #EAF1FA);
   }
 }
 
@@ -16,7 +18,9 @@
   letter-spacing: -0.02em;
 }
 
-/* Custom subtle scrollbar */
+/* ───────────────────────────────────────────────────────────
+   Padronização GA 360 — scrollbar, seleção e foco
+   ─────────────────────────────────────────────────────────── */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -676,5 +680,184 @@
   .ai-chip, .ai-send, .ai-sidebar-new, .ai-composer,
   .ai-sidebar, .ai-sidebar-toggle {
     transition-duration: 0.01ms !important;
+  }
+}
+::selection {
+  background: color-mix(in srgb, var(--ga-accentTeal, #2DD4BF) 32%, transparent);
+  color: var(--ga-text, #EAF1FA);
+}
+
+:focus-visible {
+  outline: 2px solid var(--ga-accentTeal, #2DD4BF);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* ───────────────────────────────────────────────────────────
+   Animações compartilhadas
+   `rr-spin` era declarada só dentro de LoginView/Settings, mas o App e outras
+   telas já a usavam — fora dessas duas o spinner ficava parado. Agora é global.
+   ─────────────────────────────────────────────────────────── */
+@keyframes rr-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes ga-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes ga-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+@keyframes ga-shimmer {
+  0% {
+    background-position: -480px 0;
+  }
+  100% {
+    background-position: 480px 0;
+  }
+}
+
+.ga-fade-in {
+  animation: ga-fade-in 0.26s ease both;
+}
+
+/* Cards padronizados: borda discreta + leve elevação no hover. */
+.ga-card {
+  background: var(--ga-surface);
+  border: 1px solid var(--ga-border);
+  border-radius: 14px;
+  box-shadow: var(--ga-shadow);
+  transition: border-color 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease;
+}
+.ga-card-hover:hover {
+  border-color: color-mix(in srgb, var(--ga-accentTeal) 45%, var(--ga-border));
+  transform: translateY(-2px);
+}
+
+/* Faixa de realce azul-marinho → turquesa (topo de cards de destaque). */
+.ga-accent-bar {
+  height: 2px;
+  background: linear-gradient(90deg, var(--ga-gradientFrom), var(--ga-gradientTo));
+  border-radius: 2px 2px 0 0;
+}
+
+/* Carrossel horizontal com encaixe — usado nos indicadores DIA/MÊS e no mobile. */
+.ga-swipe {
+  display: flex;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  scroll-behavior: smooth;
+  overscroll-behavior-x: contain;
+}
+.ga-swipe::-webkit-scrollbar {
+  display: none;
+}
+.ga-swipe > * {
+  scroll-snap-align: center;
+  flex: 0 0 100%;
+  min-width: 0;
+}
+
+/* Alvos de toque confortáveis no celular. */
+@media (max-width: 760px) {
+  button,
+  [role='button'],
+  .ga-tap {
+    min-height: 40px;
+  }
+}
+
+/* ───────────────────────────────────────────────────────────
+   Troca de tema (claro ↔ escuro)
+   O JS anima o clip-path do retrato NOVO (ver src/lib/themeTransition.ts).
+   Aqui desligamos o cross-fade padrão do navegador, senão os dois retratos
+   apareceriam ao mesmo tempo e o círculo ficaria "lavado".
+   ─────────────────────────────────────────────────────────── */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+::view-transition-old(root) {
+  z-index: 1;
+}
+::view-transition-new(root) {
+  z-index: 2;
+}
+
+/* Sol/lua girando ao trocar o tema. */
+@keyframes ga-theme-icon {
+  0% {
+    transform: rotate(-90deg) scale(0.55);
+    opacity: 0;
+  }
+  60% {
+    transform: rotate(10deg) scale(1.08);
+    opacity: 1;
+  }
+  100% {
+    transform: rotate(0deg) scale(1);
+    opacity: 1;
+  }
+}
+.ga-theme-icon {
+  display: flex;
+  animation: ga-theme-icon 0.5s cubic-bezier(0.34, 1.3, 0.64, 1) both;
+}
+
+/* ───────────────────────────────────────────────────────────
+   Menu lateral — grupos que abrem e fecham
+   `grid-template-rows: 0fr → 1fr` anima a altura sem precisar medir o
+   conteúdo (nada de max-height chutado que corta item quando o grupo cresce).
+   ─────────────────────────────────────────────────────────── */
+.ga-grupo-itens {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows 0.26s ease, opacity 0.2s ease;
+}
+.ga-grupo-itens > div {
+  overflow: hidden;
+  min-height: 0;
+}
+.ga-grupo-itens[data-fechado='true'] {
+  grid-template-rows: 0fr;
+  opacity: 0;
+}
+.ga-grupo-seta {
+  transition: transform 0.24s ease;
+}
+.ga-grupo-seta[data-fechado='true'] {
+  transform: rotate(-90deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation: none !important;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
   }
 }

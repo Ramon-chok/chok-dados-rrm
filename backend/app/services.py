@@ -4,7 +4,7 @@ from datetime import date, datetime
 from typing import Any
 
 from app.schemas import DataScope, UserOut
-from app.security import ROLE_LABELS, permissions_for
+from app.security import ROLE_APOIO_LABEL_HINT, ROLE_LABELS, ROLES_APOIO_GLOBAL, ROLES_VISAO_GERAL, permissions_for
 
 
 def initials(name: str) -> str:
@@ -29,7 +29,14 @@ def build_scope(row: dict[str, Any]) -> DataScope:
             level="EMPRESA",
             description="Visão Global da Empresa (Acesso irrestrito a todos os dados e módulos)",
         )
-    if role == "GERENTE":
+    # Perfis de apoio (Comprador, Analista, SAR): acompanham a empresa inteira
+    # dentro do que o papel permite, mas sem o acesso irrestrito do ADMIN.
+    if role in ROLES_APOIO_GLOBAL:
+        return DataScope(
+            level="EMPRESA",
+            description=ROLE_APOIO_LABEL_HINT.get(role, "Visão consolidada da empresa"),
+        )
+    if role in ("GERENTE", "GERENTE_COMERCIAL", "GERENTE_VENDAS"):
         manager = row.get("manager") or "Gerência"
         return DataScope(
             level="GERENTE",
@@ -99,8 +106,14 @@ def num(value: Any) -> float:
 
 
 def scope_filters(user: dict[str, Any]) -> dict[str, str | None]:
+    """Recorte OBRIGATÓRIO de dados do usuário — aplicado no SQL, não na tela.
+
+    Supervisor fica travado na própria equipe e Vendedor no próprio código,
+    mesmo que a requisição mande outro valor. Os demais papéis enxergam o
+    consolidado (o que cada um pode *ver* é decidido pelas permissões).
+    """
     role = user["role"]
-    if role in ("ADMIN", "GERENTE"):
+    if role in ROLES_VISAO_GERAL or role in ROLES_APOIO_GLOBAL:
         return {}
     if role == "SUPERVISOR":
         return {"equipe": user.get("team")}

@@ -3,7 +3,6 @@ import { useTheme } from '../../context/ThemeContext';
 import { useGlobalFilter } from '../../context/GlobalFilterContext';
 import { PeriodSelector } from '../../components/common/PeriodSelector';
 import { EmptyBlock, ErrorBlock, LoadingBlock } from '../../components/common/DataState';
-import { ExportExcelButton } from '../../components/common/ExportExcelButton';
 import { getErrorMessage, fetchCategoryBoard, CategoryBoardResponse } from '../../lib/api';
 import { Target, TrendingUp, Gauge, Layers, Search } from 'lucide-react';
 import { AttainmentBar, KpiCard, SourceBadge, formatCurrency, formatNumber, formatPercent, tdStyle, thStyle } from './shared';
@@ -73,27 +72,6 @@ export const CategoriasPage: React.FC = () => {
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           {data && <SourceBadge fonte={data.fonteRealizado} />}
           <PeriodSelector compact />
-          <ExportExcelButton
-            compact
-            disabled={rows.length === 0}
-            filename="Categorias.xlsx"
-            sheets={[
-              {
-                sheetName: 'Categorias',
-                data: rows.map((r) => ({
-                  Categoria: r.categoria,
-                  Meta: r.meta,
-                  Realizado: r.realizado,
-                  Gap: r.gap,
-                  'Atingimento (%)': r.atingimento,
-                  'Participação (%)': r.participacao,
-                  'Meta Cobertura': r.metaCobertura,
-                  'Cobertura Realizada': r.realizadoCobertura,
-                  'Margem (%)': r.margem,
-                })),
-              },
-            ]}
-          />
         </div>
       </div>
 
@@ -127,7 +105,7 @@ export const CategoriasPage: React.FC = () => {
       {!loading && !error && rows.length === 0 && (
         <EmptyBlock
           title="Nenhuma categoria no período"
-          description="Importe as metas por categoria em Administração › Metas & Definições e confirme se a fonte de realizado está respondendo para este período."
+          description="Importe as metas por categoria em Administração › Dados e Exportações e confirme se a fonte de realizado está respondendo para este período."
         />
       )}
 

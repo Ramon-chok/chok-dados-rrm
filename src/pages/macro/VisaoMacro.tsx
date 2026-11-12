@@ -3,7 +3,6 @@ import { useTheme } from '../../context/ThemeContext';
 import { ScrollableChart } from '../../components/common/ScrollableChart';
 import { useGlobalFilter } from '../../context/GlobalFilterContext';
 import { EmptyBlock, ErrorBlock, LoadingBlock } from '../../components/common/DataState';
-import { ExportExcelButton } from '../../components/common/ExportExcelButton';
 import { PeriodSelector } from '../../components/common/PeriodSelector';
 import { getErrorMessage, fetchDashboard, DashboardResponse } from '../../lib/api';
 import { ComposedChart, LineChart, Line, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
@@ -27,7 +26,7 @@ const fmt = (v: number) => `R$ ${v.toLocaleString('pt-BR', { maximumFractionDigi
 
 export const VisaoMacroPage: React.FC = () => {
   const { t } = useTheme();
-  const { ano, mes, startDate, endDate, periodType, selectedPeriod } = useGlobalFilter();
+  const { ano, mes, startDate, endDate, periodType } = useGlobalFilter();
   const [data, setData] = useState<DashboardResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -72,13 +71,6 @@ export const VisaoMacroPage: React.FC = () => {
     });
   }, [data]);
 
-  const handleExport = () => [{
-    sheetName: 'Macro',
-    data: (data?.fabricantes || []).map((f) => ({
-      Fabricante: f.fabricante, Meta: f.meta, Realizado: f.realizado, GAP: f.gap, Atingimento: f.pctR, Margem: f.pctMargem, Período: selectedPeriod,
-    })),
-  }];
-
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
@@ -88,7 +80,6 @@ export const VisaoMacroPage: React.FC = () => {
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
           <PeriodSelector />
-          <ExportExcelButton getSheets={handleExport} fileName="visao-macro" />
         </div>
       </div>
       {loading && <LoadingBlock />}

@@ -1,53 +1,88 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { ThemeMode, ThemeColors } from '../types';
+import { OrigemAnimacao, animarTrocaDeTema } from '../lib/themeTransition';
 
+/**
+ * Paleta padronizada no padrão visual GA 360 (Grupo Arantes), mantendo a
+ * identidade do Chok: o vermelho da marca continua vivo em `complementaryRed`
+ * e na tela de login (que usa o vermelho próprio, inalterado).
+ *
+ * Escuro  → fundos grafite / preto azulado, azul-marinho + azul-claro como
+ *           cores principais e verde-água (turquesa) como detalhe.
+ * Claro   → mesma família de azuis sobre superfícies neutras, para menus,
+ *           cards, tabelas e gráficos ficarem consistentes nos dois modos.
+ *
+ * As chaves são exatamente as mesmas de antes (mais os tokens novos, opcionais
+ * no uso), então nenhuma tela precisou ser reescrita para adotar a padronização.
+ */
 export const THEMES: Record<ThemeMode, ThemeColors> = {
   dark: {
-    bg: '#0B0F17',
-    bgSecondary: '#0D1426',
-    surface: '#111827',
-    surfaceElevated: '#162032',
-    border: '#34365A',
-    borderActive: '#62508F',
-    text: '#F1F1F6',
-    textSecondary: '#9AA4B8',
-    textMuted: '#77839A',
-    primary: '#8B5CF6',
-    primaryHover: '#A78BFA',
-    primaryDark: '#62508F',
-    accentPurple: '#8B5CF6',
-    accentPurpleLight: '#A78BFA',
-    accentBlue: '#1478F2',
-    accentBlueLight: '#248BFF',
-    complementaryRed: '#C63F2D',
-    hover: '#162032',
+    bg: '#070B12',
+    bgSecondary: '#0A1220',
+    surface: '#0F1A2B',
+    surfaceElevated: '#152338',
+    border: '#1E3048',
+    borderActive: '#2DD4BF',
+    text: '#EAF1FA',
+    textSecondary: '#93A4BC',
+    textMuted: '#6B7E99',
+    primary: '#2F7FF0',
+    primaryHover: '#5BA3FF',
+    primaryDark: '#15396E',
+    accentPurple: '#2DD4BF',
+    accentPurpleLight: '#5EEAD4',
+    accentBlue: '#2F7FF0',
+    accentBlueLight: '#6FB4FF',
+    complementaryRed: '#E3566B',
+    hover: '#152338',
+    accentTeal: '#2DD4BF',
+    accentTealLight: '#5EEAD4',
+    success: '#3DD68C',
+    warning: '#F5A524',
+    danger: '#F2555A',
+    gradientFrom: '#15396E',
+    gradientTo: '#2DD4BF',
+    shadow: '0 10px 30px rgba(3, 7, 14, 0.55)',
   },
   light: {
     bg: '#FFFFFF',
-    bgSecondary: '#F5F6F8',
+    bgSecondary: '#F3F6FB',
     surface: '#FFFFFF',
-    surfaceElevated: '#F5F6F8',
-    border: '#E5E7EB',
-    borderActive: '#E30613',
-    text: '#111827',
-    textSecondary: '#374151',
-    textMuted: '#9CA3AF',
-    primary: '#E30613',
-    primaryHover: '#FF1F2D',
-    primaryDark: '#B9040E',
-    accentPurple: '#E30613',
-    accentPurpleLight: '#FF1F2D',
-    accentBlue: '#1478F2',
-    accentBlueLight: '#248BFF',
-    complementaryRed: '#C63F2D',
-    hover: '#F0F1F3',
+    surfaceElevated: '#F3F6FB',
+    border: '#DDE5F0',
+    borderActive: '#0F7FA8',
+    text: '#0C1725',
+    textSecondary: '#3B4A5F',
+    textMuted: '#7B8AA0',
+    primary: '#1565D8',
+    primaryHover: '#2F7FF0',
+    primaryDark: '#0E3F8C',
+    accentPurple: '#0F7FA8',
+    accentPurpleLight: '#14A2B8',
+    accentBlue: '#1565D8',
+    accentBlueLight: '#4F94EA',
+    complementaryRed: '#E30613',
+    hover: '#EAF1FB',
+    accentTeal: '#0F7FA8',
+    accentTealLight: '#14A2B8',
+    success: '#128A58',
+    warning: '#B57200',
+    danger: '#C62330',
+    gradientFrom: '#0E3F8C',
+    gradientTo: '#14A2B8',
+    shadow: '0 8px 24px rgba(15, 35, 65, 0.10)',
   },
 };
 
 interface ThemeContextType {
   mode: ThemeMode;
   setMode: (mode: ThemeMode) => void;
-  toggleTheme: () => void;
+  /**
+   * Alterna claro/escuro com o efeito de círculo que se abre.
+   * `origem` são as coordenadas do clique (centro do botão) — passá-las faz a
+   * animação nascer de onde o usuário tocou; sem elas, nasce no canto do tema.
+   */
+  toggleTheme: (origem?: OrigemAnimacao) => void;
   t: ThemeColors;
 }
 
@@ -64,12 +99,24 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem('chok_theme_mode', newMode);
   };
 
-  const toggleTheme = () => {
-    setMode(mode === 'dark' ? 'light' : 'dark');
+  const toggleTheme = (origem?: OrigemAnimacao) => {
+    const destino: ThemeMode = mode === 'dark' ? 'light' : 'dark';
+    // A cor de fundo do tema que está chegando é o que a camada da animação
+    // usa quando o navegador não tem View Transitions.
+    animarTrocaDeTema(() => setMode(destino), origem, THEMES[destino].bg);
   };
 
+  // Além da classe `dark` (já usada antes), publica a paleta como variáveis CSS.
+  // Isso permite padronizar scrollbar, foco, seleção e animações no index.css
+  // sem que nenhuma tela existente precise mudar.
   useEffect(() => {
     document.documentElement.classList.toggle('dark', mode === 'dark');
+    const root = document.documentElement;
+    const palette = THEMES[mode];
+    for (const [key, value] of Object.entries(palette)) {
+      root.style.setProperty(`--ga-${key}`, String(value));
+    }
+    root.style.colorScheme = mode;
   }, [mode]);
 
   return (

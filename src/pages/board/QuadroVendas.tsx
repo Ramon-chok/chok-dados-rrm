@@ -3,7 +3,6 @@ import { useTheme } from '../../context/ThemeContext';
 import { useGlobalFilter } from '../../context/GlobalFilterContext';
 import { PeriodSelector } from '../../components/common/PeriodSelector';
 import { EmptyBlock, ErrorBlock, LoadingBlock } from '../../components/common/DataState';
-import { ExportExcelButton } from '../../components/common/ExportExcelButton';
 import { getErrorMessage, fetchSalesBoard, SalesBoardResponse } from '../../lib/api';
 import { Target, TrendingUp, Users, Gauge, Search } from 'lucide-react';
 import { AttainmentBar, KpiCard, SourceBadge, formatCurrency, formatNumber, formatPercent, tdStyle, thStyle } from './shared';
@@ -11,7 +10,7 @@ import { AttainmentBar, KpiCard, SourceBadge, formatCurrency, formatNumber, form
 /**
  * Quadro de Vendas — item avulso no topo do menu.
  *
- * Meta (importada pelo administrador em "Metas & Definições") x realizado do
+ * Meta (importada pelo administrador em "Dados e Exportações") x realizado do
  * período, vendedor a vendedor. O realizado vem de GET /api/board/sales, que
  * já consulta a API externa quando ela estiver configurada no backend — esta
  * tela não muda quando isso acontecer.
@@ -80,29 +79,6 @@ export const QuadroVendasPage: React.FC = () => {
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           {data && <SourceBadge fonte={data.fonteRealizado} />}
           <PeriodSelector compact />
-          <ExportExcelButton
-            compact
-            disabled={rows.length === 0}
-            filename="Quadro_de_Vendas.xlsx"
-            sheets={[
-              {
-                sheetName: 'Quadro de Vendas',
-                data: rows.map((r) => ({
-                  Código: r.codVendedor,
-                  Vendedor: r.vendedor || '—',
-                  Equipe: r.equipe || '—',
-                  Meta: r.meta,
-                  Realizado: r.realizado,
-                  Gap: r.gap,
-                  'Atingimento (%)': r.atingimento,
-                  'Meta Cobertura': r.metaCobertura,
-                  'Cobertura Realizada': r.realizadoCobertura,
-                  'Cobertura (%)': r.pctCobertura,
-                  'Margem (%)': r.margem,
-                })),
-              },
-            ]}
-          />
         </div>
       </div>
 
@@ -136,7 +112,7 @@ export const QuadroVendasPage: React.FC = () => {
       {!loading && !error && rows.length === 0 && (
         <EmptyBlock
           title="Nenhum vendedor no período"
-          description="Importe as metas em Administração › Metas & Definições e confirme se a fonte de realizado está respondendo para este período."
+          description="Importe as metas em Administração › Dados e Exportações e confirme se a fonte de realizado está respondendo para este período."
         />
       )}
 
