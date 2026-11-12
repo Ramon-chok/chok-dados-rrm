@@ -10,24 +10,27 @@ interface RoleBadgeProps {
 }
 
 /**
- * Cores por perfil, já no padrão GA 360 (azuis e turquesa, com o vermelho
- * reservado ao ADMIN). Cada papel novo entrou aqui junto com os originais —
- * `Record<Role, …>` garante, em tempo de compilação, que nenhum fique de fora.
+ * Cores dos 10 perfis, no padrão GA 360 (azuis e turquesa, com o vermelho
+ * reservado à administração). `Record<Role, …>` garante, em tempo de
+ * compilação, que nenhum papel fique de fora.
  */
 const PALETA: Record<Role, { bg: string; text: string; border: string }> = {
-  ADMIN: { bg: 'rgba(227, 6, 19, 0.12)', text: '#FF5A66', border: 'rgba(227, 6, 19, 0.35)' },
-  GERENTE: { bg: 'rgba(245, 165, 36, 0.12)', text: '#F5A524', border: 'rgba(245, 165, 36, 0.35)' },
-  GERENTE_COMERCIAL: { bg: 'rgba(45, 212, 191, 0.12)', text: '#2DD4BF', border: 'rgba(45, 212, 191, 0.35)' },
-  GERENTE_VENDAS: { bg: 'rgba(94, 234, 212, 0.12)', text: '#5EEAD4', border: 'rgba(94, 234, 212, 0.35)' },
-  SUPERVISOR: { bg: 'rgba(47, 127, 240, 0.12)', text: '#6FB4FF', border: 'rgba(47, 127, 240, 0.35)' },
-  VENDEDOR: { bg: 'rgba(61, 214, 140, 0.12)', text: '#3DD68C', border: 'rgba(61, 214, 140, 0.35)' },
-  COMPRADOR: { bg: 'rgba(167, 139, 250, 0.12)', text: '#A78BFA', border: 'rgba(167, 139, 250, 0.35)' },
-  ANALISTA: { bg: 'rgba(129, 180, 255, 0.12)', text: '#81B4FF', border: 'rgba(129, 180, 255, 0.35)' },
-  SAR: { bg: 'rgba(21, 57, 110, 0.35)', text: '#9FC4FF', border: 'rgba(47, 127, 240, 0.35)' },
+  SUPERADMIN: { bg: 'rgba(197, 46, 43, 0.18)', text: '#E75F5A', border: 'rgba(197, 46, 43, 0.45)' },
+  ADMIN: { bg: 'rgba(197, 46, 43, 0.12)', text: '#E0716D', border: 'rgba(197, 46, 43, 0.35)' },
+  GERENTE_COMERCIAL: { bg: 'rgba(68, 171, 170, 0.14)', text: '#49B6B4', border: 'rgba(68, 171, 170, 0.38)' },
+  GERENTE_VENDAS: { bg: 'rgba(62, 150, 160, 0.14)', text: '#61A6C2', border: 'rgba(62, 150, 160, 0.38)' },
+  COMPRADOR: { bg: 'rgba(43, 96, 120, 0.16)', text: '#61A6C2', border: 'rgba(43, 96, 120, 0.4)' },
+  SUPERVISOR: { bg: 'rgba(42, 76, 127, 0.18)', text: '#809CC6', border: 'rgba(42, 76, 127, 0.45)' },
+  ANALISTA: { bg: 'rgba(128, 156, 198, 0.14)', text: '#92ACD3', border: 'rgba(128, 156, 198, 0.38)' },
+  // Perfil externo: tom âmbar, para destoar à primeira vista dos internos.
+  FORNECEDOR: { bg: 'rgba(149, 93, 9, 0.16)', text: '#E0AC52', border: 'rgba(149, 93, 9, 0.42)' },
+  VENDEDOR: { bg: 'rgba(32, 121, 74, 0.14)', text: '#4EBC81', border: 'rgba(32, 121, 74, 0.4)' },
+  SAR: { bg: 'rgba(42, 76, 127, 0.3)', text: '#9FC4FF', border: 'rgba(42, 76, 127, 0.5)' },
 };
 
 /** Rótulos curtos — os compostos não cabem no selo por extenso. */
 const ROTULOS: Partial<Record<Role, string>> = {
+  SUPERADMIN: 'SUPERADMIN',
   GERENTE_COMERCIAL: 'GER. COMERCIAL',
   GERENTE_VENDAS: 'GER. VENDAS',
 };

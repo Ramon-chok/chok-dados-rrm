@@ -113,6 +113,7 @@ def login(payload: LoginRequest, response: Response, request: Request = None) ->
               equipe AS team,
               supervisor,
               NULL::text AS manager,
+              fabricante AS manufacturer,
               status,
               last_login_at,
               COALESCE(extra_permissions, '{}'::text[]) AS extra_permissions
@@ -370,6 +371,7 @@ def twofa_login(payload: TwoFALoginRequest, response: Response, request: Request
               equipe AS team,
               supervisor,
               NULL::text AS manager,
+              fabricante AS manufacturer,
               status,
               last_login_at,
               COALESCE(extra_permissions, '{}'::text[]) AS extra_permissions

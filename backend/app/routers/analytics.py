@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from app.cache import cached
 from app.db import get_connection
 from app.sanitize import like_pattern
-from app.security import get_current_user
+from app.security import ROLES_VISAO_GERAL, get_current_user
 from app.services import num, scope_filters
 
 router = APIRouter(tags=["analytics"])
@@ -391,11 +391,12 @@ def fabricante_detalhe(
 @cached()
 def filter_options(user: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
     """Opções para os filtros de Equipe/Vendedor do Dashboard, já restritas ao
-    escopo do usuário: ADMIN/GERENTE veem tudo; SUPERVISOR só a própria
-    equipe; VENDEDOR não recebe opções (não há o que filtrar)."""
+    escopo do usuário: os perfis de visão geral (SUPERADMIN, ADMIN e as duas
+    gerências) veem tudo; SUPERVISOR só a própria equipe; VENDEDOR não recebe
+    opções (não há o que filtrar)."""
     role = user["role"]
     with get_connection() as conn:
-        if role in ("ADMIN", "GERENTE"):
+        if role in ROLES_VISAO_GERAL:
             gerencias_rows = conn.execute(
                 "SELECT DISTINCT nome_gerencia FROM gerencias WHERE nome_gerencia IS NOT NULL ORDER BY nome_gerencia"
             ).fetchall()

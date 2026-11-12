@@ -105,9 +105,10 @@ def _sql_statements(sql_text: str) -> list[str]:
 
 
 def apply_schema(conn: Connection) -> None:
-    # evolucao.sql é 100% aditivo (CREATE TABLE/INDEX IF NOT EXISTS) e roda por
-    # último, para poder referenciar o que os dois anteriores criaram.
-    for name in ("schema.sql", "auth.sql", "evolucao.sql"):
+    # evolucao.sql e perfis.sql são 100% aditivos (CREATE TABLE/INDEX IF NOT
+    # EXISTS) e rodam por último, para poder referenciar o que os anteriores
+    # criaram. perfis.sql fecha a lista porque mexe em `usuarios` (auth.sql).
+    for name in ("schema.sql", "auth.sql", "evolucao.sql", "perfis.sql"):
         sql_text = (SQL_DIR / name).read_text(encoding="utf-8")
         for stmt in _sql_statements(sql_text):
             conn.execute(stmt)

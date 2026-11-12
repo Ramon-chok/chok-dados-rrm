@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
-import { PageId } from '../../types';
+import { PageId, isAdminRole } from '../../types';
 import { LogoutModal } from '../auth/LogoutModal';
 import { Footer } from './Footer';
 import { APP_CONFIG } from '../../config/appConfig';
@@ -39,10 +39,13 @@ import {
   Scale,
   Timer,
   ShoppingBag,
+  Factory,
+  KeyRound,
 } from 'lucide-react';
 import { ScrollToTopButton } from './ScrollToTopButton';
 import { SessionTimer } from './SessionTimer';
 import { GlobalSearch } from '../common/GlobalSearch';
+import { SeloEscrita } from '../auth/SeloEscrita';
 
 interface AppLayoutProps {
   currentPage: PageId;
@@ -145,6 +148,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, c
         { id: 'commercial-calendar', name: 'Calendário', icon: <CalendarDays size={17} /> },
         { id: 'comparisons', name: 'Comparativos', icon: <Scale size={17} /> },
         { id: 'purchasing', name: 'Compras', icon: <ShoppingBag size={17} /> },
+        { id: 'manufacturer-visual', name: 'Visual Fabricantes', icon: <Factory size={17} /> },
         {
           id: 'catalog',
           name: 'Catálogo',
@@ -176,6 +180,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, c
         { id: 'users', name: 'Usuários & RBAC', icon: <Users size={17} />, adminOnly: true },
         { id: 'targets', name: 'Dados e Exportações', icon: <Database size={17} />, adminOnly: true },
         { id: 'import-history', name: 'Histórico de Importações', icon: <Clock size={17} />, adminOnly: true },
+        { id: 'write-grants', name: 'Liberações de Alteração', icon: <KeyRound size={17} />, adminOnly: true },
       ],
     },
   ];
@@ -187,6 +192,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, c
    */
   const ORDEM_ATALHOS: PageId[] = [
     'dashboard',
+    'manufacturer-visual',
     'sales-board',
     'commercial-calendar',
     'purchasing',
@@ -198,7 +204,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, c
   const atalhosMobile = ORDEM_ATALHOS.map((id) => todosItens.find((item) => item.id === id))
     .filter((item): item is NavItem => {
       if (!item) return false;
-      if (item.adminOnly && currentUser?.role !== 'ADMIN') return false;
+      if (item.adminOnly && !isAdminRole(currentUser?.role)) return false;
       return canAccessPage(item.id);
     })
     .slice(0, 5);
@@ -238,7 +244,9 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, c
     'commercial-calendar': 'Calendário Comercial',
     comparisons: 'Comparativos & Simulações',
     purchasing: 'Compras',
+    'manufacturer-visual': 'Visual Fabricantes',
     'import-history': 'Histórico de Importações',
+    'write-grants': 'Liberações de Alteração',
     'sar-raio-x': 'Raio-X',
     'sar-base-roteiro': 'Base de Roteiro',
     'sar-verba-indenizatoria': 'Verba Indenizatória',
@@ -254,7 +262,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, c
       style={{
         background: t.bg,
         color: t.text,
-        fontFamily: "'Inter', sans-serif",
+        fontFamily: 'var(--ga-sans)',
         minHeight: '100vh',
         height: isAiChatPage ? '100vh' : undefined,
         display: 'flex',
@@ -305,11 +313,43 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, c
           }}
         >
           {!isNavbarCollapsed ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <img src="/img/Chok Logo.png" alt="Chok Logo" style={{ width: '21px', height: '26px' }} />
-              <span className="num" style={{ fontSize: '19px', fontWeight: 700, color: t.text, letterSpacing: '-0.02em' }}>
-                Chok
-              </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+              {/* Ícone do grupo: símbolo branco sobre o degradê oficial. */}
+              <img
+                src="/img/marca/favicon.svg"
+                alt=""
+                aria-hidden="true"
+                style={{ width: '30px', height: '30px', borderRadius: '8px', flexShrink: 0 }}
+              />
+              <div style={{ minWidth: 0 }}>
+                <div
+                  style={{
+                    fontFamily: 'var(--ga-display)',
+                    fontSize: '15.5px',
+                    fontWeight: 700,
+                    color: t.text,
+                    letterSpacing: '-0.02em',
+                    lineHeight: 1.15,
+                  }}
+                >
+                  Chok Dados
+                </div>
+                {/* Endosso: o grupo assina o produto. */}
+                <div
+                  style={{
+                    fontFamily: 'var(--ga-display)',
+                    fontSize: '9px',
+                    fontWeight: 600,
+                    letterSpacing: '0.1em',
+                    textTransform: 'uppercase',
+                    color: t.textMuted,
+                    lineHeight: 1.3,
+                    marginTop: '1px',
+                  }}
+                >
+                  Grupo Arantes
+                </div>
+              </div>
             </div>
           ) : (
             <div
@@ -317,7 +357,11 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, c
               onClick={toggleNavbarCollapse}
               title="Expandir barra de navegação"
             >
-              <img src="/img/Chok Logo.png" alt="Chok Logo" style={{ width: '21px', height: '26px' }} />
+              <img
+                src="/img/marca/favicon.svg"
+                alt="Chok Dados · Grupo Arantes"
+                style={{ width: '30px', height: '30px', borderRadius: '8px' }}
+              />
             </div>
           )}
 
@@ -395,7 +439,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, c
           {navGroups.map((group) => {
             // Filter items user can access
             const accessibleItems = group.items.filter((item) => {
-              if (item.adminOnly && currentUser?.role !== 'ADMIN') return false;
+              if (item.adminOnly && !isAdminRole(currentUser?.role)) return false;
               return canAccessPage(item.id);
             });
 
@@ -590,21 +634,33 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, c
 
       {/* Main Content Area */}
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+        {/*
+          Faixa do topo — assinatura da marca (classe .faixa-marca no
+          index.css). Dentro dela o texto é claro sobre o azul, então os
+          controles aqui usam branco translúcido em vez dos tokens de tema.
+
+          Popover, diálogo e painel lateral abertos daqui saem da faixa e
+          voltam ao tema normal, e é assim que deve ser.
+        */}
         <header
           style={{
             height: '68px',
-            borderBottom: `1px solid ${t.border}`,
             display: isAiChatPage ? 'none' : 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
             padding: '0 28px',
-            background: t.bg,
             position: 'sticky',
             top: 0,
             zIndex: 30,
           }}
-          className="header-bar"
+          className="header-bar faixa-marca"
         >
+          <img
+            src="/img/marca/simbolo-branco.svg"
+            alt=""
+            aria-hidden="true"
+            className="faixa-marca__simbolo"
+          />
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0, flex: '1 1 auto' }}>
             <button
               onClick={() => setIsMobileMenuOpen(true)}
@@ -613,10 +669,10 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, c
                 width: '34px',
                 height: '34px',
                 borderRadius: '8px',
-                border: `1px solid ${t.border}`,
-                background: 'transparent',
+                border: '1px solid rgba(255,255,255,0.28)',
+                background: 'rgba(255,255,255,0.08)',
                 cursor: 'pointer',
-                color: t.textSecondary,
+                color: '#fff',
                 display: 'none',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -627,11 +683,12 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, c
               <Menu size={16} />
             </button>
             <div
-              className="num"
               style={{
-                fontSize: '19px',
-                fontWeight: 600,
-                color: t.text,
+                fontFamily: 'var(--ga-display)',
+                fontSize: '18px',
+                fontWeight: 700,
+                letterSpacing: '-0.02em',
+                color: '#fff',
                 minWidth: 0,
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
@@ -651,25 +708,31 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, c
                 gap: '8px',
                 padding: '6px 12px',
                 borderRadius: '8px',
-                border: `1px solid ${t.border}`,
-                background: t.surface,
-                color: t.text,
+                border: '1px solid rgba(255,255,255,0.22)',
+                background: 'rgba(255,255,255,0.10)',
+                color: '#fff',
                 fontSize: '12.5px',
                 fontWeight: 500,
               }}
               title="Sessão autenticada com token JWT"
             >
-              <div style={{ width: 8, height: 8, borderRadius: '50%', background: t.primary, flexShrink: 0 }} />
+              <div
+                style={{ width: 8, height: 8, borderRadius: '50%', background: t.brandTurquesa, flexShrink: 0 }}
+              />
               <span className="profile-switcher-label">
                 Perfil: <strong>{currentUser?.role}</strong>
               </span>
             </div>
 
+            {/* O que este perfil pode FAZER com os dados: ver tudo e poder
+                alterar são coisas diferentes nesta plataforma. */}
+            <SeloEscrita />
+
             {/* Pesquisa inteligente (Seção 7) — também abre com Ctrl/⌘+K */}
-            <GlobalSearch onNavigate={onNavigate} />
+            <GlobalSearch onNavigate={onNavigate} naFaixa />
 
             {/* Tempo restante da sessão (desconexão automática ao final) */}
-            <SessionTimer />
+            <SessionTimer naFaixa />
 
             {/* Theme Toggle Button */}
             <button
@@ -682,13 +745,13 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, c
                 width: '34px',
                 height: '34px',
                 borderRadius: '8px',
-                border: `1px solid ${t.border}`,
-                background: 'transparent',
+                border: '1px solid rgba(255,255,255,0.28)',
+                background: 'rgba(255,255,255,0.08)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 cursor: 'pointer',
-                color: t.textSecondary,
+                color: '#fff',
                 overflow: 'hidden',
               }}
               title={mode === 'dark' ? 'Mudar para Modo Claro' : 'Mudar para Modo Escuro'}
@@ -781,13 +844,16 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, c
           {children}
         </main>
 
+        {/* O Chok IA ocupa a tela inteira: nele o rodapé e o botão de voltar
+            ao topo ficam de fora. Antes faltava fechar esta condicional e o
+            par Footer/ScrollToTopButton aparecia duplicado logo abaixo, o que
+            quebrava a compilação. */}
         {!isAiChatPage && (
           <>
             <Footer />
             <ScrollToTopButton />
           </>
-        <Footer />
-        <ScrollToTopButton />
+        )}
 
         {/* Seção 10 — barra inferior no celular: as telas mais usadas a um
             toque, sem precisar abrir o menu lateral. Só aparece em telas

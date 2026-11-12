@@ -4,11 +4,20 @@ from app.config import get_settings
 from app.db import get_connection
 from app.security import hash_password
 
+# Uma conta de demonstração por perfil da matriz (10 papéis). O papel genérico
+# "GERENTE" saiu da plataforma: quem estava nele é remapeado para
+# GERENTE_COMERCIAL por backend/sql/perfis.sql, e a conta de demonstração
+# correspondente (carlos.mendes) já nasce no papel novo.
+#
+# `fabricante` só é usado pelo perfil FORNECEDOR: é o vínculo que define o
+# escopo dele. Deixado em branco de propósito na conta de demonstração — sem
+# vínculo, o fornecedor não enxerga dado comercial nenhum, e quem definir o
+# fabricante é a administração, no cadastro do usuário.
 SEED_USERS = [
     {
         "name": "Ramon Sanchez",
         "email": "ramon21.empresa@gmail.com",
-        "role": "ADMIN",
+        "role": "SUPERADMIN",
         "telefone": "(11) 11111-1111",
         "endereco": "Av. Presidente Vargas, 2000",
         "bairro": "Jardim América",
@@ -18,11 +27,27 @@ SEED_USERS = [
         "codigo": "100",
         "equipe": None,
         "supervisor": None,
+        "fabricante": None,
+    },
+    {
+        "name": "Administração CHOK",
+        "email": "admin@chok.com.br",
+        "role": "ADMIN",
+        "telefone": "(16) 98100-0000",
+        "endereco": "Av. Presidente Vargas, 2000",
+        "bairro": "Jardim América",
+        "municipio": "Ribeirão Preto",
+        "estado": "SP",
+        "cep": "14020-260",
+        "codigo": None,
+        "equipe": None,
+        "supervisor": None,
+        "fabricante": None,
     },
     {
         "name": "Carlos Mendes",
         "email": "carlos.mendes@chok.com.br",
-        "role": "GERENTE",
+        "role": "GERENTE_COMERCIAL",
         "telefone": "(16) 98112-4433",
         "endereco": "Rua General Osório, 850",
         "bairro": "Centro",
@@ -32,6 +57,37 @@ SEED_USERS = [
         "codigo": None,
         "equipe": None,
         "supervisor": None,
+        "fabricante": None,
+    },
+    {
+        "name": "Renata Lima",
+        "email": "renata.lima@chok.com.br",
+        "role": "GERENTE_VENDAS",
+        "telefone": "(16) 98112-5566",
+        "endereco": "Rua General Osório, 850",
+        "bairro": "Centro",
+        "municipio": "Ribeirão Preto",
+        "estado": "SP",
+        "cep": "14010-000",
+        "codigo": None,
+        "equipe": None,
+        "supervisor": None,
+        "fabricante": None,
+    },
+    {
+        "name": "Paulo Ferreira",
+        "email": "paulo.ferreira@chok.com.br",
+        "role": "COMPRADOR",
+        "telefone": "(16) 98112-7744",
+        "endereco": "Av. Presidente Vargas, 2000",
+        "bairro": "Jardim América",
+        "municipio": "Ribeirão Preto",
+        "estado": "SP",
+        "cep": "14020-260",
+        "codigo": None,
+        "equipe": None,
+        "supervisor": None,
+        "fabricante": None,
     },
     {
         "name": "Marcos Valério",
@@ -46,6 +102,38 @@ SEED_USERS = [
         "codigo": None,
         "equipe": "TRAD FRANCA",
         "supervisor": "Supervisor A",
+        "fabricante": None,
+    },
+    {
+        "name": "Aline Prado",
+        "email": "aline.prado@chok.com.br",
+        "role": "ANALISTA",
+        "telefone": "(16) 99120-3322",
+        "endereco": "Av. Presidente Vargas, 2000",
+        "bairro": "Jardim América",
+        "municipio": "Ribeirão Preto",
+        "estado": "SP",
+        "cep": "14020-260",
+        "codigo": None,
+        "equipe": None,
+        "supervisor": None,
+        "fabricante": None,
+    },
+    {
+        "name": "Representante Fabricante",
+        "email": "fornecedor.demo@chok.com.br",
+        "role": "FORNECEDOR",
+        "telefone": "(16) 99120-1100",
+        "endereco": None,
+        "bairro": None,
+        "municipio": "Ribeirão Preto",
+        "estado": "SP",
+        "cep": None,
+        "codigo": None,
+        "equipe": None,
+        "supervisor": None,
+        # Em branco de propósito: sem vínculo, nenhum dado comercial é liberado.
+        "fabricante": None,
     },
     {
         "name": "João Souza",
@@ -60,6 +148,22 @@ SEED_USERS = [
         "codigo": "003",
         "equipe": "TRAD FRANCA",
         "supervisor": "Supervisor A",
+        "fabricante": None,
+    },
+    {
+        "name": "Equipe SAR",
+        "email": "sar@chok.com.br",
+        "role": "SAR",
+        "telefone": "(16) 99233-9090",
+        "endereco": "Av. Presidente Vargas, 2000",
+        "bairro": "Jardim América",
+        "municipio": "Ribeirão Preto",
+        "estado": "SP",
+        "cep": "14020-260",
+        "codigo": None,
+        "equipe": None,
+        "supervisor": None,
+        "fabricante": None,
     },
 ]
 
@@ -89,6 +193,7 @@ def seed_users() -> None:
                       codigo = %(codigo)s,
                       equipe = %(equipe)s,
                       supervisor = %(supervisor)s,
+                      fabricante = %(fabricante)s,
                       status = 'Ativo',
                       updated_at = now()
                     WHERE lower(email) = lower(%(email)s)
@@ -100,11 +205,12 @@ def seed_users() -> None:
                     """
                     INSERT INTO usuarios (
                         name, email, password_hash, role, telefone, endereco, bairro,
-                        municipio, estado, cep, codigo, equipe, supervisor, status
+                        municipio, estado, cep, codigo, equipe, supervisor,
+                        fabricante, status
                     ) VALUES (
                         %(name)s, %(email)s, %(password_hash)s, %(role)s, %(telefone)s,
                         %(endereco)s, %(bairro)s, %(municipio)s, %(estado)s, %(cep)s,
-                        %(codigo)s, %(equipe)s, %(supervisor)s, 'Ativo'
+                        %(codigo)s, %(equipe)s, %(supervisor)s, %(fabricante)s, 'Ativo'
                     )
                     """,
                     {**user, "password_hash": password_hash},

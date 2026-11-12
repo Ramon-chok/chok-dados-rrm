@@ -10,7 +10,7 @@ from pathlib import Path
 
 from app.db import get_connection
 from app.schemas import UserCreate, UserOut, UserUpdate
-from app.security import USER_SELECT, hash_password, require_roles
+from app.security import USER_SELECT, hash_password, is_admin, require_roles, require_write
 from app.services import user_to_out
 from app.mail import send_welcome_email
 import logging
@@ -34,14 +34,14 @@ AVATARS_DIR.mkdir(parents=True, exist_ok=True)
 
 
 @router.get("", response_model=list[UserOut])
-def list_users(_admin: dict[str, Any] = Depends(require_roles("ADMIN"))) -> list[UserOut]:
+def list_users(_admin: dict[str, Any] = Depends(require_roles())) -> list[UserOut]:
     with get_connection() as conn:
         rows = conn.execute(USER_SELECT + " ORDER BY name").fetchall()
     return [user_to_out(dict(r)) for r in rows]
 
 
 @router.post("", response_model=UserOut, status_code=201)
-def create_user(payload: UserCreate, _admin: dict[str, Any] = Depends(require_roles("ADMIN"))) -> UserOut:
+def create_user(payload: UserCreate, _admin: dict[str, Any] = Depends(require_write("admin.full_access"))) -> UserOut:
     with get_connection() as conn:
         existing = conn.execute(
             "SELECT id FROM usuarios WHERE lower(email) = %s",
@@ -53,9 +53,9 @@ def create_user(payload: UserCreate, _admin: dict[str, Any] = Depends(require_ro
             """
             INSERT INTO usuarios (
                 name, email, password_hash, role, telefone, endereco, bairro,
-                municipio, estado, cep, codigo, equipe, supervisor, status
+                municipio, estado, cep, codigo, equipe, supervisor, fabricante, status
             ) VALUES (
-                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
             )
             RETURNING id
             """,
@@ -73,6 +73,8 @@ def create_user(payload: UserCreate, _admin: dict[str, Any] = Depends(require_ro
                 payload.sellerCode,
                 payload.team,
                 payload.supervisor,
+                # Vínculo do FORNECEDOR com o fabricante que ele representa.
+                payload.manufacturer,
                 payload.status,
             ),
         )
@@ -92,7 +94,7 @@ def create_user(payload: UserCreate, _admin: dict[str, Any] = Depends(require_ro
 def update_user(
     user_id: UserId,
     payload: UserUpdate,
-    admin: dict[str, Any] = Depends(require_roles("ADMIN")),
+    admin: dict[str, Any] = Depends(require_write("admin.full_access")),
 ) -> UserOut:
     fields: list[str] = []
     values: list[Any] = []
@@ -110,6 +112,7 @@ def update_user(
         "sellerCode": "codigo",
         "team": "equipe",
         "supervisor": "supervisor",
+        "manufacturer": "fabricante",
         "status": "status",
     }
 
@@ -133,14 +136,15 @@ def update_user(
     values.append(user_id)
     with get_connection() as conn:
         # Impede rebaixar (role) ou inativar o último ADMIN.
-        if data.get("status") == "Inativo" or ("role" in data and data["role"] != "ADMIN"):
+        if data.get("status") == "Inativo" or ("role" in data and not is_admin(data["role"])):
             target = conn.execute(
                 "SELECT role FROM usuarios WHERE id::text = %s",
                 (user_id,),
             ).fetchone()
-            if target and str(target.get("role") or "").upper() == "ADMIN":
+            if target and is_admin(target.get("role")):
                 admin_count = conn.execute(
-                    "SELECT COUNT(*) AS total FROM usuarios WHERE upper(role) = 'ADMIN' AND status = 'Ativo'"
+                    "SELECT COUNT(*) AS total FROM usuarios"
+                " WHERE upper(role) IN ('ADMIN', 'SUPERADMIN') AND status = 'Ativo'"
                 ).fetchone()
                 if int(admin_count["total"] or 0) <= 1:
                     raise HTTPException(
@@ -160,7 +164,7 @@ def update_user(
 
 
 @router.delete("/{user_id}")
-def delete_user(user_id: UserId, admin: dict[str, Any] = Depends(require_roles("ADMIN"))) -> dict[str, bool]:
+def delete_user(user_id: UserId, admin: dict[str, Any] = Depends(require_write("admin.full_access"))) -> dict[str, bool]:
     if str(admin.get("id")) == str(user_id):
         raise HTTPException(status_code=400, detail="Você não pode excluir a própria conta.")
 
@@ -173,9 +177,9 @@ def delete_user(user_id: UserId, admin: dict[str, Any] = Depends(require_roles("
             raise HTTPException(status_code=404, detail="Usuário não encontrado.")
 
         # Evita remover o último ADMIN do sistema.
-        if str(target.get("role") or "").upper() == "ADMIN":
+        if is_admin(target.get("role")):
             admin_count = conn.execute(
-                "SELECT COUNT(*) AS total FROM usuarios WHERE upper(role) = 'ADMIN'"
+                "SELECT COUNT(*) AS total FROM usuarios WHERE upper(role) IN ('ADMIN', 'SUPERADMIN')"
             ).fetchone()
             if int(admin_count["total"] or 0) <= 1:
                 raise HTTPException(
@@ -198,7 +202,7 @@ def upload_avatar(
     current_user: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, str]:
     # permite somente o próprio usuário ou admin (evita IDOR: trocar avatar alheio)
-    if str(current_user.get("id")) != user_id and current_user.get("role") != "ADMIN":
+    if str(current_user.get("id")) != user_id and not is_admin(current_user.get("role")):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem permissão para enviar avatar para este usuário.")
 
     content_type = (file.content_type or "").lower().split(";")[0].strip()

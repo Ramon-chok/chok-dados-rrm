@@ -1,5 +1,14 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
-import { User, Permission, PageId, Role } from '../types';
+import {
+  User,
+  Permission,
+  PageId,
+  Role,
+  EstadoEscrita,
+  isAdminRole,
+  modoEscritaDoPapel,
+} from '../types';
+import { fetchMeuEstadoEscrita } from '../lib/liberacoes';
 import {
   getErrorMessage,
   apiListUsers,
@@ -63,6 +72,18 @@ interface AuthContextType {
   idleSecondsLeft: number;
   /** "Continuar conectado": zera o contador de inatividade da tela. */
   keepSessionAlive: () => void;
+  /**
+   * Como este usuário altera dados AGORA (já contando a liberação temporária,
+   * quando o perfil depende de uma). Vem do servidor; `null` enquanto carrega.
+   *
+   * Serve para a tela não oferecer um botão que o servidor vai recusar — a
+   * decisão continua sendo do servidor, a cada requisição de escrita.
+   */
+  estadoEscrita: EstadoEscrita | null;
+  /** Atalho: pode alterar dados neste momento? */
+  podeAlterar: boolean;
+  /** Relê o estado de escrita (ex.: depois que o admin concede uma liberação). */
+  refreshEstadoEscrita: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -76,6 +97,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
   const [session, setSession] = useState<SessionTimes | null>(null);
   const [sessionNotice, setSessionNotice] = useState<string | null>(null);
+  const [estadoEscrita, setEstadoEscrita] = useState<EstadoEscrita | null>(null);
   // Lido pelo handler de 401 (registrado uma vez) sem depender de closure desatualizada.
   const authenticatedRef = useRef(false);
 
@@ -86,6 +108,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setCurrentUser(null);
     setSession(null);
     setAvailableUsers([]);
+    setEstadoEscrita(null);
     setIsLogoutModalOpen(false);
   }, []);
 
@@ -180,6 +203,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, [session, expireSession]);
 
+  /**
+   * Lê o estado de escrita no servidor.
+   *
+   * Em último caso cai para o modo do próprio papel: a tela fica conservadora
+   * (um perfil de liberação aparece como "sem poder alterar" até o servidor
+   * responder), o que é o lado certo para errar.
+   */
+  const refreshEstadoEscrita = useCallback(async () => {
+    try {
+      setEstadoEscrita(await fetchMeuEstadoEscrita());
+    } catch {
+      setEstadoEscrita((anterior) => anterior);
+    }
+  }, []);
+
   const refreshUsers = useCallback(async () => {
     try {
       const users = await apiListUsers();
@@ -188,6 +226,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setAvailableUsers([]);
     }
   }, []);
+
+  // O estado de escrita acompanha o usuário logado.
+  useEffect(() => {
+    if (!currentUser) return;
+    void refreshEstadoEscrita();
+  }, [currentUser?.id, refreshEstadoEscrita]);
 
   useEffect(() => {
     setUnauthorizedHandler(() => {
@@ -205,7 +249,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const user = await apiMe();
         if (!mounted) return;
         setCurrentUser(user);
-        if (user.role === 'ADMIN') await refreshUsers();
+        if (isAdminRole(user.role)) await refreshUsers();
       } catch {
         // not authenticated
         setCurrentUser(null);
@@ -237,7 +281,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         };
       }
       setCurrentUser(body.user);
-      if (body.user.role === 'ADMIN') await refreshUsers();
+      if (isAdminRole(body.user.role)) await refreshUsers();
       else setAvailableUsers([]);
       return { success: true };
     } catch (err) {
@@ -253,7 +297,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const body = await apiLogin2FA(tempToken, code.trim());
       setCurrentUser(body.user);
-      if (body.user.role === 'ADMIN') await refreshUsers();
+      if (isAdminRole(body.user.role)) await refreshUsers();
       else setAvailableUsers([]);
       return { success: true };
     } catch (err) {
@@ -276,7 +320,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const hasPermission = (permission: Permission): boolean => {
     if (!currentUser) return false;
-    if (currentUser.role === 'ADMIN' || currentUser.permissions?.includes('admin.full_access')) return true;
+    if (isAdminRole(currentUser.role) || currentUser.permissions?.includes('admin.full_access')) return true;
     return currentUser.permissions?.includes(permission) ?? false;
   };
 
@@ -287,8 +331,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
    * inicial de TODOS os perfis, com o conteúdo recortado pelo backend.
    */
   const PERFIS_CONSOLIDADO: Role[] = [
+    'SUPERADMIN',
     'ADMIN',
-    'GERENTE',
     'GERENTE_COMERCIAL',
     'GERENTE_VENDAS',
     'SUPERVISOR',
@@ -303,7 +347,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
    */
   const canAccessPage = (pageId: PageId): boolean => {
     if (!currentUser) return false;
-    if (currentUser.role === 'ADMIN') return true;
+    if (isAdminRole(currentUser.role)) return true;
 
     switch (pageId) {
       // Dashboard: todos têm, cada um com o próprio recorte.
@@ -339,6 +383,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       case 'purchasing':
         return hasPermission('purchasing.view');
 
+      // Visual Fabricantes: leitura comercial por fabricante. O FORNECEDOR
+      // entra aqui e só aqui — e o servidor ainda recorta a consulta pelo
+      // fabricante vinculado ao cadastro dele.
+      case 'manufacturer-visual':
+        return hasPermission('manufacturers.view');
+
       // Telas operacionais do SAR: seguem liberadas a qualquer perfil logado,
       // como sempre foram. Os dados que cada um enxerga continuam recortados
       // pelo escopo aplicado no backend (equipe do supervisor, código do
@@ -351,9 +401,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       case 'users':
         return hasPermission('users.view');
 
-      // Importação de metas/definições e a auditoria dela: só o administrador.
+      // Importação de metas/definições, auditoria dela e o portão de escrita:
+      // administração da plataforma, só SUPERADMIN e ADMIN (que já retornaram
+      // `true` no topo desta função).
       case 'targets':
       case 'import-history':
+      case 'write-grants':
         return false;
 
       case 'credits':
@@ -390,6 +443,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         idleWarning,
         idleSecondsLeft,
         keepSessionAlive,
+        estadoEscrita,
+        podeAlterar:
+          estadoEscrita?.podeAlterar ??
+          // Antes da resposta do servidor, só quem altera sem portão nenhum
+          // aparece como habilitado.
+          modoEscritaDoPapel(currentUser?.role) === 'livre',
+        refreshEstadoEscrita,
       }}
     >
       {children}

@@ -11,7 +11,7 @@ from app.errors import PublicServerError, log_exception, logger
 import app.import_types as import_types
 from app.parse import parse_date_only
 from app.schemas import ImportRequest, ImportResultSummary, ImportRowError
-from app.security import require_import_access, require_roles
+from app.security import require_import_access, require_write
 from app.services import iso
 from app.upsert import SnapshotContext, map_and_validate_rows, upsert_rows
 
@@ -238,7 +238,7 @@ def create_import(
 def list_imports(
     tipo: str | None = Query(default=None, max_length=64, pattern=r"^[A-Za-z0-9_\-]+$"),
     limit: int = Query(default=100, ge=1, le=500),
-    _admin: dict[str, Any] = Depends(require_roles("ADMIN")),
+    _admin: dict[str, Any] = Depends(require_write("admin.full_access")),
 ) -> list[dict[str, Any]]:
     params: list[Any] = []
     where = ""
@@ -269,7 +269,7 @@ def list_imports(
 
 @router.delete("/history")
 def clear_import_history(
-    _admin: dict[str, Any] = Depends(require_roles("ADMIN")),
+    _admin: dict[str, Any] = Depends(require_write("admin.full_access")),
 ) -> dict[str, Any]:
     """Remove todo o histórico de importações (e erros associados via CASCADE)."""
     with get_connection() as conn:
@@ -285,7 +285,7 @@ def clear_import_history(
 @router.get("/{import_id}/erros")
 def list_import_errors(
     import_id: int = Path(ge=1, le=2**31 - 1),
-    _admin: dict[str, Any] = Depends(require_roles("ADMIN")),
+    _admin: dict[str, Any] = Depends(require_write("admin.full_access")),
 ) -> list[dict[str, Any]]:
     with get_connection() as conn:
         rows = conn.execute(

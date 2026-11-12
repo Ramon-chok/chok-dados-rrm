@@ -2,21 +2,47 @@
 <html lang="pt-BR">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Chok - Inteligência de Dados e Gestão Comercial</title>
-    <meta name="description" content="Plataforma corporativa de Business Intelligence, gestão comercial, acompanhamento de metas e análise hierárquica." />
-    <meta property="og:title" content="Chok - Inteligência de Dados e Gestão Comercial" />
-    <meta property="og:description" content="Plataforma corporativa de Business Intelligence, gestão comercial, acompanhamento de metas e análise hierárquica." />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Chok Dados · Grupo Arantes</title>
+    <meta
+      name="description"
+      content="Plataforma corporativa do Grupo Arantes para inteligência de dados, gestão comercial, acompanhamento de metas e análise por fabricante."
+    />
+    <meta property="og:title" content="Chok Dados · Grupo Arantes" />
+    <meta
+      property="og:description"
+      content="Plataforma corporativa do Grupo Arantes para inteligência de dados, gestão comercial, acompanhamento de metas e análise por fabricante."
+    />
     <meta property="og:type" content="website" />
-    <link rel="shortcut icon" href="Chokdados.ico" type="image/x-icon">
     <meta name="twitter:card" content="summary_large_image" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+
+    <!--
+      Identidade do Grupo Arantes: o ícone é o símbolo branco sobre o degradê
+      oficial. O .ico antigo fica como alternativa para navegadores que não
+      leem SVG em favicon.
+    -->
+    <link rel="icon" type="image/svg+xml" href="/img/marca/favicon.svg" />
+    <link rel="alternate icon" href="/Chokdados.ico" type="image/x-icon" />
+    <link rel="apple-touch-icon" href="/img/marca/favicon.svg" />
+
+    <!--
+      theme-color por tema, conforme o padrão do grupo. O ThemeContext
+      reescreve este valor quando o usuário troca o tema; estas duas linhas
+      cobrem o instante entre abrir a página e o React montar.
+    -->
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f8f8f7" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0a0e14" />
+
+    <!--
+      As fontes da marca são EMBUTIDAS no pacote (@fontsource-variable, ver
+      src/main.tsx): funcionam sem internet externa e não dependem do Google
+      Fonts, que o padrão do grupo proíbe como forma de carregamento.
+      Montserrat substitui a Gotham (paga) nos títulos; o corpo usa a pilha
+      Segoe UI, que é nativa no Windows, no Android e no Mac.
+    -->
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
-

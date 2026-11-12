@@ -21,6 +21,7 @@ import {
   VerbaIndenizatoriaRow,
 } from '../../lib/api';
 import { Calendar, DollarSign, Search, X } from 'lucide-react';
+import { podeFiltrarEquipe, podeFiltrarVendedor } from '../../types';
 
 const MESES = [
   'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
@@ -58,8 +59,8 @@ export const VerbaIndenizatoriaPage: React.FC = () => {
   const role = currentUser?.role;
   // Vendedor já vê só a própria linha (recorte travado no backend) — para ele
   // o filtro de vendedor não tem o que escolher.
-  const canFilterVendedor = role === 'ADMIN' || role === 'GERENTE' || role === 'SUPERVISOR';
-  const canFilterEquipe = role === 'ADMIN' || role === 'GERENTE';
+  const canFilterVendedor = podeFiltrarVendedor(role);
+  const canFilterEquipe = podeFiltrarEquipe(role);
 
   const currentYear = new Date().getFullYear();
   const [ano, setAno] = useState<number>(currentYear);

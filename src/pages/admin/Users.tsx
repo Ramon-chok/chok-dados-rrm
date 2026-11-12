@@ -13,14 +13,15 @@ import { getErrorMessage, apiCreateUser, apiUpdateUser, apiDeleteUser, apiSetUse
  * formulários, para nenhum perfil novo ficar invisível ao administrador.
  */
 const PERFIS: Array<{ id: Role; rotulo: string }> = [
+  { id: 'SUPERADMIN', rotulo: 'Super Administrador' },
   { id: 'ADMIN', rotulo: 'Administrador' },
-  { id: 'GERENTE', rotulo: 'Gerência' },
   { id: 'GERENTE_COMERCIAL', rotulo: 'Gerente Comercial' },
   { id: 'GERENTE_VENDAS', rotulo: 'Gerente de Vendas' },
-  { id: 'SUPERVISOR', rotulo: 'Supervisor' },
-  { id: 'VENDEDOR', rotulo: 'Vendedor' },
   { id: 'COMPRADOR', rotulo: 'Comprador' },
+  { id: 'SUPERVISOR', rotulo: 'Supervisor' },
   { id: 'ANALISTA', rotulo: 'Analista' },
+  { id: 'FORNECEDOR', rotulo: 'Fornecedor' },
+  { id: 'VENDEDOR', rotulo: 'Vendedor' },
   { id: 'SAR', rotulo: 'SAR' },
 ];
 
@@ -49,6 +50,8 @@ export const UsersPage: React.FC = () => {
   const [createRole, setCreateRole] = useState<Role>('VENDEDOR');
   const [createTeam, setCreateTeam] = useState('');
   const [createSupervisor, setCreateSupervisor] = useState('');
+  // Vínculo do perfil FORNECEDOR (usuarios.fabricante no banco).
+  const [createManufacturer, setCreateManufacturer] = useState('');
   const [createLoading, setCreateLoading] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [cepLoading, setCepLoading] = useState(false);
@@ -71,6 +74,7 @@ export const UsersPage: React.FC = () => {
   const [editRole, setEditRole] = useState<Role>('VENDEDOR');
   const [editTeam, setEditTeam] = useState('');
   const [editSupervisor, setEditSupervisor] = useState('');
+  const [editManufacturer, setEditManufacturer] = useState('');
   const [editStatus, setEditStatus] = useState('Ativo');
   const [editLoading, setEditLoading] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
@@ -115,6 +119,7 @@ export const UsersPage: React.FC = () => {
     setEditRole((user.role as Role) || 'VENDEDOR');
     setEditTeam(user.team || '');
     setEditSupervisor(user.supervisor || '');
+    setEditManufacturer(user.manufacturer || '');
     setEditStatus(user.status || 'Ativo');
     setEditError(null);
     setIsEditModalOpen(true);
@@ -137,6 +142,7 @@ export const UsersPage: React.FC = () => {
     setCreateRole('VENDEDOR');
     setCreateTeam('');
     setCreateSupervisor('');
+    setCreateManufacturer('');
     setCreateError(null);
   };
 
@@ -685,6 +691,7 @@ export const UsersPage: React.FC = () => {
                     role: createRole,
                     team: createRole === 'VENDEDOR' ? createTeam || undefined : undefined,
                     supervisor: createRole === 'VENDEDOR' ? createSupervisor || undefined : undefined,
+                    manufacturer: createRole === 'FORNECEDOR' ? createManufacturer || undefined : undefined,
                     status: 'Ativo',
                   });
                   
@@ -798,6 +805,32 @@ export const UsersPage: React.FC = () => {
                   </div>
                 </div>
 
+
+                {/* FORNECEDOR — o vínculo é o escopo deste perfil.
+                    Sem fabricante preenchido o backend não libera dado
+                    comercial nenhum: ele filtra por uma chave impossível em
+                    vez de devolver a base inteira. */}
+                {createRole === 'FORNECEDOR' && (
+                  <div style={{ marginBottom: '24px', padding: '16px', borderRadius: '8px', background: `${t.warning}0D`, border: `1px dashed ${t.warning}55` }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                      <Briefcase size={16} color={t.warning} />
+                      <span style={{ fontSize: '13px', fontWeight: 700, color: t.text }}>Fabricante representado</span>
+                    </div>
+                    <p style={{ margin: '0 0 12px', fontSize: '12px', color: t.textSecondary, lineHeight: 1.5 }}>
+                      Define tudo o que este usuário enxerga. Enquanto ficar em branco, ele entra na
+                      plataforma mas nenhum dado comercial é liberado. Margens nunca são entregues a
+                      este perfil, em nenhuma combinação de filtros.
+                    </p>
+                    <input
+                      disabled={createLoading}
+                      value={createManufacturer}
+                      onChange={(e) => setCreateManufacturer(e.target.value.slice(0, 160))}
+                      placeholder="Nome do fabricante exatamente como aparece nas importações"
+                      style={inputStyle}
+                      maxLength={160}
+                    />
+                  </div>
+                )}
                 {/* VENDEDOR */}
                 {createRole === 'VENDEDOR' && (
                   <div style={{ marginBottom: '24px', padding: '16px', borderRadius: '8px', background: `${t.primary}05`, border: `1px dashed ${t.primary}30` }}>
@@ -1006,6 +1039,7 @@ export const UsersPage: React.FC = () => {
                     ...(editPassword ? { password: editPassword } : {}),
                     team: editRole === 'VENDEDOR' ? editTeam || undefined : undefined,
                     supervisor: editRole === 'VENDEDOR' ? editSupervisor || undefined : undefined,
+                    manufacturer: editRole === 'FORNECEDOR' ? editManufacturer || undefined : undefined,
                     status: editStatus,
                   });
                   
@@ -1124,6 +1158,32 @@ export const UsersPage: React.FC = () => {
                   </div>
                 </div>
 
+
+                {/* FORNECEDOR — o vínculo é o escopo deste perfil.
+                    Sem fabricante preenchido o backend não libera dado
+                    comercial nenhum: ele filtra por uma chave impossível em
+                    vez de devolver a base inteira. */}
+                {editRole === 'FORNECEDOR' && (
+                  <div style={{ marginBottom: '24px', padding: '16px', borderRadius: '8px', background: `${t.warning}0D`, border: `1px dashed ${t.warning}55` }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                      <Briefcase size={16} color={t.warning} />
+                      <span style={{ fontSize: '13px', fontWeight: 700, color: t.text }}>Fabricante representado</span>
+                    </div>
+                    <p style={{ margin: '0 0 12px', fontSize: '12px', color: t.textSecondary, lineHeight: 1.5 }}>
+                      Define tudo o que este usuário enxerga. Enquanto ficar em branco, ele entra na
+                      plataforma mas nenhum dado comercial é liberado. Margens nunca são entregues a
+                      este perfil, em nenhuma combinação de filtros.
+                    </p>
+                    <input
+                      disabled={editLoading}
+                      value={editManufacturer}
+                      onChange={(e) => setEditManufacturer(e.target.value.slice(0, 160))}
+                      placeholder="Nome do fabricante exatamente como aparece nas importações"
+                      style={inputStyle}
+                      maxLength={160}
+                    />
+                  </div>
+                )}
                 {/* VENDEDOR */}
                 {editRole === 'VENDEDOR' && (
                   <div style={{ marginBottom: '24px', padding: '16px', borderRadius: '8px', background: `${t.primary}05`, border: `1px dashed ${t.primary}30` }}>

@@ -31,9 +31,15 @@ export interface GlobalSearchProps {
    * mas a prop segue no contrato para quando houver uma tela de destino.
    */
   onNavigate?: (pagina: PageId, contexto?: { fabricante?: string; categoria?: string }) => void;
+  /**
+   * true quando o botão fica dentro da faixa do topo (fundo azul da marca):
+   * o ícone passa a branco para não sumir sobre o degradê. O painel de
+   * pesquisa abre fora da faixa e mantém as cores do tema.
+   */
+  naFaixa?: boolean;
 }
 
-export const GlobalSearch: React.FC<GlobalSearchProps> = () => {
+export const GlobalSearch: React.FC<GlobalSearchProps> = ({ naFaixa = false }) => {
   const { t } = useTheme();
   const [aberto, setAberto] = useState(false);
   const [termo, setTermo] = useState('');
@@ -131,13 +137,13 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = () => {
           width: 34,
           height: 34,
           borderRadius: 8,
-          border: `1px solid ${t.border}`,
-          background: 'transparent',
+          border: `1px solid ${naFaixa ? 'rgba(255,255,255,0.28)' : t.border}`,
+          background: naFaixa ? 'rgba(255,255,255,0.08)' : 'transparent',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           cursor: 'pointer',
-          color: t.textSecondary,
+          color: naFaixa ? '#fff' : t.textSecondary,
           flexShrink: 0,
         }}
       >

@@ -34,6 +34,7 @@ import {
   Route,
   Search,
 } from 'lucide-react';
+import { podeFiltrarEquipe, podeFiltrarVendedor } from '../../types';
 
 /* ------------------------------------------------------------------ *
  * Cores
@@ -490,8 +491,8 @@ export const BaseRoteiroPage: React.FC = () => {
   const isDark = mode === 'dark';
 
   const role = currentUser?.role;
-  const canFilterVendedor = role === 'ADMIN' || role === 'GERENTE' || role === 'SUPERVISOR';
-  const canFilterEquipe = role === 'ADMIN' || role === 'GERENTE';
+  const canFilterVendedor = podeFiltrarVendedor(role);
+  const canFilterEquipe = podeFiltrarEquipe(role);
 
   const [data, setData] = useState<string>('');
   const [resp, setResp] = useState<BaseRoteiroResponse | null>(null);

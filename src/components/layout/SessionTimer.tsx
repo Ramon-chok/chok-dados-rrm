@@ -58,7 +58,17 @@ function formatClock(epoch: number): string {
  * (conectado desde, tempo conectado, horário do encerramento automático).
  * A desconexão em si é feita pelo AuthContext; aqui é só a interface.
  */
-export const SessionTimer: React.FC = () => {
+export interface SessionTimerProps {
+  /**
+   * true quando o botão fica dentro da faixa do topo (fundo azul da marca).
+   * Ali o texto do tema — quase preto no claro — ficaria ilegível, então o
+   * gatilho passa a branco translúcido. O painel que abre sai da faixa e
+   * continua usando as cores normais do tema.
+   */
+  naFaixa?: boolean;
+}
+
+export const SessionTimer: React.FC<SessionTimerProps> = ({ naFaixa = false }) => {
   const { session, setIsLogoutModalOpen } = useAuth();
   const { t } = useTheme();
   const now = useNow();
@@ -118,15 +128,22 @@ export const SessionTimer: React.FC = () => {
             height: 34,
             padding: '0 10px',
             borderRadius: 8,
-            border: `1px solid ${level === 'ok' ? t.border : accent}`,
-            background: level === 'ok' ? 'transparent' : `${accent}14`,
-            color: level === 'ok' ? t.text : accent,
+            border: `1px solid ${
+              level !== 'ok' ? accent : naFaixa ? 'rgba(255,255,255,0.28)' : t.border
+            }`,
+            background:
+              level !== 'ok' ? `${accent}14` : naFaixa ? 'rgba(255,255,255,0.08)' : 'transparent',
+            color: level !== 'ok' ? accent : naFaixa ? '#fff' : t.text,
             cursor: 'pointer',
             fontSize: 12.5,
             fontWeight: 600,
           }}
         >
-          {level === 'ok' ? <Clock size={14} color={t.textSecondary} /> : <AlertTriangle size={14} />}
+          {level === 'ok' ? (
+            <Clock size={14} color={naFaixa ? 'rgba(255,255,255,0.8)' : t.textSecondary} />
+          ) : (
+            <AlertTriangle size={14} />
+          )}
           <span className="num session-timer-value" style={{ fontVariantNumeric: 'tabular-nums' }}>
             {formatCountdown(remaining)}
           </span>

@@ -1321,7 +1321,7 @@ export const SettingsPage: React.FC = () => {
                             fontWeight: 800,
                             textAlign: 'center',
                             outline: 'none',
-                            fontFamily: "'Space Grotesk', 'JetBrains Mono', monospace",
+                            fontFamily: 'var(--ga-display)',
                             transition: 'all 0.2s',
                             boxShadow: digit ? `0 4px 12px ${(methodInfo?.color || t.primary)}15` : 'none',
                             caretColor: methodInfo?.color || t.primary,

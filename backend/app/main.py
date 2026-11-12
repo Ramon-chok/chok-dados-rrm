@@ -23,7 +23,19 @@ from app.hardening import (
     RequestGuardMiddleware,
     SecurityHeadersMiddleware,
 )
-from app.routers import analytics, auth, board, catalog, imports, insights, purchasing, users, twofa
+from app.routers import (
+    analytics,
+    auth,
+    board,
+    catalog,
+    imports,
+    insights,
+    liberacoes,
+    purchasing,
+    twofa,
+    users,
+    visual_fabricantes,
+)
 
 settings = get_settings()
 origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
@@ -81,6 +93,18 @@ def _error_payload(message: str, extra: dict | None = None, status_code: int = 5
     return JSONResponse(status_code=status_code, content=body)
 
 
+#: Códigos de erro que a tela conhece e sabe tratar. Lista fechada: um código
+#: fora dela não atravessa, para a resposta de erro nunca virar um canal de
+#: texto livre vindo de dentro do servidor.
+_CODIGOS_PUBLICOS = frozenset(
+    {
+        "sem_permissao",
+        "somente_leitura",
+        "confirmacao_necessaria",
+        "liberacao_necessaria",
+    }
+)
+
 # Mensagens padrão por status quando a exceção não traz um texto seguro para o usuário.
 _DEFAULT_STATUS_MESSAGES = {
     400: "Requisição inválida.",
@@ -107,10 +131,23 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException) 
     else:
         detail = exc.detail
         fallback = _DEFAULT_STATUS_MESSAGES.get(exc.status_code, "Requisição inválida.")
-        # Frases padrão do Starlette ("Not Found", "Method Not Allowed"...) viram texto em português.
-        is_default_phrase = isinstance(detail, str) and detail == HTTPStatus(exc.status_code).phrase
-        message = detail if isinstance(detail, str) and detail and not is_default_phrase else fallback
-        response = _error_payload(message, status_code=exc.status_code)
+        # O portão de escrita levanta `detail` como objeto {codigo, mensagem}: o
+        # código diz à tela QUAL caminho oferecer (abrir o diálogo de confirmação,
+        # explicar que falta liberação do admin) em vez de mostrar um erro seco.
+        # Só o `codigo`, que é um identificador fechado escrito por nós, atravessa
+        # — nada do cliente é refletido de volta.
+        extra: dict | None = None
+        if isinstance(detail, dict):
+            mensagem = detail.get("mensagem")
+            message = mensagem if isinstance(mensagem, str) and mensagem else fallback
+            codigo = detail.get("codigo")
+            if isinstance(codigo, str) and codigo in _CODIGOS_PUBLICOS:
+                extra = {"codigo": codigo}
+        else:
+            # Frases padrão do Starlette ("Not Found", "Method Not Allowed"...) viram texto em português.
+            is_default_phrase = isinstance(detail, str) and detail == HTTPStatus(exc.status_code).phrase
+            message = detail if isinstance(detail, str) and detail and not is_default_phrase else fallback
+        response = _error_payload(message, extra=extra, status_code=exc.status_code)
     if headers:
         response.headers.update(headers)
     return response
@@ -154,3 +191,7 @@ app.include_router(twofa.router, prefix="/api")
 app.include_router(insights.router, prefix="/api")
 # Módulo de Compras (perfil Comprador) — Seção 3.
 app.include_router(purchasing.router, prefix="/api")
+# Visual Fabricantes: leitura comercial por fabricante (PRD v1.0).
+app.include_router(visual_fabricantes.router, prefix="/api")
+# Liberações de alteração: o portão de escrita dos perfis de apoio.
+app.include_router(liberacoes.router, prefix="/api")

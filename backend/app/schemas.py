@@ -8,17 +8,20 @@ from pydantic import BaseModel, Field, field_validator
 
 from app.sanitize import clean_email, clean_optional, clean_text
 
+# Os 10 perfis da plataforma — espelham `Role` em src/types.ts e
+# ROLE_PERMISSIONS em app/security.py. O papel genérico "GERENTE" foi
+# retirado; backend/sql/perfis.sql remapeia quem estava nele para
+# GERENTE_COMERCIAL.
 Role = Literal[
-    # Perfis originais (preservados)
+    "SUPERADMIN",
     "ADMIN",
-    "GERENTE",
-    "SUPERVISOR",
-    "VENDEDOR",
-    # Perfis acrescentados na evolução — espelham src/types.ts
     "GERENTE_COMERCIAL",
     "GERENTE_VENDAS",
     "COMPRADOR",
+    "SUPERVISOR",
     "ANALISTA",
+    "FORNECEDOR",
+    "VENDEDOR",
     "SAR",
 ]
 ImportStatus = Literal["CONCLUIDO", "CONCLUIDO_COM_AVISOS", "FALHA"]
@@ -57,12 +60,14 @@ class LoginRequest(BaseModel):
 
 
 class DataScope(BaseModel):
-    level: Literal["VENDEDOR", "SUPERVISOR", "GERENTE", "EMPRESA"]
+    level: Literal["VENDEDOR", "SUPERVISOR", "GERENTE", "FORNECEDOR", "EMPRESA"]
     description: str
     sellerCode: str | None = None
     team: str | None = None
     supervisor: str | None = None
     manager: str | None = None
+    #: Fabricante representado (apenas o perfil FORNECEDOR usa).
+    manufacturer: str | None = None
 
 
 class UserOut(BaseModel):
@@ -82,6 +87,7 @@ class UserOut(BaseModel):
     team: str | None = None
     supervisor: str | None = None
     manager: str | None = None
+    manufacturer: str | None = None
     status: Literal["Ativo", "Inativo"]
     lastLoginAt: str | None = None
     scope: DataScope
@@ -97,6 +103,8 @@ class LoginResponse(BaseModel):
 
 _OPTIONAL_TEXT_FIELDS = (
     "address", "neighborhood", "city", "state", "sellerCode", "team", "supervisor", "manager",
+    # Vínculo do perfil FORNECEDOR com o fabricante que ele representa.
+    "manufacturer",
 )
 
 
@@ -160,6 +168,7 @@ class UserCreate(_UserInputMixin):
     team: str | None = None
     supervisor: str | None = None
     manager: str | None = None
+    manufacturer: str | None = None
     status: Literal["Ativo", "Inativo"] = "Ativo"
 
 
@@ -178,6 +187,7 @@ class UserUpdate(_UserInputMixin):
     team: str | None = None
     supervisor: str | None = None
     manager: str | None = None
+    manufacturer: str | None = None
     status: Literal["Ativo", "Inativo"] | None = None
 
 

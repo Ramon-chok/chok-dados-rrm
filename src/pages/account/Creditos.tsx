@@ -516,7 +516,7 @@ export const CreditosPage: React.FC = () => {
             justifyContent: 'center',
             fontSize: `${fontSize}px`,
             fontWeight: 700,
-            boxShadow: `0 8px 28px rgba(227, 6, 19, 0.3)`,
+            boxShadow: `0 8px 28px ${t.primary}4D`,
             border: `3px solid rgba(255,255,255,0.15)`,
             transition: 'all 0.4s cubic-bezier(0.16, 1, 0.3, 1)',
             cursor: onClickAvatar && !(isAdmin && editable) ? 'pointer' : 'default',
@@ -656,7 +656,7 @@ export const CreditosPage: React.FC = () => {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                boxShadow: '0 4px 14px rgba(227, 6, 19, 0.35)',
+                boxShadow: `0 4px 14px ${t.primary}59`,
                 position: 'relative',
               }}
             >
@@ -781,7 +781,7 @@ export const CreditosPage: React.FC = () => {
                 fontSize: '13px',
                 fontWeight: 600,
                 cursor: 'pointer',
-                boxShadow: '0 4px 16px rgba(227, 6, 19, 0.35)',
+                boxShadow: `0 4px 16px ${t.primary}59`,
                 transition: 'all 0.2s',
               }}
               onMouseEnter={(e) => {
@@ -790,7 +790,7 @@ export const CreditosPage: React.FC = () => {
               }}
               onMouseLeave={(e) => {
                 e.currentTarget.style.transform = 'translateY(0)';
-                e.currentTarget.style.boxShadow = '0 4px 16px rgba(227, 6, 19, 0.35)';
+                e.currentTarget.style.boxShadow = `0 4px 16px ${t.primary}59`;
               }}
             >
               <Plus size={16} />

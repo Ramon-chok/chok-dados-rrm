@@ -33,7 +33,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from app.cache import cached, invalidate_all
 from app.db import get_connection
 from app.sanitize import clean_optional, clean_text, like_pattern
-from app.security import get_current_user, has_permission, require_permission
+from app.security import get_current_user, has_permission, is_admin, require_permission, require_write
 from app.services import num, scope_filters
 
 router = APIRouter(tags=["insights"])
@@ -77,9 +77,19 @@ def _parse_dia(valor: str | None, campo: str = "dia") -> date | None:
 
 
 def _escopo_sql(
-    user: dict[str, Any], alias_vendedor: str, alias_equipe: str | None = None
+    user: dict[str, Any],
+    alias_vendedor: str,
+    alias_equipe: str | None = None,
+    alias_fabricante: str | None = None,
 ) -> tuple[list[str], list[Any]]:
-    """Cláusulas obrigatórias do escopo do usuário (nunca vêm do cliente)."""
+    """Cláusulas obrigatórias do escopo do usuário (nunca vêm do cliente).
+
+    O perfil FORNECEDOR tem recorte por FABRICANTE. Uma consulta que não saiba
+    filtrar por fabricante não pode simplesmente ignorar esse recorte — seria
+    devolver a base inteira a um representante externo. Por isso, quando o
+    escopo traz "fabricante" e a consulta não oferece a coluna correspondente,
+    a requisição é recusada com 403 em vez de responder dados.
+    """
     scope = scope_filters(user)
     parts: list[str] = []
     params: list[Any] = []
@@ -89,6 +99,14 @@ def _escopo_sql(
     if scope.get("equipe") and alias_equipe:
         parts.append(f"{alias_equipe} = %s")
         params.append(scope["equipe"])
+    if scope.get("fabricante"):
+        if not alias_fabricante:
+            raise HTTPException(
+                status_code=403,
+                detail="Esta consulta não tem recorte por fabricante e não pode ser aberta por este perfil.",
+            )
+        parts.append(f"{alias_fabricante} = %s")
+        params.append(scope["fabricante"])
     return parts, params
 
 
@@ -623,7 +641,7 @@ def fabricantes_resumo(
 ) -> list[dict[str, Any]]:
     """Fabricantes com faturamento, cobertura, margem autorizada e nº de SKUs."""
     ver_margem = has_permission(user, "margin.view")
-    escopo_parts, escopo_params = _escopo_sql(user, "f.cod_vendedor", "v.equipe")
+    escopo_parts, escopo_params = _escopo_sql(user, "f.cod_vendedor", "v.equipe", "f.fabricante")
     per_parts, per_params = _periodo_fabricante(ano, mes, start, end)
     where = " AND ".join(["1=1", *escopo_parts, *per_parts])
 
@@ -703,7 +721,7 @@ def fabricante_drill(
     fab = clean_text(fabricante, 160)
     ver_margem = has_permission(user, "margin.view")
 
-    escopo_parts, escopo_params = _escopo_sql(user, "f.cod_vendedor", "v.equipe")
+    escopo_parts, escopo_params = _escopo_sql(user, "f.cod_vendedor", "v.equipe", "f.fabricante")
     fab_parts = [*escopo_parts, "f.fabricante = %s"]
     fab_params = [*escopo_params, fab]
     per_parts, per_params = _periodo_fabricante(ano, mes, start, end)
@@ -783,7 +801,7 @@ def fabricante_drill(
         ).fetchall()
 
         # Clientes que compraram do fabricante no período, dentro do escopo.
-        cli_parts, cli_params = _escopo_sql(user, "tc.cod_vendedor", "tv.equipe")
+        cli_parts, cli_params = _escopo_sql(user, "tc.cod_vendedor", "tv.equipe", "tc.fabricante")
         cli_parts.append("tc.fabricante = %s")
         cli_params.append(fab)
         if ano:
@@ -1083,7 +1101,7 @@ def _evento_payload(body: dict[str, Any]) -> dict[str, Any]:
 @router.post("/insights/calendario/eventos", status_code=201)
 def criar_evento(
     body: dict[str, Any] = Body(...),
-    user: dict[str, Any] = Depends(require_permission("calendar.edit")),
+    user: dict[str, Any] = Depends(require_write("calendar.edit")),
 ) -> dict[str, Any]:
     dados = _evento_payload(body)
     colunas = ", ".join(dados.keys())
@@ -1143,16 +1161,16 @@ def sessoes(
     usuario_id: str | None = Query(default=None, max_length=40),
     user: dict[str, Any] = Depends(get_current_user),
 ) -> list[dict[str, Any]]:
-    """Histórico de login/logout. Cada um vê o próprio; o ADMIN vê todos."""
+    """Histórico de login/logout. Cada um vê o próprio; a administração vê todos."""
     parts = ["1=1"]
     params: list[Any] = []
-    if user["role"] == "ADMIN":
+    if is_admin(user["role"]):
         if usuario_id:
             parts.append("usuario_id = %s")
             params.append(clean_text(usuario_id, 40))
     else:
-        # Nenhum perfil além do ADMIN consegue ler sessão de outra pessoa,
-        # mesmo passando ?usuario_id= na URL.
+        # Nenhum perfil fora da administração consegue ler sessão de outra
+        # pessoa, mesmo passando ?usuario_id= na URL.
         parts.append("usuario_id = %s")
         params.append(str(user["id"]))
     params.append(limit)

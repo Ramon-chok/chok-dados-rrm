@@ -2,7 +2,8 @@ from __future__ import annotations
 
 """Cache em memória (TTL) para os endpoints de leitura.
 
-Segurança: a chave inclui o ESCOPO do usuário (role/equipe/código do vendedor) e todos os
+Segurança: a chave inclui o ESCOPO do usuário (role, equipe, código do vendedor, fabricante
+vinculado e permissões avulsas) e todos os
 parâmetros da consulta — um SUPERVISOR nunca recebe o resultado de outra equipe. A
 autenticação continua rodando antes (Depends), o cache só evita refazer as queries.
 
@@ -59,7 +60,26 @@ def invalidate_all() -> None:
 
 
 def _scope_key(user: dict[str, Any]) -> tuple:
-    return (user.get("role"), user.get("team"), user.get("seller_code"))
+    """Identidade do RECORTE do usuário — entra na chave de cache.
+
+    Precisa conter toda dimensão que muda o resultado de uma consulta; o que
+    ficar de fora faz dois usuários diferentes compartilharem a mesma entrada.
+
+    * ``manufacturer`` — o recorte do perfil FORNECEDOR. Sem ele, dois
+      representantes de fabricantes diferentes teriam a MESMA chave
+      (role=FORNECEDOR, team=None, seller_code=None) e um receberia o resultado
+      já calculado para o outro.
+    * ``extra_permissions`` — permissões avulsas mudam o que a resposta traz
+      (``margin.view`` decide se a margem sai ou vem nula). Dois usuários do
+      mesmo escopo com permissões diferentes não podem dividir a entrada.
+    """
+    return (
+        user.get("role"),
+        user.get("team"),
+        user.get("seller_code"),
+        user.get("manufacturer"),
+        tuple(sorted(user.get("extra_permissions") or ())),
+    )
 
 
 def cached(ttl: float = DEFAULT_TTL) -> Callable[[F], F]:

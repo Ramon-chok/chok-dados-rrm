@@ -50,6 +50,7 @@ import {
   pctOf,
   useChartColors,
 } from '../components/charts/chartKit';
+import { podeFiltrarEquipe, podeFiltrarVendedor } from '../types';
 
 const fmt = (v: number) => `R$ ${v.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}`;
 const fmtInt = (v: number) => v.toLocaleString('pt-BR', { maximumFractionDigits: 0 });
@@ -72,8 +73,8 @@ export const DashboardPage: React.FC = () => {
   // Admin/Gerência podem escolher equipe e vendedor livremente; Supervisor só
   // escolhe vendedor (a equipe já é a dele, travada no backend); Vendedor não
   // tem filtro (só vê os próprios dados).
-  const canFilterEquipe = role === 'ADMIN' || role === 'GERENTE';
-  const canFilterVendedor = role === 'ADMIN' || role === 'GERENTE' || role === 'SUPERVISOR';
+  const canFilterEquipe = podeFiltrarEquipe(role);
+  const canFilterVendedor = podeFiltrarVendedor(role);
 
   const [filterOptions, setFilterOptions] = useState<DashboardFilterOptions | null>(null);
   const [selectedEquipe, setSelectedEquipe] = useState<string>('');

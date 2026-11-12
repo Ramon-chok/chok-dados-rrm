@@ -5,6 +5,7 @@ import { useGlobalFilter } from '../../context/GlobalFilterContext';
 import { EmptyBlock, ErrorBlock, LoadingBlock } from '../../components/common/DataState';
 import { getErrorMessage, fetchTopCustomers, TopCustomerRow } from '../../lib/api';
 import { SingleSelectFilter } from '../../components/common/SingleSelectFilter';
+import { podeFiltrarEquipe, podeFiltrarVendedor } from '../../types';
 
 const fmt = (v: number) => `R$ ${v.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}`;
 
@@ -23,8 +24,8 @@ export const TopClientesPage: React.FC = () => {
   // Supervisor já vê apenas a própria equipe (escopo travado no backend) —
   // não faz sentido oferecer o filtro de Equipe. Vendedor já vê só os
   // próprios dados, então nem Equipe nem Vendedor fazem sentido para ele.
-  const canFilterEquipe = role === 'ADMIN' || role === 'GERENTE';
-  const canFilterVendedor = role === 'ADMIN' || role === 'GERENTE' || role === 'SUPERVISOR';
+  const canFilterEquipe = podeFiltrarEquipe(role);
+  const canFilterVendedor = podeFiltrarVendedor(role);
 
   useEffect(() => {
     let mounted = true;

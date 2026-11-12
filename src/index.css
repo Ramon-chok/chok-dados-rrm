@@ -1,25 +1,248 @@
 @import "tailwindcss";
 
+/* ═══════════════════════════════════════════════════════════
+   Tipografia do Grupo Arantes
+   ═══════════════════════════════════════════════════════════
+   O manual pede Gotham para títulos e Segoe UI para uso digital. A Gotham é
+   paga e a Segoe UI não pode ser embutida em site (só existe no Windows),
+   então nas telas fica assim:
+
+     --ga-display  Montserrat   títulos e destaques, no lugar da Gotham
+     --ga-sans     Segoe UI     texto e números de negócio
+     --ga-mono     JetBrains    só carimbo de máquina: NF, placa, hora, código
+
+   Proibidas como fonte principal: Inter, Geist, Space Grotesk, Instrument,
+   Poppins, Plus Jakarta, Fraunces, Arial e serifas de display.
+   ─────────────────────────────────────────────────────────── */
+:root {
+  --ga-display: 'Montserrat Variable', Montserrat, 'Segoe UI', system-ui, sans-serif;
+  --ga-sans: 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --ga-mono: 'JetBrains Mono Variable', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  /* Raio padrão: 0.75rem em app operacional (este é um). */
+  --ga-radius: 0.75rem;
+}
+
 @layer base {
   body {
-    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    font-family: var(--ga-sans);
     margin: 0;
     padding: 0;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    background: var(--ga-bg, #070B12);
-    color: var(--ga-text, #EAF1FA);
+    background: var(--ga-bg, #F8F8F7);
+    color: var(--ga-text, #150F0F);
+  }
+
+  /* Títulos na fonte de display, sempre. */
+  h1, h2, h3, h4 {
+    font-family: var(--ga-display);
+    letter-spacing: -0.02em;
   }
 }
 
+/*
+  Números de indicador ficam na Segoe UI com algarismos tabulares: a
+  Montserrat do Google Fonts perde o alinhamento tabular em alguns pesos e
+  desalinha as colunas das tabelas.
+*/
 .num {
-  font-family: 'Space Grotesk', system-ui, sans-serif;
+  font-family: var(--ga-sans);
   font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+/* Carimbo de máquina (NF, chave, placa, código) — nunca texto corrido. */
+.mono {
+  font-family: var(--ga-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Faixa do topo — assinatura da marca
+   ═══════════════════════════════════════════════════════════
+   Degradê azul sereno (azul Arantes → azul-aço, turquesa só no fim), um
+   brilho suave à esquerda e um fio turquesa embaixo. Dentro dela os tokens
+   viram "claro sobre azul", então seletores e botões se ajustam sozinhos.
+
+   Popover, diálogo e painel lateral abertos dali saem da faixa e voltam ao
+   tema normal — e é assim que deve ser.
+   ─────────────────────────────────────────────────────────── */
+.faixa-marca {
+  position: relative;
+  isolation: isolate;
+  background: linear-gradient(100deg, #2A4C7F 0%, #2A4C7F 38%, #2B6078 76%, #3E96A0 112%);
+  border-bottom: 1px solid rgba(68, 171, 170, 0.55);
+  color: #fff;
+}
+.faixa-marca::before {
+  /* Brilho suave à esquerda. */
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(120% 180% at 0% 0%, rgba(255, 255, 255, 0.16) 0%, transparent 62%);
+  pointer-events: none;
+  z-index: -1;
+}
+.faixa-marca__simbolo {
+  /* Símbolo em contorno bem apagado, entrando pela direita. */
+  position: absolute;
+  right: -40px;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 230%;
+  opacity: 0.07;
+  pointer-events: none;
+  user-select: none;
+  z-index: -1;
+}
+/* Dentro da faixa, texto e controles são claros sobre o azul. */
+.faixa-marca .faixa-texto-forte { color: #fff; }
+.faixa-marca .faixa-texto-suave { color: rgba(255, 255, 255, 0.78); }
+
+/* ═══════════════════════════════════════════════════════════
+   Tela de entrada — duas colunas
+   ═══════════════════════════════════════════════════════════
+   Esquerda: o painel da marca, no degradê oficial.
+   Direita: o acesso, sobre o fundo neutro do tema.
+
+   No celular a coluna da marca vira uma faixa curta no topo: o degradê
+   continua presente, mas sem empurrar o formulário para fora da primeira
+   dobra — quem abre no telefone quer entrar, não ler a chamada.
+   ─────────────────────────────────────────────────────────── */
+.login-grade {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+
+.login-marca {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 36px 44px;
+  min-height: 100vh;
+}
+.login-marca__simbolo {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 150%;
+  max-width: none;
+  opacity: 0.08;
+  pointer-events: none;
+  user-select: none;
+  z-index: -1;
+}
+.login-marca__trama {
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.5) 1px, transparent 1px);
+  background-size: 22px 22px;
+  opacity: 0.1;
+  pointer-events: none;
+  z-index: -1;
+}
+.login-marca__logo {
+  width: 184px;
+  height: auto;
+  position: relative;
+}
+.login-marca__centro {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  padding-block: 24px;
+}
+.login-marca__fatos {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  margin-top: 34px;
+}
+.login-marca__fatos strong {
+  display: block;
+  font-size: 1.6rem;
+  font-weight: 700;
+  line-height: 1.1;
   letter-spacing: -0.02em;
+}
+.login-marca__fatos span {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.78rem;
+  color: rgba(255, 255, 255, 0.76);
+}
+.login-marca__risco {
+  width: 1px;
+  align-self: stretch;
+  background: rgba(255, 255, 255, 0.28);
+}
+.login-marca__rodape {
+  position: relative;
+  font-family: var(--ga-display);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.68);
+}
+
+.login-acesso {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 24px;
+  min-height: 100vh;
+}
+.login-tema {
+  position: absolute;
+  top: 24px;
+  right: 24px;
+  width: 38px;
+  height: 38px;
+  border-radius: var(--ga-radius);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: color 0.2s ease, border-color 0.2s ease;
+}
+
+@media (max-width: 900px) {
+  .login-grade {
+    grid-template-columns: 1fr;
+  }
+  .login-marca {
+    min-height: auto;
+    padding: 24px 22px 28px;
+  }
+  /* No celular a chamada e os fatos saem; fica o logo e o selo de uso. */
+  .login-marca__centro,
+  .login-marca__simbolo {
+    display: none;
+  }
+  .login-marca__logo {
+    width: 150px;
+  }
+  .login-marca__rodape {
+    margin-top: 14px;
+  }
+  .login-acesso {
+    min-height: auto;
+    padding: 32px 20px 48px;
+  }
+  .login-tema {
+    top: 16px;
+    right: 16px;
+  }
 }
 
 /* ───────────────────────────────────────────────────────────
-   Padronização GA 360 — scrollbar, seleção e foco
+   Padronização Grupo Arantes — scrollbar, seleção e foco
    ─────────────────────────────────────────────────────────── */
 ::-webkit-scrollbar {
   width: 6px;

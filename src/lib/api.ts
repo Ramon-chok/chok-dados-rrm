@@ -393,11 +393,54 @@ export interface TwoFAVerifyResponse {
   activatedAt?: string;
 }
 
+/**
+ * Códigos que o portão de escrita devolve.
+ *
+ * Eles existem para a tela saber QUAL caminho oferecer, em vez de mostrar um
+ * erro seco: abrir o diálogo de confirmação, explicar que falta liberação do
+ * administrador, ou dizer que o perfil é de visualização.
+ */
+export type CodigoErro =
+  | 'sem_permissao'
+  | 'somente_leitura'
+  | 'confirmacao_necessaria'
+  | 'liberacao_necessaria';
+
 export class ApiError extends Error {
-  constructor(message: string, public status: number, public ref?: string) {
+  constructor(
+    message: string,
+    public status: number,
+    public ref?: string,
+    /** Presente quando o servidor classificou o erro (ver `CodigoErro`). */
+    public codigo?: CodigoErro
+  ) {
     super(message);
   }
 }
+
+/**
+ * Confirmação de alteração.
+ *
+ * O perfil ADMIN altera dados mediante confirmação: o servidor recusa a
+ * escrita com 428 enquanto o cabeçalho de confirmação não vier. Em vez de
+ * espalhar essa regra por cada tela que salva algo, a camada de rede resolve
+ * sozinha — ela chama o confirmador registrado aqui (um diálogo) e, se a
+ * pessoa confirmar, repete a MESMA requisição com o cabeçalho.
+ *
+ * Quem decide continua sendo o servidor: sem o cabeçalho ele não grava, e o
+ * cabeçalho não é credencial — quem o envia já está autenticado e já tem a
+ * permissão. O que ele evita é a alteração disparada sem intenção.
+ */
+export type Confirmador = (contexto: { metodo: string; caminho: string }) => Promise<boolean>;
+
+let confirmador: Confirmador | null = null;
+
+export function setConfirmador(fn: Confirmador | null): void {
+  confirmador = fn;
+}
+
+/** Cabeçalho combinado com o backend (CABECALHO_CONFIRMACAO em security.py). */
+const CABECALHO_CONFIRMACAO = 'x-confirmar-alteracao';
 
 /** Mensagens exibidas quando o servidor não manda um texto próprio para o usuário. */
 const STATUS_MESSAGES: Record<number, string> = {
@@ -520,6 +563,9 @@ async function requestRaw<T>(
         // corpo não-JSON (ex.: página de erro do proxy) — usa a mensagem padrão do status
       }
       const { message, ref } = messageForStatus(res.status, body);
+      const bodyObj = (body && typeof body === 'object' ? body : {}) as { codigo?: unknown };
+      const codigo =
+        typeof bodyObj.codigo === 'string' ? (bodyObj.codigo as CodigoErro) : undefined;
 
       if (res.status === 401 && !skipAuth) {
         clearAuthToken();
@@ -527,7 +573,7 @@ async function requestRaw<T>(
         onUnauthorized?.();
       }
 
-      throw new ApiError(message, res.status, ref);
+      throw new ApiError(message, res.status, ref, codigo);
     }
 
     if (res.status === 204) return undefined as T;
@@ -590,7 +636,27 @@ async function request<T>(
 
   if (method !== 'GET') {
     try {
-      return await requestRaw<T>(path, rest);
+      try {
+        return await requestRaw<T>(path, rest);
+      } catch (err) {
+        // 428 = o servidor exige confirmação desta alteração (perfil ADMIN).
+        // Pergunta uma vez e repete a mesma requisição confirmada. Se a
+        // pessoa recusar, o erro original sobe para a tela, sem gravar nada.
+        const precisaConfirmar =
+          err instanceof ApiError && err.codigo === 'confirmacao_necessaria' && !!confirmador;
+        if (!precisaConfirmar) throw err;
+
+        const confirmado = await confirmador!({ metodo: method, caminho: path });
+        if (!confirmado) throw err;
+
+        return await requestRaw<T>(path, {
+          ...rest,
+          headers: {
+            ...((rest.headers as Record<string, string>) || {}),
+            [CABECALHO_CONFIRMACAO]: '1',
+          },
+        });
+      }
     } finally {
       clearApiCache();
     }
@@ -757,6 +823,11 @@ export interface UserCreatePayload {
   sellerCode?: string | null;
   team?: string | null;
   supervisor?: string | null;
+  /**
+   * Fabricante representado. Só o perfil FORNECEDOR usa: é o vínculo que
+   * define o escopo dele (coluna `usuarios.fabricante`).
+   */
+  manufacturer?: string | null;
   status?: 'Ativo' | 'Inativo';
 }
 

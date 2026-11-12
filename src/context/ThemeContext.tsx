@@ -3,74 +3,104 @@ import { ThemeMode, ThemeColors } from '../types';
 import { OrigemAnimacao, animarTrocaDeTema } from '../lib/themeTransition';
 
 /**
- * Paleta padronizada no padrão visual GA 360 (Grupo Arantes), mantendo a
- * identidade do Chok: o vermelho da marca continua vivo em `complementaryRed`
- * e na tela de login (que usa o vermelho próprio, inalterado).
+ * Paleta oficial do Grupo Arantes.
  *
- * Escuro  → fundos grafite / preto azulado, azul-marinho + azul-claro como
- *           cores principais e verde-água (turquesa) como detalhe.
- * Claro   → mesma família de azuis sobre superfícies neutras, para menus,
- *           cards, tabelas e gráficos ficarem consistentes nos dois modos.
+ * A fonte é o Manual de Identidade Visual do grupo. Onde o manual se
+ * contradiz — o hex escrito no texto não bate com a cor desenhada nas
+ * amostras — vale o DESENHADO, porque é o que aparece no logo ao lado da
+ * interface:
  *
- * As chaves são exatamente as mesmas de antes (mais os tokens novos, opcionais
- * no uso), então nenhuma tela precisou ser reescrita para adotar a padronização.
+ *   azul      #2A4C7F  (o texto do manual diz #31729B — não usar)
+ *   turquesa  #44ABAA  (o texto do manual diz #00B9CF — não usar)
+ *
+ * Claro  → fundos neutros quentes (#F8F8F7), azul Arantes como cor principal
+ *          e turquesa escurecida como segunda voz.
+ * Escuro → "Noite Arantes": azul-petróleo muito escuro (#0A0E14), com o azul
+ *          clareado para manter contraste sobre ele.
+ *
+ * Regras que esta paleta carrega:
+ *
+ * 1. **Todo par texto/fundo passa de 4,5:1 nos dois temas.** A turquesa pura
+ *    (`brandTurquesa`) é decorativa no claro; para texto use `accentTeal`.
+ * 2. **Cor de status nunca é cor de marca.** `success`, `warning`, `danger` e
+ *    `info` são vivas e separadas do azul institucional, que é sóbrio. O azul
+ *    de informação é céu; o da marca é marinho.
+ * 3. **O degradê é só da marca.** `gradient` vale em login, faixa do topo e
+ *    ícone — nunca em fundo de card, de seção ou em texto.
+ *
+ * As chaves são as mesmas de antes (mais os tokens da identidade), então
+ * nenhuma tela precisou ser reescrita para adotar o padrão.
  */
 export const THEMES: Record<ThemeMode, ThemeColors> = {
   dark: {
-    bg: '#070B12',
-    bgSecondary: '#0A1220',
-    surface: '#0F1A2B',
-    surfaceElevated: '#152338',
-    border: '#1E3048',
-    borderActive: '#2DD4BF',
-    text: '#EAF1FA',
-    textSecondary: '#93A4BC',
-    textMuted: '#6B7E99',
-    primary: '#2F7FF0',
-    primaryHover: '#5BA3FF',
-    primaryDark: '#15396E',
-    accentPurple: '#2DD4BF',
-    accentPurpleLight: '#5EEAD4',
-    accentBlue: '#2F7FF0',
-    accentBlueLight: '#6FB4FF',
-    complementaryRed: '#E3566B',
-    hover: '#152338',
-    accentTeal: '#2DD4BF',
-    accentTealLight: '#5EEAD4',
-    success: '#3DD68C',
-    warning: '#F5A524',
-    danger: '#F2555A',
-    gradientFrom: '#15396E',
-    gradientTo: '#2DD4BF',
-    shadow: '0 10px 30px rgba(3, 7, 14, 0.55)',
+    bg: '#0A0E14',
+    bgSecondary: '#0E131B',
+    surface: '#11161D',
+    surfaceElevated: '#1C222C',
+    border: '#242A33',
+    borderActive: '#809CC6',
+    text: '#ECECEA',
+    textSecondary: '#9AA1AC',
+    textMuted: '#788291',
+    primary: '#809CC6',
+    primaryHover: '#92ACD3',
+    primaryDark: '#1D2635',
+    primaryForeground: '#0C131D',
+    // `accentPurple` manteve o nome por compatibilidade com as telas antigas;
+    // o valor é a turquesa do grupo, que é a segunda voz da marca.
+    accentPurple: '#49B6B4',
+    accentPurpleLight: '#60C3C1',
+    accentBlue: '#809CC6',
+    accentBlueLight: '#92ACD3',
+    complementaryRed: '#E75F5A',
+    hover: '#1B2027',
+    accentTeal: '#49B6B4',
+    accentTealLight: '#60C3C1',
+    success: '#4EBC81',
+    warning: '#E0AC52',
+    danger: '#E75F5A',
+    gradientFrom: '#2A4C7F',
+    gradientTo: '#44ABAA',
+    shadow: '0 12px 40px rgb(0 0 0 / 0.5)',
+    gradient: 'linear-gradient(135deg, #2A4C7F 0%, #2A4C7F 30%, #44ABAA 120%)',
+    brandAzul: '#2A4C7F',
+    brandTurquesa: '#44ABAA',
+    brandFundo: '#E8E8E6',
+    info: '#36C0F2',
   },
   light: {
-    bg: '#FFFFFF',
-    bgSecondary: '#F3F6FB',
+    bg: '#F8F8F7',
+    bgSecondary: '#F0F0EF',
     surface: '#FFFFFF',
-    surfaceElevated: '#F3F6FB',
-    border: '#DDE5F0',
-    borderActive: '#0F7FA8',
-    text: '#0C1725',
-    textSecondary: '#3B4A5F',
-    textMuted: '#7B8AA0',
-    primary: '#1565D8',
-    primaryHover: '#2F7FF0',
-    primaryDark: '#0E3F8C',
-    accentPurple: '#0F7FA8',
-    accentPurpleLight: '#14A2B8',
-    accentBlue: '#1565D8',
-    accentBlueLight: '#4F94EA',
-    complementaryRed: '#E30613',
-    hover: '#EAF1FB',
-    accentTeal: '#0F7FA8',
-    accentTealLight: '#14A2B8',
-    success: '#128A58',
-    warning: '#B57200',
-    danger: '#C62330',
-    gradientFrom: '#0E3F8C',
-    gradientTo: '#14A2B8',
-    shadow: '0 8px 24px rgba(15, 35, 65, 0.10)',
+    surfaceElevated: '#EEEEEC',
+    border: '#DADAD7',
+    borderActive: '#2A4C7F',
+    text: '#150F0F',
+    textSecondary: '#50494E',
+    textMuted: '#776E75',
+    primary: '#2A4C7F',
+    primaryHover: '#223E67',
+    primaryDark: '#1F375C',
+    primaryForeground: '#FFFFFF',
+    accentPurple: '#2A6F6E',
+    accentPurpleLight: '#235C5B',
+    accentBlue: '#2A4C7F',
+    accentBlueLight: '#3E6CA8',
+    complementaryRed: '#C52E2B',
+    hover: '#E9E9E7',
+    accentTeal: '#2A6F6E',
+    accentTealLight: '#235C5B',
+    success: '#20794A',
+    warning: '#955D09',
+    danger: '#C52E2B',
+    gradientFrom: '#2A4C7F',
+    gradientTo: '#44ABAA',
+    shadow: '0 4px 12px hsl(216 40% 12% / 0.08)',
+    gradient: 'linear-gradient(135deg, #2A4C7F 0%, #2A4C7F 30%, #44ABAA 120%)',
+    brandAzul: '#2A4C7F',
+    brandTurquesa: '#44ABAA',
+    brandFundo: '#E8E8E6',
+    info: '#096AAE',
   },
 };
 
@@ -117,6 +147,15 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       root.style.setProperty(`--ga-${key}`, String(value));
     }
     root.style.colorScheme = mode;
+    // theme-color exigido pelo padrão: #f8f8f7 no claro, #0a0e14 no escuro.
+    // Pinta a barra do navegador no celular com a cor certa do tema.
+    let meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+    if (!meta) {
+      meta = document.createElement('meta');
+      meta.name = 'theme-color';
+      document.head.appendChild(meta);
+    }
+    meta.content = palette.bg;
   }, [mode]);
 
   return (

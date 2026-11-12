@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends
 from app import providers
 from app.cache import cached
 from app.db import get_connection
-from app.security import require_roles
+from app.security import require_permission
 
 router = APIRouter(prefix="/board", tags=["board"])
 
@@ -95,11 +95,16 @@ def sales_board(
     end: str | None = None,
     equipe: str | None = None,
     vendedor: str | None = None,
-    # Quadros de Vendas e Categorias consolidam o desempenho da equipe
-    # inteira: são de gestão. require_roles já libera o ADMIN e barra
-    # o VENDEDOR com 403 — esconder só no menu não seria restrição
-    # nenhuma, já que a rota continuaria aberta a quem a chamasse.
-    user: dict[str, Any] = Depends(require_roles("GERENTE", "SUPERVISOR")),
+    # Quadros de Vendas e Categorias: a trava é a PERMISSÃO, não uma lista de
+    # papéis escrita à mão — com dez perfis, a lista ficaria desatualizada no
+    # primeiro papel novo. Esconder só no menu não seria restrição nenhuma,
+    # já que a rota continuaria aberta a quem a chamasse.
+    #
+    # A matriz definida pela CHOK dá a Supervisor e Vendedor "acesso somente a
+    # visualização dos dados", da equipe e do próprio código respectivamente.
+    # Eles entram aqui, e `_resolve_scope` recorta o que cada um enxerga.
+    # Quem não entra é o FORNECEDOR, que não tem `sales-board.view`.
+    user: dict[str, Any] = Depends(require_permission("sales-board.view")),
 ) -> dict[str, Any]:
     """Meta x realizado por vendedor, com o total do período nos KPIs."""
     eff_equipe, eff_vendedor = _resolve_scope(user, equipe, vendedor)
@@ -250,11 +255,16 @@ def categories_board(
     end: str | None = None,
     equipe: str | None = None,
     vendedor: str | None = None,
-    # Quadros de Vendas e Categorias consolidam o desempenho da equipe
-    # inteira: são de gestão. require_roles já libera o ADMIN e barra
-    # o VENDEDOR com 403 — esconder só no menu não seria restrição
-    # nenhuma, já que a rota continuaria aberta a quem a chamasse.
-    user: dict[str, Any] = Depends(require_roles("GERENTE", "SUPERVISOR")),
+    # Quadros de Vendas e Categorias: a trava é a PERMISSÃO, não uma lista de
+    # papéis escrita à mão — com dez perfis, a lista ficaria desatualizada no
+    # primeiro papel novo. Esconder só no menu não seria restrição nenhuma,
+    # já que a rota continuaria aberta a quem a chamasse.
+    #
+    # A matriz definida pela CHOK dá a Supervisor e Vendedor "acesso somente a
+    # visualização dos dados", da equipe e do próprio código respectivamente.
+    # Eles entram aqui, e `_resolve_scope` recorta o que cada um enxerga.
+    # Quem não entra é o FORNECEDOR, que não tem `sales-board.view`.
+    user: dict[str, Any] = Depends(require_permission("sales-board.view")),
 ) -> dict[str, Any]:
     """Meta x realizado por categoria/fabricante dentro do escopo do usuário."""
     eff_equipe, eff_vendedor = _resolve_scope(user, equipe, vendedor)

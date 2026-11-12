@@ -17,6 +17,7 @@ import { EmptyBlock, ErrorBlock, LoadingBlock } from '../../components/common/Da
 import { SingleSelectFilter } from '../../components/common/SingleSelectFilter';
 import { getErrorMessage, fetchRaioX, fetchRaioXDetalhe, RaioXDetalheRow, RaioXRow } from '../../lib/api';
 import { Activity, BarChart3, Calendar, Layers, X } from 'lucide-react';
+import { podeFiltrarVendedor } from '../../types';
 
 const MESES = [
   'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
@@ -52,7 +53,7 @@ export const RaioXPage: React.FC = () => {
   // Supervisor (e Admin/Gerência) enxergam vários vendedores na mesma
   // listagem — o filtro deixa a visão focada em um vendedor específico da
   // equipe. Vendedor já vê só a própria linha (recorte travado no backend).
-  const canFilterVendedor = role === 'ADMIN' || role === 'GERENTE' || role === 'SUPERVISOR';
+  const canFilterVendedor = podeFiltrarVendedor(role);
 
   const currentYear = new Date().getFullYear();
   const [ano, setAno] = useState<number>(currentYear);

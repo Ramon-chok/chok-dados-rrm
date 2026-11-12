@@ -16,6 +16,7 @@ import { ObjetivosPage } from './pages/commercial/Objetivos';
 import { CalendarioComercialPage } from './pages/commercial/CalendarioComercial';
 import { ComparativosPage } from './pages/commercial/Comparativos';
 import { ComprasPage } from './pages/commercial/Compras';
+import { VisualFabricantesPage } from './pages/manufacturers/VisualFabricantes';
 import { RaioXPage } from './pages/sar/RaioX';
 import { BaseRoteiroPage } from './pages/sar/BaseRoteiro';
 import { VerbaIndenizatoriaPage } from './pages/sar/VerbaIndenizatoria';
@@ -27,6 +28,8 @@ import { CreditosPage } from './pages/account/Creditos';
 import { UsersPage } from './pages/admin/Users';
 import { MetasPage } from './pages/admin/Metas';
 import { HistoricoImportacoesPage } from './pages/admin/HistoricoImportacoes';
+import { LiberacoesPage } from './pages/admin/Liberacoes';
+import { ConfirmacaoAlteracao } from './components/auth/ConfirmacaoAlteracao';
 import { AiChatPage } from './pages/AiChat';
 import { ShieldAlert, ArrowLeft } from 'lucide-react';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
@@ -61,6 +64,9 @@ const PAGINAS_INICIAIS: PageId[] = [
   'commercial-calendar',
   'comparisons',
   'purchasing',
+  // Fornecedor: é a única tela do escopo dele, então precisa estar
+  // nesta lista para ele não cair em 'Meu Perfil' ao entrar.
+  'manufacturer-visual',
   'profile',
 ];
 
@@ -157,8 +163,8 @@ function MainApp() {
               width: '56px',
               height: '56px',
               borderRadius: '14px',
-              background: 'rgba(227, 6, 19, 0.12)',
-              border: `1px solid rgba(227, 6, 19, 0.3)`,
+              background: `${t.danger}1F`,
+              border: `1px solid ${t.danger}4D`,
               color: t.primary,
               display: 'flex',
               alignItems: 'center',
@@ -242,6 +248,8 @@ function MainApp() {
         return <ComparativosPage />;
       case 'purchasing':
         return <ComprasPage />;
+      case 'manufacturer-visual':
+        return <VisualFabricantesPage />;
       case 'sar-raio-x':
         return <RaioXPage />;
       case 'sar-base-roteiro':
@@ -260,6 +268,8 @@ function MainApp() {
         return <MetasPage />;
       case 'import-history':
         return <HistoricoImportacoesPage />;
+      case 'write-grants':
+        return <LiberacoesPage />;
       default:
         // Não cai mais no Quadro de Vendas: ele é restrito, e um PageId novo
         // sem `case` aqui exporia a tela a quem não deve vê-la. Perfil é a
@@ -283,6 +293,14 @@ export default function App() {
         <AuthProvider>
           <GlobalFilterProvider>
             <MainApp />
+            {/*
+              Fora do roteamento de propósito: a confirmação de alteração é
+              acionada pela camada de rede, a partir de qualquer tela que
+              grave algo — inclusive da própria tela de login, se um dia ela
+              gravar. Montar uma vez evita registrar o confirmador em vários
+              lugares e perder o pedido ao trocar de página.
+            */}
+            <ConfirmacaoAlteracao />
           </GlobalFilterProvider>
         </AuthProvider>
       </ErrorBoundary>

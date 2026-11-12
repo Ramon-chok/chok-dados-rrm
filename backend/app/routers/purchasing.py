@@ -21,7 +21,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query
 
 from app.db import get_connection
 from app.sanitize import clean_optional, clean_text, like_pattern
-from app.security import require_permission
+from app.security import require_permission, require_write
 from app.services import num
 
 router = APIRouter(tags=["purchasing"])
@@ -115,7 +115,7 @@ def _fornecedor_payload(body: dict[str, Any]) -> dict[str, Any]:
 @router.post("/purchasing/suppliers", status_code=201)
 def criar_fornecedor(
     body: dict[str, Any] = Body(...),
-    user: dict[str, Any] = Depends(require_permission("purchasing.edit")),
+    user: dict[str, Any] = Depends(require_write("purchasing.edit")),
 ) -> dict[str, Any]:
     dados = _fornecedor_payload(body)
     colunas = ", ".join(dados.keys())
@@ -140,7 +140,7 @@ def criar_fornecedor(
 def atualizar_fornecedor(
     fornecedor_id: int,
     body: dict[str, Any] = Body(...),
-    _user: dict[str, Any] = Depends(require_permission("purchasing.edit")),
+    _user: dict[str, Any] = Depends(require_write("purchasing.edit")),
 ) -> dict[str, Any]:
     dados = _fornecedor_payload(body)
     sets = ", ".join(f"{c} = %s" for c in dados)
@@ -164,7 +164,7 @@ def atualizar_fornecedor(
 @router.delete("/purchasing/suppliers/{fornecedor_id}")
 def remover_fornecedor(
     fornecedor_id: int,
-    _user: dict[str, Any] = Depends(require_permission("purchasing.edit")),
+    _user: dict[str, Any] = Depends(require_write("purchasing.edit")),
 ) -> dict[str, bool]:
     with get_connection() as conn:
         row = conn.execute("DELETE FROM fornecedores WHERE id = %s RETURNING id", (fornecedor_id,)).fetchone()
@@ -290,7 +290,7 @@ def _negociacao_payload(body: dict[str, Any]) -> dict[str, Any]:
 @router.post("/purchasing/negotiations", status_code=201)
 def criar_negociacao(
     body: dict[str, Any] = Body(...),
-    user: dict[str, Any] = Depends(require_permission("purchasing.edit")),
+    user: dict[str, Any] = Depends(require_write("purchasing.edit")),
 ) -> dict[str, Any]:
     dados = _negociacao_payload(body)
     colunas = ", ".join(dados.keys())
@@ -308,7 +308,7 @@ def criar_negociacao(
 def atualizar_negociacao(
     negociacao_id: int,
     body: dict[str, Any] = Body(...),
-    _user: dict[str, Any] = Depends(require_permission("purchasing.edit")),
+    _user: dict[str, Any] = Depends(require_write("purchasing.edit")),
 ) -> dict[str, Any]:
     dados = _negociacao_payload(body)
     sets = ", ".join(f"{c} = %s" for c in dados)
@@ -326,7 +326,7 @@ def atualizar_negociacao(
 @router.delete("/purchasing/negotiations/{negociacao_id}")
 def remover_negociacao(
     negociacao_id: int,
-    _user: dict[str, Any] = Depends(require_permission("purchasing.edit")),
+    _user: dict[str, Any] = Depends(require_write("purchasing.edit")),
 ) -> dict[str, bool]:
     with get_connection() as conn:
         row = conn.execute(

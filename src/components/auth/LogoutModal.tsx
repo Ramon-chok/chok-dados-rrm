@@ -65,8 +65,8 @@ export const LogoutModal: React.FC = () => {
               width: '44px',
               height: '44px',
               borderRadius: '10px',
-              background: 'rgba(227, 6, 19, 0.12)',
-              border: `1px solid rgba(227, 6, 19, 0.3)`,
+              background: `${t.danger}1F`,
+              border: `1px solid ${t.danger}4D`,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -142,7 +142,7 @@ export const LogoutModal: React.FC = () => {
               display: 'flex',
               alignItems: 'center',
               gap: '6px',
-              boxShadow: '0 2px 8px rgba(227, 6, 19, 0.35)',
+              boxShadow: `0 2px 8px ${t.primary}59`,
             }}
           >
             <LogOut size={14} />

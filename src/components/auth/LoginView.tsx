@@ -84,35 +84,6 @@ const maskIdentifier = (value: string): string => {
   return value.length > 3 ? `${value.slice(0, 2)}***` : value;
 };
 
-// ============================================
-// TYPING EFFECT HOOK
-// ============================================
-const useTypingEffect = (text: string, speed = 80, delay = 600) => {
-  const [displayed, setDisplayed] = useState('');
-  const [done, setDone] = useState(false);
-
-  useEffect(() => {
-    setDisplayed('');
-    setDone(false);
-    let i = 0;
-    const timeout = setTimeout(() => {
-      const interval = setInterval(() => {
-        if (i < text.length) {
-          setDisplayed(text.slice(0, i + 1));
-          i++;
-        } else {
-          setDone(true);
-          clearInterval(interval);
-        }
-      }, speed);
-      return () => clearInterval(interval);
-    }, delay);
-    return () => clearTimeout(timeout);
-  }, [text, speed, delay]);
-
-  return { displayed, done };
-};
-
 export const LoginView: React.FC = () => {
   const { login, complete2FALogin, isLoading, sessionNotice, clearSessionNotice } = useAuth();
   const { mode, toggleTheme, t } = useTheme();
@@ -167,13 +138,9 @@ export const LoginView: React.FC = () => {
   const [ripple, setRipple] = useState<{ x: number; y: number; show: boolean }>({ x: 0, y: 0, show: false });
 
   // Refs
-  const canvasRef = useRef<HTMLCanvasElement>(null);
   const emailInputRef = useRef<HTMLInputElement>(null);
   const passwordInputRef = useRef<HTMLInputElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
-
-  // Typing
-  const { displayed: typedTitle, done: titleDone } = useTypingEffect('Bem-vindo de volta', 65, 400);
 
   // ============================================
   // CARREGA CONSENTIMENTO SALVO
@@ -206,129 +173,6 @@ export const LoginView: React.FC = () => {
     else if (emailInputRef.current) emailInputRef.current.focus();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [consentGiven]);
-
-  // ============================================
-  // PARTICLE BACKGROUND
-  // ============================================
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    let animationFrame: number;
-    let particles: Array<{
-      x: number; y: number; size: number;
-      speedX: number; speedY: number;
-      opacity: number; isRed: boolean;
-    }> = [];
-    let mouseX = -1000;
-    let mouseY = -1000;
-
-    const resize = () => { canvas.width = window.innerWidth; canvas.height = window.innerHeight; };
-
-    const initParticles = () => {
-      particles = [];
-      const count = Math.min(Math.floor((canvas.width * canvas.height) / 14000), 100);
-      for (let i = 0; i < count; i++) {
-        particles.push({
-          x: Math.random() * canvas.width,
-          y: Math.random() * canvas.height,
-          size: Math.random() * 2 + 0.3,
-          speedX: (Math.random() - 0.5) * 0.3,
-          speedY: (Math.random() - 0.5) * 0.3,
-          opacity: Math.random() * 0.35 + 0.05,
-          isRed: Math.random() < 0.18,
-        });
-      }
-    };
-
-    const animate = () => {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      particles.forEach((p) => {
-        p.x += p.speedX;
-        p.y += p.speedY;
-        const dx = mouseX - p.x;
-        const dy = mouseY - p.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < 160) {
-          const force = (160 - dist) / 160;
-          p.x -= dx * force * 0.012;
-          p.y -= dy * force * 0.012;
-        }
-        if (p.x < -10) p.x = canvas.width + 10;
-        if (p.x > canvas.width + 10) p.x = -10;
-        if (p.y < -10) p.y = canvas.height + 10;
-        if (p.y > canvas.height + 10) p.y = -10;
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-        ctx.fillStyle = p.isRed
-          ? `rgba(215,25,32,${p.opacity * 1.8})`
-          : mode === 'dark'
-            ? `rgba(255,255,255,${p.opacity})`
-            : `rgba(10,10,10,${p.opacity * 0.8})`;
-        ctx.fill();
-      });
-      for (let i = 0; i < particles.length; i++) {
-        for (let j = i + 1; j < particles.length; j++) {
-          const dx = particles[i].x - particles[j].x;
-          const dy = particles[i].y - particles[j].y;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-          if (dist < 120) {
-            const opacity = (1 - dist / 120) * 0.06;
-            ctx.beginPath();
-            ctx.moveTo(particles[i].x, particles[i].y);
-            ctx.lineTo(particles[j].x, particles[j].y);
-            const isRed = particles[i].isRed || particles[j].isRed;
-            ctx.strokeStyle = isRed
-              ? `rgba(215,25,32,${opacity * 2.5})`
-              : mode === 'dark'
-                ? `rgba(255,255,255,${opacity})`
-                : `rgba(10,10,10,${opacity * 0.8})`;
-            ctx.lineWidth = 0.5;
-            ctx.stroke();
-          }
-        }
-      }
-      animationFrame = requestAnimationFrame(animate);
-    };
-
-    const handleMouse = (e: MouseEvent) => { mouseX = e.clientX; mouseY = e.clientY; };
-
-    resize();
-    initParticles();
-    animate();
-    window.addEventListener('resize', () => { resize(); initParticles(); });
-    document.addEventListener('mousemove', handleMouse);
-
-    return () => {
-      cancelAnimationFrame(animationFrame);
-      window.removeEventListener('resize', resize);
-      document.removeEventListener('mousemove', handleMouse);
-    };
-  }, [mode]);
-
-  // ============================================
-  // CARD TILT EFFECT
-  // ============================================
-  const handleCardMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    const card = cardRef.current;
-    if (!card) return;
-    const rect = card.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    const centerX = rect.width / 2;
-    const centerY = rect.height / 2;
-    const rotateX = ((y - centerY) / centerY) * -2;
-    const rotateY = ((x - centerX) / centerX) * 2;
-    card.style.transform = `perspective(1000px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) translateZ(4px)`;
-  }, []);
-
-  const handleCardMouseLeave = useCallback(() => {
-    const card = cardRef.current;
-    if (!card) return;
-    card.style.transform = 'perspective(1000px) rotateX(0deg) rotateY(0deg) translateZ(0px)';
-  }, []);
 
   // ============================================
   // HANDLERS
@@ -427,8 +271,13 @@ export const LoginView: React.FC = () => {
   // ============================================
   // TOKENS
   // ============================================
-  const RR_RED = '#D71920';
-  const RR_RED_DARK = '#8B0000';
+  // Cor da marca nesta tela. Sai do tema, então acompanha claro/escuro
+  // sozinha: no claro é o azul Arantes #2A4C7F, no escuro o azul clareado
+  // que mantém contraste sobre o fundo "Noite Arantes".
+  const MARCA = t.primary;
+  const MARCA_ESCURA = t.primaryHover;
+  // Texto sobre a cor da marca: branco no claro, quase preto no escuro.
+  const SOBRE_MARCA = t.primaryForeground;
 
   const getStrengthColor = () => {
     if (passwordStrength <= 1) return '#EF4444';
@@ -446,185 +295,144 @@ export const LoginView: React.FC = () => {
   };
 
   return (
-    <div
-      style={{
-        minHeight: '100vh',
-        background: t.bg,
-        color: t.text,
-        display: 'flex',
-        flexDirection: 'column',
-        position: 'relative',
-        overflowX: 'hidden',
-        fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
-      }}
-    >
-      {/* Particle canvas */}
-      <canvas
-        ref={canvasRef}
-        style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', zIndex: 0, pointerEvents: 'none' }}
-      />
-
-      {/* Gradient orbs */}
-      <div style={{ position: 'fixed', top: '-250px', right: '-250px', width: '650px', height: '650px', borderRadius: '50%', background: `radial-gradient(circle, rgba(215,25,32,0.10) 0%, transparent 70%)`, pointerEvents: 'none', zIndex: 0, animation: 'rr-float 20s ease-in-out infinite' }} />
-      <div style={{ position: 'fixed', bottom: '-250px', left: '-250px', width: '650px', height: '650px', borderRadius: '50%', background: `radial-gradient(circle, rgba(215,25,32,0.05) 0%, transparent 70%)`, pointerEvents: 'none', zIndex: 0, animation: 'rr-float 28s ease-in-out infinite reverse' }} />
-
-      {/* Grid overlay */}
-      <div style={{ position: 'absolute', inset: 0, opacity: mode === 'dark' ? 0.03 : 0.02, backgroundImage: `linear-gradient(${t.text} 1px, transparent 1px), linear-gradient(90deg, ${t.text} 1px, transparent 1px)`, backgroundSize: '80px 80px', pointerEvents: 'none', zIndex: 0 }} />
-
+    <div className="login-grade" style={{ minHeight: '100vh', background: t.bg, color: t.text, fontFamily: 'var(--ga-sans)' }}>
       {/* ============================================
-          HEADER
-      ============================================ */}
-      <header
-        style={{
-          height: '70px',
-          borderBottom: `1px solid ${t.border}`,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '0 32px',
-          position: 'relative',
-          zIndex: 10,
-          background: mode === 'dark' ? 'rgba(10,10,10,0.6)' : 'rgba(255,255,255,0.7)',
-          backdropFilter: 'blur(20px)',
-          WebkitBackdropFilter: 'blur(20px)',
-        }}
-      >
+          PAINEL DA MARCA (esquerda)
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <button
-            onClick={toggleTheme}
-            className="rr-theme-toggle"
+          É aqui que o degradê oficial aparece — e é um dos quatro lugares
+          onde ele pode aparecer (marca, login, ícone de app e faixa do topo).
+          Nunca em fundo de card ou de seção.
+
+          O endosso do grupo vem pelo logo oficial em SVG, usado como imagem:
+          colar o SVG do Illustrator dentro do HTML faz as classes internas
+          (.cls-1, .cls-2…) colidirem quando há dois logos na mesma página.
+      ============================================ */}
+      <aside className="login-marca" style={{ background: t.gradient, color: '#fff' }}>
+        {/* Símbolo em contorno bem apagado, como marca d'água. */}
+        <img
+          src="/img/marca/simbolo-branco.svg"
+          alt=""
+          aria-hidden="true"
+          className="login-marca__simbolo"
+        />
+        {/* Trama de pontos: textura discreta, sem concorrer com o texto. */}
+        <div className="login-marca__trama" aria-hidden="true" />
+
+        <img
+          src="/img/marca/logo-horizontal-branco.svg"
+          alt="Grupo Arantes"
+          className="login-marca__logo"
+        />
+
+        <div className="login-marca__centro">
+          <span
             style={{
-              width: '40px', height: '40px', borderRadius: '12px',
-              border: `1px solid ${t.border}`,
-              background: mode === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              cursor: 'pointer', color: t.textSecondary,
-              transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+              fontFamily: 'var(--ga-display)',
+              fontSize: '11.5px',
+              fontWeight: 600,
+              letterSpacing: '0.14em',
+              textTransform: 'uppercase',
+              color: 'rgba(255,255,255,0.72)',
             }}
-            aria-label="Alternar tema"
           >
-            <div style={{ transition: 'transform 0.5s cubic-bezier(0.4,0,0.2,1)', transform: mode === 'dark' ? 'rotate(180deg)' : 'rotate(0deg)' }}>
-              {mode === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+            Chok Dados · Inteligência Comercial
+          </span>
+
+          <h1
+            style={{
+              fontFamily: 'var(--ga-display)',
+              fontSize: 'clamp(1.9rem, 3.4vw, 2.6rem)',
+              fontWeight: 700,
+              lineHeight: 1.12,
+              letterSpacing: '-0.025em',
+              margin: '14px 0 0',
+              maxWidth: '16ch',
+              textWrap: 'balance',
+            }}
+          >
+            O comercial do grupo, organizado numa só tela.
+          </h1>
+
+          <p
+            style={{
+              margin: '16px 0 0',
+              fontSize: '14px',
+              lineHeight: 1.6,
+              color: 'rgba(255,255,255,0.82)',
+              maxWidth: '44ch',
+            }}
+          >
+            Metas, fabricantes, clientes, sortimento e margens — do pedido ao fechamento,
+            cada perfil enxergando exatamente o seu escopo.
+          </p>
+
+          <div className="login-marca__fatos">
+            <div>
+              <strong style={{ fontFamily: 'var(--ga-display)' }}>ao vivo</strong>
+              <span>do pedido ao fechamento</span>
             </div>
-          </button>
+            <div className="login-marca__risco" aria-hidden="true" />
+            <div>
+              <strong style={{ fontFamily: 'var(--ga-display)' }}>por perfil</strong>
+              <span>cada um vê o seu escopo</span>
+            </div>
+          </div>
         </div>
-      </header>
+
+        <span className="login-marca__rodape">Uso interno · Grupo Arantes</span>
+      </aside>
 
       {/* ============================================
-          MAIN — CENTRALIZADO
+          PAINEL DO ACESSO (direita)
       ============================================ */}
-      <main
-        style={{
-          flex: 1,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: '32px 24px',
-          position: 'relative',
-          zIndex: 10,
-        }}
-      >
-        {/* ============================================
-            LOGIN CARD
-        ============================================ */}
+      <main className="login-acesso">
+        <button
+          onClick={(e) =>
+            toggleTheme({
+              x: e.currentTarget.getBoundingClientRect().left + e.currentTarget.offsetWidth / 2,
+              y: e.currentTarget.getBoundingClientRect().top + e.currentTarget.offsetHeight / 2,
+            })
+          }
+          className="login-tema"
+          style={{
+            border: `1px solid ${t.border}`,
+            background: t.surface,
+            color: t.textSecondary,
+          }}
+          aria-label={mode === 'dark' ? 'Mudar para o tema claro' : 'Mudar para o tema escuro'}
+        >
+          {mode === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+        </button>
+
         <div
           ref={cardRef}
-          onMouseMove={handleCardMouseMove}
-          onMouseLeave={handleCardMouseLeave}
           style={{
             width: '100%',
-            maxWidth: '440px',
-            background: mode === 'dark' ? 'rgba(15,15,15,0.8)' : 'rgba(255,255,255,0.88)',
-            backdropFilter: 'blur(40px)',
-            WebkitBackdropFilter: 'blur(40px)',
+            maxWidth: '380px',
+            background: t.surface,
             border: `1px solid ${t.border}`,
-            borderRadius: '28px',
-            padding: '48px 44px',
-            boxShadow:
-              mode === 'dark'
-                ? '0 30px 80px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.06)'
-                : '0 25px 60px rgba(0,0,0,0.07), inset 0 1px 0 rgba(255,255,255,0.5)',
+            borderRadius: 'var(--ga-radius)',
+            padding: '32px 30px',
+            boxShadow: t.shadow,
             position: 'relative',
-            overflow: 'hidden',
-            animation: 'rr-cardEntrance 0.9s cubic-bezier(0.16, 1, 0.3, 1)',
-            transition: 'transform 0.15s ease-out',
-            willChange: 'transform',
           }}
         >
-          {/* Linha decorativa animada */}
-          <div style={{
-            position: 'absolute', top: 0, left: 0, right: 0, height: '3px',
-            background: `linear-gradient(90deg, transparent, ${RR_RED}, transparent)`,
-            backgroundSize: '200% 100%', animation: 'rr-shimmerLine 3s infinite linear',
-          }} />
-
-          {/* Glow effect */}
-          <div style={{ position: 'absolute', top: '-80px', right: '-80px', width: '200px', height: '200px', background: `radial-gradient(circle, ${RR_RED}15 0%, transparent 70%)`, pointerEvents: 'none', filter: 'blur(20px)' }} />
-          <div style={{ position: 'absolute', bottom: '-80px', left: '-80px', width: '200px', height: '200px', background: `radial-gradient(circle, ${RR_RED}08 0%, transparent 70%)`, pointerEvents: 'none', filter: 'blur(20px)' }} />
-
-          {/* ============ HEADER DO CARD ============ */}
-          <div style={{ textAlign: 'center', marginBottom: '36px' }}>
-            {/* Ícone central animado */}
-            <div style={{
-              width: '64px', height: '64px', margin: '0 auto 20px', position: 'relative',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}>
-              {/* Orbital ring */}
-              <div style={{
-                position: 'absolute', inset: '-8px',
-                border: `1.5px dashed ${RR_RED}35`,
-                borderRadius: '50%',
-                animation: 'rr-spin-slow 12s linear infinite',
-              }} />
-              {/* Orbital dot */}
-              <div style={{
-                position: 'absolute', top: '-12px', left: '50%', transform: 'translateX(-50%)',
-                width: '5px', height: '5px', borderRadius: '50%',
-                background: RR_RED, boxShadow: `0 0 8px ${RR_RED}80`,
-                animation: 'rr-orbital 12s linear infinite',
-              }} />
-              <div style={{
-                width: '56px', height: '56px', borderRadius: '16px',
-                background: `linear-gradient(135deg, ${RR_RED}, ${RR_RED_DARK})`,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                boxShadow: `0 8px 24px ${RR_RED}35`,
-              }}>
-                <Fingerprint size={26} color="#fff" />
-              </div>
-            </div>
-
-            {/* Badge */}
-            <div style={{
-              display: 'inline-flex', alignItems: 'center', gap: '6px',
-              padding: '4px 12px', borderRadius: '50px', marginBottom: '16px',
-              background: `${RR_RED}10`, border: `1.5px solid ${RR_RED}20`,
-              fontSize: '10.5px', fontWeight: 700, color: RR_RED,
-              letterSpacing: '2px', textTransform: 'uppercase',
-              fontFamily: "'Space Grotesk', sans-serif",
-            }}>
-              <Wifi size={11} />
-              SISTEMA ONLINE
-            </div>
-
-            {/* Título com typing effect */}
-            <h1 style={{
-              margin: '0 0 8px', fontSize: '28px', fontWeight: 800, color: t.text,
-              letterSpacing: '-0.04em', lineHeight: 1.15,
-              fontFamily: "'Space Grotesk', 'Inter', sans-serif",
-              minHeight: '36px',
-            }}>
-              {typedTitle}
-              {!titleDone && (
-                <span style={{
-                  display: 'inline-block', width: '2px', height: '28px',
-                  background: RR_RED, marginLeft: '2px', verticalAlign: 'text-bottom',
-                  animation: 'rr-blink 0.8s step-end infinite',
-                }} />
-              )}
-            </h1>
-            <p style={{ margin: 0, fontSize: '14px', color: t.textSecondary, lineHeight: 1.5 }}>
-              Insira suas credenciais corporativas para continuar
+          {/* ============ CABEÇALHO DO CARD ============ */}
+          <div style={{ marginBottom: '22px' }}>
+            <h2
+              style={{
+                margin: '0 0 6px',
+                fontFamily: 'var(--ga-display)',
+                fontSize: '26px',
+                fontWeight: 700,
+                letterSpacing: '-0.025em',
+                color: t.text,
+              }}
+            >
+              Entrar
+            </h2>
+            <p style={{ margin: 0, fontSize: '13px', color: t.textSecondary, lineHeight: 1.5 }}>
+              Use seu e-mail corporativo do Grupo Arantes.
             </p>
           </div>
 
@@ -671,11 +479,11 @@ export const LoginView: React.FC = () => {
           {/* Error Banner */}
           {errorMessage && (
             <div style={{
-              background: 'rgba(215,25,32,0.08)', border: `1.5px solid rgba(215,25,32,0.25)`,
+              background: `${t.danger}14`, border: `1.5px solid ${t.danger}40`,
               borderRadius: '12px', padding: '12px 14px', marginBottom: '24px',
               display: 'flex', alignItems: 'flex-start', gap: '10px',
-              fontSize: '13px', color: RR_RED, animation: 'rr-shakeIn 0.4s ease',
-              boxShadow: '0 6px 20px rgba(215,25,32,0.08)',
+              fontSize: '13px', color: t.danger, animation: 'rr-shakeIn 0.4s ease',
+              boxShadow: `0 6px 20px ${t.danger}14`,
             }}>
               <AlertCircle size={16} style={{ flexShrink: 0, marginTop: '2px' }} />
               <span style={{ lineHeight: 1.5, fontWeight: 500 }}>{errorMessage}</span>
@@ -686,8 +494,8 @@ export const LoginView: React.FC = () => {
           {pending2FA ? (
             <form onSubmit={handle2FASubmit}>
               <div style={{ marginBottom: '18px', textAlign: 'center' }}>
-                <div style={{ width: 48, height: 48, borderRadius: '12px', background: `linear-gradient(135deg, ${RR_RED}, ${RR_RED_DARK})`, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px' }}>
-                  <LockIcon size={22} color="#fff" />
+                <div style={{ width: 48, height: 48, borderRadius: '12px', background: `linear-gradient(135deg, ${MARCA}, ${MARCA_ESCURA})`, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px' }}>
+                  <LockIcon size={22} color={SOBRE_MARCA} />
                 </div>
                 <h3 style={{ margin: '0 0 6px', fontSize: 18, fontWeight: 700, color: t.text }}>Verificação 2FA</h3>
                 <p style={{ margin: '0 0 6px', fontSize: 12.5, color: t.textMuted, wordBreak: 'break-all' }}>
@@ -705,7 +513,7 @@ export const LoginView: React.FC = () => {
                   onChange={(e) => setTwoFACode(e.target.value.replace(/[^\dA-Za-z-]/g, '').slice(0, 12).toUpperCase())}
                   placeholder="000000" autoFocus
                   style={{ width: '100%', boxSizing: 'border-box', padding: '14px 16px', borderRadius: '12px', border: `1.5px solid ${t.border}`, background: t.surfaceElevated, color: t.text, fontSize: '22px', fontWeight: 700, letterSpacing: '8px', textAlign: 'center', outline: 'none', fontFamily: 'monospace', transition: 'border-color 0.2s' }}
-                  onFocus={(e) => (e.currentTarget.style.borderColor = RR_RED)}
+                  onFocus={(e) => (e.currentTarget.style.borderColor = MARCA)}
                   onBlur={(e) => (e.currentTarget.style.borderColor = t.border)}
                 />
               </div>
@@ -715,7 +523,7 @@ export const LoginView: React.FC = () => {
                   : 'Sessão termina ao fechar o navegador.'}
               </p>
               <button type="submit" disabled={twoFASubmitting || isLoading || !twoFACode.trim()}
-                style={{ width: '100%', padding: '16px 24px', borderRadius: '14px', border: 'none', background: `linear-gradient(135deg, ${RR_RED}, ${RR_RED_DARK})`, color: '#fff', fontSize: '14.5px', fontWeight: 700, cursor: twoFASubmitting || isLoading || !twoFACode.trim() ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', opacity: twoFASubmitting || isLoading || !twoFACode.trim() ? 0.7 : 1 }}>
+                style={{ width: '100%', padding: '16px 24px', borderRadius: '14px', border: 'none', background: `linear-gradient(135deg, ${MARCA}, ${MARCA_ESCURA})`, color: SOBRE_MARCA, fontSize: '14.5px', fontWeight: 700, cursor: twoFASubmitting || isLoading || !twoFACode.trim() ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', opacity: twoFASubmitting || isLoading || !twoFACode.trim() ? 0.7 : 1 }}>
                 {twoFASubmitting || isLoading ? 'Validando...' : 'Confirmar'}
               </button>
               <button type="button" onClick={() => { setPending2FA(null); setTwoFACode(''); setErrorMessage(null); }}
@@ -729,28 +537,28 @@ export const LoginView: React.FC = () => {
               <div style={{ marginBottom: '20px' }}>
                 <label htmlFor="email" style={{
                   display: 'block', fontSize: '11px', fontWeight: 600,
-                  color: emailFocused ? RR_RED : t.textMuted, marginBottom: '8px',
+                  color: emailFocused ? MARCA : t.textMuted, marginBottom: '8px',
                   textTransform: 'uppercase', letterSpacing: '1.5px', transition: 'color 0.3s',
                 }}>
                   E-mail ou código
                 </label>
                 <div className="rr-input-wrapper" style={{
                   display: 'flex', alignItems: 'center', gap: '12px',
-                  border: `1.5px solid ${emailFocused ? RR_RED : t.border}`,
+                  border: `1.5px solid ${emailFocused ? MARCA : t.border}`,
                   borderRadius: '14px', padding: '14px 18px',
                   background: emailFocused
-                    ? (mode === 'dark' ? 'rgba(215,25,32,0.04)' : 'rgba(215,25,32,0.02)')
+                    ? (mode === 'dark' ? '${MARCA}0A' : '${MARCA}05')
                     : (mode === 'dark' ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.015)'),
                   transition: 'all 0.35s cubic-bezier(0.16, 1, 0.3, 1)',
-                  boxShadow: emailFocused ? `0 0 0 4px ${RR_RED}12, 0 8px 24px ${RR_RED}08` : 'none',
+                  boxShadow: emailFocused ? `0 0 0 4px ${MARCA}12, 0 8px 24px ${MARCA}08` : 'none',
                   transform: emailFocused ? 'translateY(-2px)' : 'none',
                 }}>
-                  <Mail size={18} color={emailFocused ? RR_RED : t.textMuted} style={{ transition: 'all 0.3s', transform: emailFocused ? 'scale(1.15) rotate(-5deg)' : 'scale(1)' }} />
+                  <Mail size={18} color={emailFocused ? MARCA : t.textMuted} style={{ transition: 'all 0.3s', transform: emailFocused ? 'scale(1.15) rotate(-5deg)' : 'scale(1)' }} />
                   <input ref={emailInputRef} id="email" type="text" value={email} maxLength={100}
                     onChange={(e) => setEmail(sanitizeIdentifier(e.target.value))}
                     onFocus={() => setEmailFocused(true)} onBlur={() => setEmailFocused(false)}
                     placeholder="Seu email ou código" required autoComplete="email"
-                    style={{ border: 'none', outline: 'none', background: 'transparent', color: t.text, fontSize: '14px', width: '100%', fontFamily: "'Inter', sans-serif" }}
+                    style={{ border: 'none', outline: 'none', background: 'transparent', color: t.text, fontSize: '14px', width: '100%', fontFamily: 'var(--ga-sans)' }}
                   />
                   {email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && (
                     <CheckCircle2 size={16} color="#10B981" style={{ animation: 'rr-checkIn 0.3s ease' }} />
@@ -763,36 +571,36 @@ export const LoginView: React.FC = () => {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                   <label htmlFor="password" style={{
                     fontSize: '11px', fontWeight: 600,
-                    color: passwordFocused ? RR_RED : t.textMuted,
+                    color: passwordFocused ? MARCA : t.textMuted,
                     textTransform: 'uppercase', letterSpacing: '1.5px', transition: 'color 0.3s',
                   }}>
                     Senha de Acesso
                   </label>
                   <button type="button" onClick={() => setIsForgotModalOpen(true)}
                     className="rr-forgot-link"
-                    style={{ background: 'transparent', border: 'none', color: RR_RED, fontSize: '11.5px', fontWeight: 600, cursor: 'pointer', padding: 0, transition: 'all 0.2s' }}>
+                    style={{ background: 'transparent', border: 'none', color: MARCA, fontSize: '11.5px', fontWeight: 600, cursor: 'pointer', padding: 0, transition: 'all 0.2s' }}>
                     Esqueceu?
                   </button>
                 </div>
                 <div className="rr-input-wrapper" style={{
                   display: 'flex', alignItems: 'center', gap: '12px',
-                  border: `1.5px solid ${passwordFocused ? RR_RED : t.border}`,
+                  border: `1.5px solid ${passwordFocused ? MARCA : t.border}`,
                   borderRadius: '14px', padding: '14px 18px',
                   background: passwordFocused
-                    ? (mode === 'dark' ? 'rgba(215,25,32,0.04)' : 'rgba(215,25,32,0.02)')
+                    ? (mode === 'dark' ? '${MARCA}0A' : '${MARCA}05')
                     : (mode === 'dark' ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.015)'),
                   transition: 'all 0.35s cubic-bezier(0.16, 1, 0.3, 1)',
-                  boxShadow: passwordFocused ? `0 0 0 4px ${RR_RED}12, 0 8px 24px ${RR_RED}08` : 'none',
+                  boxShadow: passwordFocused ? `0 0 0 4px ${MARCA}12, 0 8px 24px ${MARCA}08` : 'none',
                   transform: passwordFocused ? 'translateY(-2px)' : 'none',
                 }}>
-                  <Lock size={18} color={passwordFocused ? RR_RED : t.textMuted}
+                  <Lock size={18} color={passwordFocused ? MARCA : t.textMuted}
                     style={{ transition: 'all 0.3s', transform: passwordFocused ? 'rotate(-12deg) scale(1.15)' : 'rotate(0deg) scale(1)' }} />
                   <input ref={passwordInputRef} id="password" type={showPassword ? 'text' : 'password'} value={password} maxLength={128}
                     onChange={(e) => setPassword(e.target.value)}
                     onFocus={() => setPasswordFocused(true)} onBlur={() => setPasswordFocused(false)}
                     onKeyUp={handleKeyEvent} onKeyDown={handleKeyEvent}
                     placeholder="••••••••••••" required autoComplete="current-password"
-                    style={{ border: 'none', outline: 'none', background: 'transparent', color: t.text, fontSize: '14px', width: '100%', fontFamily: "'Inter', sans-serif" }}
+                    style={{ border: 'none', outline: 'none', background: 'transparent', color: t.text, fontSize: '14px', width: '100%', fontFamily: 'var(--ga-sans)' }}
                   />
                   <button type="button" onClick={() => setShowPassword(!showPassword)}
                     className="rr-eye-btn"
@@ -820,11 +628,11 @@ export const LoginView: React.FC = () => {
                 <input id="rememberMe" type="checkbox" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} style={{ display: 'none' }} />
                 <div style={{
                   width: '20px', height: '20px', borderRadius: '6px',
-                  border: `1.5px solid ${rememberMe ? RR_RED : t.border}`,
-                  background: rememberMe ? RR_RED : 'transparent',
+                  border: `1.5px solid ${rememberMe ? MARCA : t.border}`,
+                  background: rememberMe ? MARCA : 'transparent',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   transition: 'all 0.25s cubic-bezier(0.16,1,0.3,1)', flexShrink: 0,
-                  boxShadow: rememberMe ? `0 4px 12px ${RR_RED}25` : 'none',
+                  boxShadow: rememberMe ? `0 4px 12px ${MARCA}25` : 'none',
                 }}>
                   {rememberMe && <Check size={12} color="#fff" strokeWidth={3} style={{ animation: 'rr-checkIn 0.2s ease' }} />}
                 </div>
@@ -847,14 +655,14 @@ export const LoginView: React.FC = () => {
                 onClick={(e) => consentGiven && handleRipple(e)}
                 style={{
                   width: '100%', padding: '16px 24px', borderRadius: '14px', border: 'none',
-                  background: !consentGiven ? t.border : `linear-gradient(135deg, ${RR_RED}, ${RR_RED_DARK})`,
+                  background: !consentGiven ? t.border : `linear-gradient(135deg, ${MARCA}, ${MARCA_ESCURA})`,
                   color: '#FFFFFF', fontSize: '14.5px', fontWeight: 700,
                   cursor: isLoading || submitting || !consentGiven ? 'not-allowed' : 'pointer',
                   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px',
                   transition: 'all 0.3s cubic-bezier(0.16,1,0.3,1)',
-                  boxShadow: consentGiven ? `0 8px 30px ${RR_RED}30` : 'none',
+                  boxShadow: consentGiven ? `0 8px 30px ${MARCA}30` : 'none',
                   position: 'relative', overflow: 'hidden',
-                  fontFamily: "'Space Grotesk', 'Inter', sans-serif", letterSpacing: '0.5px',
+                  fontFamily: 'var(--ga-display)', letterSpacing: '0.5px',
                 }}>
                 {/* Ripple */}
                 {ripple.show && (
@@ -888,30 +696,46 @@ export const LoginView: React.FC = () => {
             </form>
           )}
 
-          {/* ============ FOOTER DO CARD ============ */}
-          <div style={{
-            marginTop: '28px', paddingTop: '20px',
-            borderTop: `1px solid ${t.border}`,
-            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px',
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'center', gap: '16px', flexWrap: 'wrap', fontSize: '11.5px' }}>
-              <button onClick={() => setIsTermsModalOpen(true)} className="rr-legal-link"
-                style={{ background: 'none', border: 'none', color: t.textMuted, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', padding: 0, transition: 'color 0.2s', fontWeight: 500 }}>
+          {/* ============ RODAPÉ DO CARD ============ */}
+          <div
+            style={{
+              marginTop: '22px',
+              paddingTop: '16px',
+              borderTop: `1px solid ${t.border}`,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: '10px',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'center', gap: '14px', flexWrap: 'wrap', fontSize: '11.5px' }}>
+              <button
+                onClick={() => setIsTermsModalOpen(true)}
+                className="rr-legal-link"
+                style={{ background: 'none', border: 'none', color: t.textMuted, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', padding: 0, transition: 'color 0.2s', fontWeight: 500 }}
+              >
                 <FileText size={11} /> Termos
               </button>
-              <span style={{ color: t.textMuted, opacity: 0.3 }}>•</span>
-              <button onClick={() => setIsPrivacyModalOpen(true)} className="rr-legal-link"
-                style={{ background: 'none', border: 'none', color: t.textMuted, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', padding: 0, transition: 'color 0.2s', fontWeight: 500 }}>
+              <span style={{ color: t.textMuted, opacity: 0.35 }}>·</span>
+              <button
+                onClick={() => setIsPrivacyModalOpen(true)}
+                className="rr-legal-link"
+                style={{ background: 'none', border: 'none', color: t.textMuted, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', padding: 0, transition: 'color 0.2s', fontWeight: 500 }}
+              >
                 <Shield size={11} /> Privacidade
               </button>
-              <span style={{ color: t.textMuted, opacity: 0.3 }}>•</span>
-              <button onClick={() => setShowCookieBanner(true)} className="rr-legal-link"
-                style={{ background: 'none', border: 'none', color: t.textMuted, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', padding: 0, transition: 'color 0.2s', fontWeight: 500 }}>
+              <span style={{ color: t.textMuted, opacity: 0.35 }}>·</span>
+              <button
+                onClick={() => setShowCookieBanner(true)}
+                className="rr-legal-link"
+                style={{ background: 'none', border: 'none', color: t.textMuted, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', padding: 0, transition: 'color 0.2s', fontWeight: 500 }}
+              >
                 <Cookie size={11} /> Cookies
               </button>
             </div>
-            <span style={{ fontSize: '10px', color: t.textMuted, opacity: 0.5, letterSpacing: '0.5px' }}>
-              RR Mind · v2.0.0 · Todos os direitos reservados
+            {/* Endosso do grupo: o produto tem nome próprio, a casa é a mesma. */}
+            <span style={{ fontSize: '11px', color: t.textMuted, textAlign: 'center', lineHeight: 1.5 }}>
+              Grupo Arantes · Chok Dados · uso interno
             </span>
           </div>
         </div>
@@ -926,20 +750,20 @@ export const LoginView: React.FC = () => {
             maxWidth: '680px', margin: '0 auto',
             background: mode === 'dark' ? 'rgba(15,15,15,0.98)' : 'rgba(255,255,255,0.98)',
             backdropFilter: 'blur(30px)', WebkitBackdropFilter: 'blur(30px)',
-            border: `1px solid ${t.border}`, borderLeft: `4px solid ${RR_RED}`,
+            border: `1px solid ${t.border}`, borderLeft: `4px solid ${MARCA}`,
             borderRadius: '14px', padding: showCookieDetails ? '24px' : '20px 24px',
             boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
           }}>
             {!showCookieDetails ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
-                <div style={{ width: 40, height: 40, borderRadius: '10px', background: `linear-gradient(135deg, ${RR_RED}, ${RR_RED_DARK})`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: '0 4px 14px rgba(215,25,32,0.3)' }}>
+                <div style={{ width: 40, height: 40, borderRadius: '10px', background: `linear-gradient(135deg, ${MARCA}, ${MARCA_ESCURA})`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: `0 4px 14px ${MARCA}4D` }}>
                   <Cookie size={20} color="#fff" />
                 </div>
                 <div style={{ flex: 1, minWidth: 200 }}>
                   <h3 style={{ margin: '0 0 4px', fontSize: '13.5px', fontWeight: 700, color: t.text }}>Sua privacidade importa</h3>
                   <p style={{ margin: 0, fontSize: '12px', color: t.textSecondary, lineHeight: 1.5 }}>
                     Utilizamos cookies conforme a LGPD.{' '}
-                    <button onClick={() => setIsPrivacyModalOpen(true)} style={{ background: 'none', border: 'none', color: RR_RED, cursor: 'pointer', padding: 0, fontSize: '12px', fontWeight: 500, textDecoration: 'underline' }}>Saiba mais</button>
+                    <button onClick={() => setIsPrivacyModalOpen(true)} style={{ background: 'none', border: 'none', color: MARCA, cursor: 'pointer', padding: 0, fontSize: '12px', fontWeight: 500, textDecoration: 'underline' }}>Saiba mais</button>
                   </p>
                 </div>
                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
@@ -949,7 +773,7 @@ export const LoginView: React.FC = () => {
                   <button onClick={handleAcceptNecessary} style={{ padding: '9px 14px', borderRadius: '8px', border: `1px solid ${t.border}`, background: mode === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)', color: t.text, fontSize: '12px', fontWeight: 500, cursor: 'pointer' }}>
                     Necessários
                   </button>
-                  <button onClick={handleAcceptAll} className="rr-accept-all-btn" style={{ padding: '9px 18px', borderRadius: '8px', border: 'none', background: RR_RED, color: '#fff', fontSize: '12px', fontWeight: 600, cursor: 'pointer', boxShadow: '0 4px 14px rgba(215,25,32,0.3)', transition: 'all 0.2s' }}>
+                  <button onClick={handleAcceptAll} className="rr-accept-all-btn" style={{ padding: '9px 18px', borderRadius: '8px', border: 'none', background: MARCA, color: SOBRE_MARCA, fontSize: '12px', fontWeight: 600, cursor: 'pointer', boxShadow: `0 4px 14px ${MARCA}4D`, transition: 'all 0.2s' }}>
                     Aceitar todos
                   </button>
                 </div>
@@ -958,7 +782,7 @@ export const LoginView: React.FC = () => {
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '18px', paddingBottom: '14px', borderBottom: `1px solid ${t.border}` }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <div style={{ width: 36, height: 36, borderRadius: '8px', background: `linear-gradient(135deg, ${RR_RED}, ${RR_RED_DARK})`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <div style={{ width: 36, height: 36, borderRadius: '8px', background: `linear-gradient(135deg, ${MARCA}, ${MARCA_ESCURA})`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       <Settings size={16} color="#fff" />
                     </div>
                     <div>
@@ -989,31 +813,31 @@ export const LoginView: React.FC = () => {
                       <label style={{ position: 'relative', display: 'inline-block', width: '38px', height: '20px', flexShrink: 0, cursor: c.required ? 'not-allowed' : 'pointer', opacity: c.required ? 0.7 : 1 }}>
                         <input type="checkbox" checked={cookiePrefs[c.key]} disabled={c.required}
                           onChange={(e) => setCookiePrefs((prev) => ({ ...prev, [c.key]: e.target.checked }))} style={{ opacity: 0, width: 0, height: 0 }} />
-                        <span style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: cookiePrefs[c.key] ? RR_RED : mode === 'dark' ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)', borderRadius: '20px', transition: 'background 0.2s' }} />
+                        <span style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: cookiePrefs[c.key] ? MARCA : mode === 'dark' ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)', borderRadius: '20px', transition: 'background 0.2s' }} />
                         <span style={{ position: 'absolute', height: '14px', width: '14px', left: cookiePrefs[c.key] ? '21px' : '3px', top: '3px', background: '#fff', borderRadius: '50%', transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }} />
                       </label>
                     </div>
                   ))}
                 </div>
 
-                <div style={{ padding: '12px 14px', borderRadius: '10px', background: 'rgba(215,25,32,0.04)', border: `1px solid rgba(215,25,32,0.15)`, marginBottom: '14px' }}>
+                <div style={{ padding: '12px 14px', borderRadius: '10px', background: '${MARCA}0A', border: `1px solid ${MARCA}26`, marginBottom: '14px' }}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                     <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
                       <input type="checkbox" checked={acceptedTerms} onChange={(e) => setAcceptedTerms(e.target.checked)} style={{ display: 'none' }} />
-                      <div style={{ width: '16px', height: '16px', borderRadius: '4px', border: `1.5px solid ${acceptedTerms ? RR_RED : t.border}`, background: acceptedTerms ? RR_RED : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <div style={{ width: '16px', height: '16px', borderRadius: '4px', border: `1.5px solid ${acceptedTerms ? MARCA : t.border}`, background: acceptedTerms ? MARCA : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                         {acceptedTerms && <Check size={10} color="#fff" strokeWidth={3} />}
                       </div>
                       <span style={{ fontSize: '12px', color: t.textSecondary }}>
-                        Aceito os <button type="button" onClick={(e) => { e.preventDefault(); setIsTermsModalOpen(true); }} style={{ background: 'none', border: 'none', color: RR_RED, cursor: 'pointer', padding: 0, fontSize: '12px', fontWeight: 600, textDecoration: 'underline' }}>Termos de Uso</button>
+                        Aceito os <button type="button" onClick={(e) => { e.preventDefault(); setIsTermsModalOpen(true); }} style={{ background: 'none', border: 'none', color: MARCA, cursor: 'pointer', padding: 0, fontSize: '12px', fontWeight: 600, textDecoration: 'underline' }}>Termos de Uso</button>
                       </span>
                     </label>
                     <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
                       <input type="checkbox" checked={acceptedPrivacy} onChange={(e) => setAcceptedPrivacy(e.target.checked)} style={{ display: 'none' }} />
-                      <div style={{ width: '16px', height: '16px', borderRadius: '4px', border: `1.5px solid ${acceptedPrivacy ? RR_RED : t.border}`, background: acceptedPrivacy ? RR_RED : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <div style={{ width: '16px', height: '16px', borderRadius: '4px', border: `1.5px solid ${acceptedPrivacy ? MARCA : t.border}`, background: acceptedPrivacy ? MARCA : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                         {acceptedPrivacy && <Check size={10} color="#fff" strokeWidth={3} />}
                       </div>
                       <span style={{ fontSize: '12px', color: t.textSecondary }}>
-                        Aceito a <button type="button" onClick={(e) => { e.preventDefault(); setIsPrivacyModalOpen(true); }} style={{ background: 'none', border: 'none', color: RR_RED, cursor: 'pointer', padding: 0, fontSize: '12px', fontWeight: 600, textDecoration: 'underline' }}>Política de Privacidade</button> (LGPD)
+                        Aceito a <button type="button" onClick={(e) => { e.preventDefault(); setIsPrivacyModalOpen(true); }} style={{ background: 'none', border: 'none', color: MARCA, cursor: 'pointer', padding: 0, fontSize: '12px', fontWeight: 600, textDecoration: 'underline' }}>Política de Privacidade</button> (LGPD)
                       </span>
                     </label>
                   </div>
@@ -1024,7 +848,7 @@ export const LoginView: React.FC = () => {
                     Rejeitar opcionais
                   </button>
                   <button onClick={handleSaveCustom} disabled={!acceptedTerms || !acceptedPrivacy}
-                    style={{ padding: '9px 18px', borderRadius: '8px', border: 'none', background: !acceptedTerms || !acceptedPrivacy ? t.textMuted : RR_RED, color: '#fff', fontSize: '12px', fontWeight: 600, cursor: !acceptedTerms || !acceptedPrivacy ? 'not-allowed' : 'pointer', boxShadow: acceptedTerms && acceptedPrivacy ? '0 4px 14px rgba(215,25,32,0.3)' : 'none' }}>
+                    style={{ padding: '9px 18px', borderRadius: '8px', border: 'none', background: !acceptedTerms || !acceptedPrivacy ? t.textMuted : MARCA, color: SOBRE_MARCA, fontSize: '12px', fontWeight: 600, cursor: !acceptedTerms || !acceptedPrivacy ? 'not-allowed' : 'pointer', boxShadow: acceptedTerms && acceptedPrivacy ? `0 4px 14px ${MARCA}4D` : 'none' }}>
                     Salvar preferências
                   </button>
                 </div>
@@ -1038,7 +862,7 @@ export const LoginView: React.FC = () => {
           MODALS
       ============================================ */}
       {isTermsModalOpen && (
-        <LegalModal title="Termos de Uso" subtitle="Última atualização: 15/01/2026 · v1.0.0" icon={FileText} onClose={() => setIsTermsModalOpen(false)} theme={t} mode={mode} rrRed={RR_RED}>
+        <LegalModal title="Termos de Uso" subtitle="Última atualização: 15/01/2026 · v1.0.0" icon={FileText} onClose={() => setIsTermsModalOpen(false)} theme={t} mode={mode} rrRed={MARCA}>
           <LS t="1. Aceitação dos Termos" th={t}>Ao acessar e utilizar a plataforma RR Mind, você concorda em cumprir estes Termos de Uso. Se você não concorda com qualquer parte destes termos, não deve utilizar a plataforma.</LS>
           <LS t="2. Descrição do Serviço" th={t}>A RR Mind é uma plataforma de inteligência comercial que oferece ferramentas de análise de dados, gestão de vendas e insights estratégicos para empresas distribuidoras.</LS>
           <LS t="3. Cadastro e Conta" th={t}><p>• Você é responsável por manter a confidencialidade de suas credenciais.</p><p>• Todas as atividades em sua conta são de sua responsabilidade.</p><p>• Notifique imediatamente sobre uso não autorizado.</p></LS>
@@ -1051,7 +875,7 @@ export const LoginView: React.FC = () => {
       )}
 
       {isPrivacyModalOpen && (
-        <LegalModal title="Política de Privacidade" subtitle="LGPD (Lei nº 13.709/2018) · 15/01/2026" icon={Shield} onClose={() => setIsPrivacyModalOpen(false)} theme={t} mode={mode} rrRed={RR_RED}>
+        <LegalModal title="Política de Privacidade" subtitle="LGPD (Lei nº 13.709/2018) · 15/01/2026" icon={Shield} onClose={() => setIsPrivacyModalOpen(false)} theme={t} mode={mode} rrRed={MARCA}>
           <LS t="1. Dados Coletados" th={t}><p><strong>Identificação:</strong> Nome, e-mail, cargo, empresa.</p><p><strong>Uso:</strong> Logs, IP, navegador, SO.</p><p><strong>Negócio:</strong> Dados comerciais, metas, vendas.</p></LS>
           <LS t="2. Base Legal (Art. 7º)" th={t}><p>• <strong>Consentimento</strong> — cookies opcionais</p><p>• <strong>Execução de contrato</strong> — serviços</p><p>• <strong>Legítimo interesse</strong> — segurança</p><p>• <strong>Obrigação legal</strong></p></LS>
           <LS t="3. Finalidade" th={t}><p>• Autenticação e controle de acesso</p><p>• Personalização da experiência</p><p>• Análise de performance</p><p>• Cumprimento de obrigações legais</p></LS>
@@ -1075,24 +899,24 @@ export const LoginView: React.FC = () => {
                 <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'rgba(61,214,140,0.12)', border: '1px solid rgba(61,214,140,0.3)', color: '#3DD68C', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px', animation: 'rr-checkIn 0.4s' }}>
                   <CheckCircle2 size={28} />
                 </div>
-                <h3 style={{ margin: '0 0 10px', fontSize: '20px', fontWeight: 700, color: t.text, fontFamily: "'Space Grotesk', sans-serif" }}>Instruções enviadas</h3>
+                <h3 style={{ margin: '0 0 10px', fontSize: '20px', fontWeight: 700, color: t.text, fontFamily: 'var(--ga-display)' }}>Instruções enviadas</h3>
                 <p style={{ margin: '0 0 24px', fontSize: '13.5px', color: t.textSecondary, lineHeight: 1.55 }}>
                   Link enviado para <strong style={{ color: t.text }}>{forgotEmail || email}</strong>. Verifique sua caixa de entrada.
                 </p>
                 <button type="button" onClick={() => { setIsForgotModalOpen(false); setForgotSubmitted(false); }}
-                  style={{ padding: '11px 24px', borderRadius: '10px', border: 'none', background: RR_RED, color: '#fff', fontWeight: 600, fontSize: '13.5px', cursor: 'pointer', boxShadow: '0 6px 20px rgba(215,25,32,0.3)' }}>
+                  style={{ padding: '11px 24px', borderRadius: '10px', border: 'none', background: MARCA, color: SOBRE_MARCA, fontWeight: 600, fontSize: '13.5px', cursor: 'pointer', boxShadow: `0 6px 20px ${MARCA}4D` }}>
                   Retornar ao login
                 </button>
               </div>
             ) : (
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
-                  <div style={{ width: 36, height: 36, borderRadius: '10px', background: `linear-gradient(135deg, ${RR_RED}, ${RR_RED_DARK})`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <div style={{ width: 36, height: 36, borderRadius: '10px', background: `linear-gradient(135deg, ${MARCA}, ${MARCA_ESCURA})`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     <Mail size={17} color="#fff" />
                   </div>
                   <span style={{ fontSize: '10.5px', color: t.textMuted, textTransform: 'uppercase', letterSpacing: '2px', fontWeight: 500 }}>Recuperação</span>
                 </div>
-                <h3 style={{ margin: '0 0 8px', fontSize: '22px', fontWeight: 700, color: t.text, fontFamily: "'Space Grotesk', sans-serif" }}>Recuperar senha</h3>
+                <h3 style={{ margin: '0 0 8px', fontSize: '22px', fontWeight: 700, color: t.text, fontFamily: 'var(--ga-display)' }}>Recuperar senha</h3>
                 <p style={{ margin: '0 0 24px', fontSize: '13.5px', color: t.textSecondary, lineHeight: 1.55 }}>
                   Informe seu e-mail cadastrado para receber o token de redefinição.
                 </p>
@@ -1100,13 +924,13 @@ export const LoginView: React.FC = () => {
                   <div style={{ marginBottom: '22px' }}>
                     <label style={{ display: 'block', fontSize: '10.5px', color: t.textMuted, marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '1.5px', fontWeight: 500 }}>E-mail corporativo</label>
                     <input type="email" value={forgotEmail || email} onChange={(e) => setForgotEmail(sanitizeIdentifier(e.target.value))} maxLength={100} required placeholder="Seu email ou código"
-                      style={{ width: '100%', boxSizing: 'border-box', padding: '13px 16px', borderRadius: '12px', border: `1px solid ${t.border}`, background: mode === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)', color: t.text, fontSize: '14px', fontFamily: "'Inter', sans-serif", outline: 'none', transition: 'border-color 0.2s' }}
-                      onFocus={(e) => (e.currentTarget.style.borderColor = RR_RED)} onBlur={(e) => (e.currentTarget.style.borderColor = t.border)}
+                      style={{ width: '100%', boxSizing: 'border-box', padding: '13px 16px', borderRadius: '12px', border: `1px solid ${t.border}`, background: mode === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)', color: t.text, fontSize: '14px', fontFamily: 'var(--ga-sans)', outline: 'none', transition: 'border-color 0.2s' }}
+                      onFocus={(e) => (e.currentTarget.style.borderColor = MARCA)} onBlur={(e) => (e.currentTarget.style.borderColor = t.border)}
                     />
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
                     <button type="button" onClick={() => setIsForgotModalOpen(false)} style={{ padding: '10px 18px', borderRadius: '10px', border: `1px solid ${t.border}`, background: 'transparent', color: t.textSecondary, fontSize: '13.5px', cursor: 'pointer', fontWeight: 500 }}>Cancelar</button>
-                    <button type="submit" style={{ padding: '10px 20px', borderRadius: '10px', border: 'none', background: RR_RED, color: '#fff', fontSize: '13.5px', fontWeight: 600, cursor: 'pointer', boxShadow: '0 6px 20px rgba(215,25,32,0.3)' }}>Enviar link</button>
+                    <button type="submit" style={{ padding: '10px 20px', borderRadius: '10px', border: 'none', background: MARCA, color: SOBRE_MARCA, fontSize: '13.5px', fontWeight: 600, cursor: 'pointer', boxShadow: `0 6px 20px ${MARCA}4D` }}>Enviar link</button>
                   </div>
                 </form>
               </div>
@@ -1199,7 +1023,7 @@ export const LoginView: React.FC = () => {
 
         .rr-submit-btn:not(.disabled):hover {
           transform: translateY(-2px) !important;
-          box-shadow: 0 14px 40px ${RR_RED}45 !important;
+          box-shadow: 0 14px 40px ${MARCA}45 !important;
           filter: brightness(1.08);
         }
         .rr-submit-btn:not(.disabled):hover .rr-arrow-icon {
@@ -1211,14 +1035,14 @@ export const LoginView: React.FC = () => {
         }
 
         .rr-theme-toggle:hover {
-          border-color: ${RR_RED}50 !important;
-          color: ${RR_RED} !important;
-          background: ${mode === 'dark' ? 'rgba(215,25,32,0.06)' : 'rgba(215,25,32,0.03)'} !important;
+          border-color: ${MARCA}50 !important;
+          color: ${MARCA} !important;
+          background: ${mode === 'dark' ? '${MARCA}0F' : '${MARCA}07'} !important;
           transform: scale(1.08);
         }
 
         .rr-forgot-link:hover {
-          color: ${RR_RED_DARK} !important;
+          color: ${MARCA_ESCURA} !important;
           text-decoration: underline;
         }
 
@@ -1227,12 +1051,12 @@ export const LoginView: React.FC = () => {
         }
 
         .rr-legal-link:hover {
-          color: ${RR_RED} !important;
+          color: ${MARCA} !important;
           text-decoration: underline;
         }
 
         .rr-accept-all-btn:hover {
-          background: ${RR_RED_DARK} !important;
+          background: ${MARCA_ESCURA} !important;
           transform: translateY(-1px);
         }
 

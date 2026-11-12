@@ -33,178 +33,206 @@ USER_SELECT = """
       equipe AS team,
       supervisor,
       NULL::text AS manager,
+      fabricante AS manufacturer,
       status,
       last_login_at,
       COALESCE(extra_permissions, '{}'::text[]) AS extra_permissions
     FROM usuarios
 """
 
-# Espelho de src/types.ts (Permission). "dashboard.view" cobre o grupo Principal
-# (Dashboard + Visão Macro) e NÃO é concedido ao VENDEDOR: esses painéis são
-# apenas para os perfis de gestão.
+# Espelho de src/types.ts (Permission).
 #
-# Os quatro papéis originais (ADMIN/GERENTE/SUPERVISOR/VENDEDOR) mantêm exatamente
-# as permissões que já tinham; os acrescentados na evolução entram ao lado deles.
-# "margin.view" é o que libera margem/custo — quem não a tem recebe margem nula
-# do backend, não apenas um campo escondido na tela.
+# ╔══════════════════════════════════════════════════════════════════════════╗
+# ║ MATRIZ DE PERFIS — 10 papeis                                             ║
+# ╠══════════════════════════════════════════════════════════════════════════╣
+# ║ SUPERADMIN         total       altera tudo, sem portao                    ║
+# ║ ADMIN              total       altera mediante confirmacao                ║
+# ║ GERENTE_COMERCIAL  total       so leitura  (COM margens)                  ║
+# ║ GERENTE_VENDAS     total       so leitura  (SEM margens)                  ║
+# ║ COMPRADOR          total       altera apos liberacao do admin             ║
+# ║ SUPERVISOR         equipe      so leitura                                 ║
+# ║ ANALISTA           total       altera apos liberacao do admin             ║
+# ║ FORNECEDOR         fabricante  so leitura, so a Visual Fabricantes        ║
+# ║ VENDEDOR           proprio     so leitura                                 ║
+# ║ SAR                total       altera apos liberacao do admin             ║
+# ╚══════════════════════════════════════════════════════════════════════════╝
+#
+# Duas dimensoes INDEPENDENTES, e e importante nao confundi-las:
+#
+#   1. O que o papel VE        -> ROLE_PERMISSIONS (abaixo) + scope_filters
+#   2. O que o papel ALTERA    -> MODO_ESCRITA (abaixo) + require_write
+#
+# "Acesso total" nesta matriz significa toda a leitura COMERCIAL da
+# plataforma. A administracao da propria plataforma (cadastro de usuarios,
+# importacoes e exportacoes) continua restrita a SUPERADMIN e ADMIN: e o que
+# separa "ver tudo" de "administrar tudo".
+#
+# "margin.view" e o que libera margem/custo. Quem nao a tem recebe margem
+# nula do backend, nao um campo escondido na tela.
+
+#: Leitura comercial completa — a base de "acesso total".
+_LEITURA_TOTAL = [
+    "sales-board.view",
+    "categories.view",
+    "dashboard.view",
+    "targets.view",
+    "customers.view",
+    "products.view",
+    "settings.view",
+    "manufacturers.view",
+    "manufacturers.export",
+    "comparisons.view",
+    "simulations.run",
+    "calendar.view",
+    "purchasing.view",
+    "sar.view",
+    "search.global",
+]
+
+#: Permissoes de ESCRITA. Só entram nos papeis que podem alterar alguma coisa
+#: — inclusive nos que dependem de liberacao, porque ali o portao e o
+#: MODO_ESCRITA, não a ausencia da permissao. Papel de leitura nao recebe
+#: nenhuma delas: assim, mesmo que um portao falhe, nao ha o que escrever.
+_ESCRITA_OPERACIONAL = [
+    "targets.create",
+    "targets.edit",
+    "customers.edit",
+    "calendar.edit",
+    "purchasing.edit",
+]
+
 ROLE_PERMISSIONS: dict[str, list[str]] = {
+    # Acesso tecnico irrestrito + manutencao da plataforma. Altera qualquer
+    # criterio e parametro sem portao nenhum.
+    "SUPERADMIN": ["admin.full_access", "platform.manage"],
+    # Mesma alcada de leitura e escrita do SUPERADMIN; a diferenca esta no
+    # MODO_ESCRITA, que exige confirmacao explicita a cada alteracao.
     "ADMIN": ["admin.full_access"],
-    "GERENTE": [
-        "sales-board.view",
-        "categories.view",
-        "dashboard.view",
-        "targets.view",
-        "customers.view",
-        "products.view",
-        "settings.view",
-        "margin.view",
+    # Acesso total COM visual das margens, sem alterar nada.
+    "GERENTE_COMERCIAL": [*_LEITURA_TOTAL, "audit.view", "margin.view"],
+    # Acesso total SEM visual das margens, sem alterar nada.
+    "GERENTE_VENDAS": [*_LEITURA_TOTAL, "audit.view"],
+    # Acesso total; altera apos liberacao do admin.
+    "COMPRADOR": [*_LEITURA_TOTAL, "margin.view", *_ESCRITA_OPERACIONAL],
+    "ANALISTA": [*_LEITURA_TOTAL, "margin.view", *_ESCRITA_OPERACIONAL],
+    "SAR": [*_LEITURA_TOTAL, "margin.view", *_ESCRITA_OPERACIONAL],
+    # Somente visualizacao, e so dos dados da propria equipe. O recorte por
+    # equipe e aplicado no SQL por scope_filters, nao na tela.
+    "SUPERVISOR": _LEITURA_TOTAL,
+    # Somente visualizacao, e so dos proprios dados (recorte por codigo de
+    # vendedor, tambem no SQL).
+    "VENDEDOR": _LEITURA_TOTAL,
+    # Representante do fabricante (perfil EXTERNO). Enxerga somente a Visual
+    # Fabricantes, e dentro dela somente o fabricante vinculado ao cadastro
+    # dele. NUNCA margem, em combinacao nenhuma de filtros.
+    "FORNECEDOR": [
         "manufacturers.view",
-        "comparisons.view",
-        "simulations.run",
-        "calendar.view",
-        "calendar.edit",
-        "sar.view",
-        "search.global",
-    ],
-    "SUPERVISOR": [
-        "sales-board.view",
-        "categories.view",
-        "dashboard.view",
+        "manufacturers.export",
         "targets.view",
-        "customers.view",
-        "products.view",
-        "manufacturers.view",
-        "calendar.view",
-        "sar.view",
-        "search.global",
-    ],
-    "VENDEDOR": [
-        "sales-board.view",
-        "categories.view",
-        # Seção 5 do escopo: "todos os usuários têm o Dashboard como página
-        # inicial", com o conteúdo mudando conforme o perfil. O Vendedor passou
-        # a ter acesso — e `scope_filters` continua travando a consulta no
-        # próprio código dele, então ele só vê os próprios números.
-        "dashboard.view",
-        "targets.view",
-        "customers.view",
-        "products.view",
-        "calendar.view",
-        "sar.view",
-        "search.global",
-    ],
-    # Visão geral e consolidada de vendas, equipes, fabricantes e categorias,
-    # com faturamento, margem, cobertura e investimentos + comparativos/simulações.
-    "GERENTE_COMERCIAL": [
-        "sales-board.view",
-        "categories.view",
-        "dashboard.view",
-        "targets.view",
-        "customers.view",
-        "products.view",
-        "settings.view",
-        "margin.view",
-        "manufacturers.view",
-        "purchasing.view",
-        "comparisons.view",
-        "simulations.run",
-        "calendar.view",
-        "calendar.edit",
-        "sar.view",
-        "search.global",
-    ],
-    # Vendas de todas as equipes/vendedores: faturamento, metas, cobertura,
-    # rankings e comparativos. Sem o módulo de compras.
-    "GERENTE_VENDAS": [
-        "sales-board.view",
-        "categories.view",
-        "dashboard.view",
-        "targets.view",
-        "customers.view",
-        "products.view",
-        "manufacturers.view",
-        "comparisons.view",
-        "simulations.run",
-        "calendar.view",
-        "calendar.edit",
-        "sar.view",
-        "search.global",
-    ],
-    # Fornecedores, negociações, pedidos de compra, custos, descontos,
-    # bonificações e investimentos — por isso margem/custo liberados.
-    "COMPRADOR": [
-        "categories.view",
-        "dashboard.view",
-        "targets.view",
-        "products.view",
-        "customers.view",
-        "margin.view",
-        "manufacturers.view",
-        "purchasing.view",
-        "purchasing.edit",
-        "calendar.view",
-        "calendar.edit",
-        "sar.view",
-        "search.global",
-    ],
-    # Dados comerciais autorizados + acompanhamento de fabricantes/categorias.
-    # Sem margem (não é dado de responsabilidade do analista por padrão).
-    "ANALISTA": [
-        "sales-board.view",
-        "categories.view",
-        "dashboard.view",
-        "targets.view",
-        "customers.view",
-        "products.view",
-        "manufacturers.view",
-        "calendar.view",
-        "calendar.edit",
-        "sar.view",
-        "search.global",
-    ],
-    # Produtividade diária, Raio-X, visitas, positivação, roteiro, VDI e km.
-    "SAR": [
-        "dashboard.view",
-        "customers.view",
-        "products.view",
-        "sar.view",
-        "calendar.view",
-        "calendar.edit",
-        "search.global",
     ],
 }
 
 ROLE_LABELS = {
+    "SUPERADMIN": "Super Administrador",
     "ADMIN": "Administrador",
-    "GERENTE": "Gerência",
     "GERENTE_COMERCIAL": "Gerente Comercial",
     "GERENTE_VENDAS": "Gerente de Vendas",
-    "SUPERVISOR": "Supervisor",
-    "VENDEDOR": "Vendedor",
     "COMPRADOR": "Comprador",
+    "SUPERVISOR": "Supervisor",
     "ANALISTA": "Analista",
+    "FORNECEDOR": "Fornecedor",
+    "VENDEDOR": "Vendedor",
     "SAR": "SAR",
 }
 
-#: Papéis com visão consolidada (não travam equipe/vendedor no escopo de dados).
-ROLES_VISAO_GERAL = ("ADMIN", "GERENTE", "GERENTE_COMERCIAL", "GERENTE_VENDAS")
+# ── Modos de alteracao ──────────────────────────────────────────────────────
+#
+#   "livre"        altera direto
+#   "confirmacao"  altera, mas cada requisicao precisa vir confirmada
+#   "liberacao"    altera so enquanto houver liberacao ativa concedida pelo admin
+#   "leitura"      nao altera nada
+#
+MODO_LIVRE = "livre"
+MODO_CONFIRMACAO = "confirmacao"
+MODO_LIBERACAO = "liberacao"
+MODO_LEITURA = "leitura"
 
-#: Descrição do escopo mostrada na faixa "Escopo Ativo" para os perfis de apoio.
-ROLE_APOIO_LABEL_HINT = {
-    "COMPRADOR": "Compras (Fornecedores, negociações, custos e investimentos de toda a empresa)",
-    "ANALISTA": "Análise (Dados comerciais autorizados das categorias acompanhadas)",
-    "SAR": "SAR (Produtividade, roteiro e positivação de todas as equipes)",
+MODO_ESCRITA: dict[str, str] = {
+    "SUPERADMIN": MODO_LIVRE,
+    "ADMIN": MODO_CONFIRMACAO,
+    "GERENTE_COMERCIAL": MODO_LEITURA,
+    "GERENTE_VENDAS": MODO_LEITURA,
+    "COMPRADOR": MODO_LIBERACAO,
+    "SUPERVISOR": MODO_LEITURA,
+    "ANALISTA": MODO_LIBERACAO,
+    "FORNECEDOR": MODO_LEITURA,
+    "VENDEDOR": MODO_LEITURA,
+    "SAR": MODO_LIBERACAO,
 }
 
-#: Papéis que enxergam toda a empresa mas são de apoio (compras/análise/SAR):
-#: também não travam escopo, pois acompanham fabricantes e operação inteira.
+#: Cabecalho que o navegador envia para confirmar uma alteracao (modo
+#: "confirmacao"). A tela so o envia depois que a pessoa confirma no dialogo.
+CABECALHO_CONFIRMACAO = "x-confirmar-alteracao"
+
+#: Papeis com alcada administrativa plena. SUPERADMIN acompanha o ADMIN em
+#: toda checagem que antes comparava `role == "ADMIN"`.
+ROLES_ADMIN = ("SUPERADMIN", "ADMIN")
+
+#: Papeis com visao consolidada (nao travam equipe/vendedor no escopo).
+ROLES_VISAO_GERAL = (*ROLES_ADMIN, "GERENTE_COMERCIAL", "GERENTE_VENDAS")
+
+#: Descricao do escopo mostrada na faixa "Escopo Ativo" dos perfis de apoio.
+ROLE_APOIO_LABEL_HINT = {
+    "COMPRADOR": "Compras (Fornecedores, negociacoes, custos e investimentos de toda a empresa)",
+    "ANALISTA": "Analise (Dados comerciais autorizados de toda a empresa)",
+    "SAR": "SAR (Produtividade, roteiro e positivacao de todas as equipes)",
+}
+
+#: Papeis que enxergam toda a empresa mas sao de apoio (compras/analise/SAR).
 ROLES_APOIO_GLOBAL = ("COMPRADOR", "ANALISTA", "SAR")
+
+
+def modo_escrita(role: str | None) -> str:
+    """Como este papel altera dados. Papel desconhecido nao altera nada."""
+    return MODO_ESCRITA.get(str(role or "").upper(), MODO_LEITURA)
+
+
+def is_admin(role: str | None) -> bool:
+    """True para SUPERADMIN e ADMIN - a alcada administrativa plena."""
+    return str(role or "").upper() in ROLES_ADMIN
+
+
+#: Caminhos que o perfil FORNECEDOR pode alcançar.
+#:
+#: Ele é um perfil EXTERNO: representa o fabricante, não a CHOK. Boa parte das
+#: rotas internas (dashboard consolidado, quadros, catálogo, opções de filtro,
+#: SAR) usa só `get_current_user`, sem permissão específica, porque até agora
+#: todo perfil autenticado era interno. Conferir permissão rota a rota deixaria
+#: uma pendente no primeiro endpoint novo que alguém escrevesse — e a falha
+#: seria silenciosa, entregando dado a quem não deve.
+#:
+#: Por isso a regra é invertida aqui: para o fornecedor, tudo é negado, menos o
+#: que esta lista libera. Esquecer de incluir algo custa um 403 visível; o
+#: contrário custaria um vazamento.
+FORNECEDOR_PERMITIDO = (
+    "/api/auth/",
+    "/api/twofa/",
+    "/api/insights/visual/",
+    # O próprio estado de escrita: devolve só o modo DELE, que é sempre
+    # "leitura". É o que faz o selo do topo dizer "somente visualização" em
+    # vez de não aparecer.
+    "/api/acessos/meu-estado",
+)
+
+
+def _fornecedor_pode_acessar(caminho: str) -> bool:
+    return any(caminho.startswith(prefixo) for prefixo in FORNECEDOR_PERMITIDO)
 
 
 def has_permission(user: dict[str, Any], permission: str) -> bool:
     """Checagem de permissão no SERVIDOR (não confia no que a tela manda)."""
     role = str(user.get("role") or "")
-    if role == "ADMIN":
+    if is_admin(role):
         return True
     granted = permissions_for(role, list(user.get("extra_permissions") or []))
     return "admin.full_access" in granted or permission in granted
@@ -226,6 +254,168 @@ def require_permission(permission: str):
         return user
 
     return _dep
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Portão de escrita (RF da matriz de perfis)
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# Toda rota que ALTERA dado comercial passa por `require_write`. Ela não
+# substitui a permissão: confere a permissão E depois o modo de escrita do
+# papel. Os dois precisam passar.
+#
+# O que NÃO passa por aqui, de propósito: login, 2FA, logout e as ações que o
+# usuário faz na própria conta (avatar, senha). Isso é autoatendimento, não
+# alteração de critério ou parâmetro do negócio — travar um perfil de leitura
+# fora da própria conta não significa impedi-lo de entrar no sistema.
+
+_liberacoes_prontas = False
+
+
+def _garantir_tabela_liberacoes(conn: Any) -> None:
+    """Cria a tabela na primeira consulta, para a rota funcionar antes da migration."""
+    global _liberacoes_prontas
+    if _liberacoes_prontas:
+        return
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS liberacoes_escrita (
+          id             BIGSERIAL PRIMARY KEY,
+          usuario_id     TEXT NOT NULL,
+          usuario_email  TEXT,
+          concedido_por  TEXT,
+          concedido_em   TIMESTAMPTZ NOT NULL DEFAULT now(),
+          expira_em      TIMESTAMPTZ NOT NULL,
+          motivo         TEXT,
+          revogado_em    TIMESTAMPTZ,
+          revogado_por   TEXT
+        )
+        """
+    )
+    conn.commit()
+    _liberacoes_prontas = True
+
+
+def liberacao_ativa(user_id: str) -> dict[str, Any] | None:
+    """Liberação em vigor deste usuário, se houver. Expirada ou revogada não conta."""
+    try:
+        with get_connection() as conn:
+            _garantir_tabela_liberacoes(conn)
+            return conn.execute(
+                """
+                SELECT id, concedido_por, concedido_em, expira_em, motivo
+                FROM liberacoes_escrita
+                WHERE usuario_id = %s AND revogado_em IS NULL AND expira_em > now()
+                ORDER BY expira_em DESC
+                LIMIT 1
+                """,
+                (str(user_id),),
+            ).fetchone()
+    except Exception:  # noqa: BLE001 — sem liberação legível, não libera
+        return None
+
+
+def confirmacao_presente(request: Request) -> bool:
+    """O navegador confirmou esta alteração?
+
+    A tela só manda este cabeçalho depois que a pessoa confirma no diálogo.
+    Ele é uma confirmação de INTENÇÃO, não uma credencial: quem o envia já
+    está autenticado e já tem a permissão. O que ele evita é a alteração
+    disparada sem querer.
+    """
+    valor = request.headers.get(CABECALHO_CONFIRMACAO) or ""
+    return valor.strip().lower() in ("1", "true", "sim", "confirmado")
+
+
+def require_write(permission: str):
+    """Dependency das rotas que alteram dados.
+
+    Devolve 403 para papel de leitura, 428 para quem precisa confirmar e ainda
+    não confirmou, e 403 com código próprio para quem depende de liberação e
+    não tem nenhuma ativa. Os códigos vão em `detail` como objeto, para a tela
+    saber qual caminho oferecer (abrir o diálogo de confirmação ou explicar
+    que falta liberação) em vez de mostrar um erro genérico.
+    """
+
+    def _dep(
+        request: Request,
+        user: dict[str, Any] = Depends(get_current_user),
+    ) -> dict[str, Any]:
+        modo = modo_escrita(user.get("role"))
+
+        # O modo vem antes da permissão de propósito. Um perfil de leitura
+        # também não tem a permissão de escrita (as duas travas existem), mas
+        # dizer "você não tem permissão" a um Gerente Comercial, que enxerga
+        # tudo, confunde. "Seu perfil é de visualização" explica o desenho.
+        if modo == MODO_LEITURA:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "codigo": "somente_leitura",
+                    "mensagem": (
+                        "Seu perfil tem acesso de visualização. Alterações precisam ser feitas por um "
+                        "perfil com permissão de escrita."
+                    ),
+                },
+            )
+
+        if not has_permission(user, permission):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "codigo": "sem_permissao",
+                    "mensagem": "Seu perfil não tem permissão para esta operação.",
+                },
+            )
+
+        if modo == MODO_LIVRE:
+            return user
+
+        if modo == MODO_CONFIRMACAO:
+            if confirmacao_presente(request):
+                return user
+            raise HTTPException(
+                status_code=status.HTTP_428_PRECONDITION_REQUIRED,
+                detail={
+                    "codigo": "confirmacao_necessaria",
+                    "mensagem": "Esta alteração precisa ser confirmada antes de ser aplicada.",
+                },
+            )
+
+        if modo == MODO_LIBERACAO:
+            ativa = liberacao_ativa(str(user.get("id")))
+            if ativa:
+                return user
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "codigo": "liberacao_necessaria",
+                    "mensagem": (
+                        "Seu perfil altera dados apenas com liberação do administrador. "
+                        "Peça a liberação e tente novamente."
+                    ),
+                },
+            )
+
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"codigo": "somente_leitura", "mensagem": "Alteração não permitida para este perfil."},
+        )
+
+    return _dep
+
+
+def estado_escrita(user: dict[str, Any]) -> dict[str, Any]:
+    """Resumo que a tela usa para saber o que oferecer ao usuário."""
+    modo = modo_escrita(user.get("role"))
+    ativa = liberacao_ativa(str(user.get("id"))) if modo == MODO_LIBERACAO else None
+    return {
+        "modo": modo,
+        "podeAlterar": modo in (MODO_LIVRE, MODO_CONFIRMACAO) or bool(ativa),
+        "exigeConfirmacao": modo == MODO_CONFIRMACAO,
+        "liberacaoExpiraEm": ativa["expira_em"].isoformat() if ativa else None,
+        "liberacaoConcedidaPor": ativa["concedido_por"] if ativa else None,
+    }
 
 
 def hash_password(plain: str) -> str:
@@ -367,7 +557,7 @@ def permissions_for(role: str, extra: list[str] | None = None) -> list[str]:
         for item in extra:
             if item not in base:
                 base.append(item)
-    if role == "ADMIN" and "admin.full_access" not in base:
+    if is_admin(role) and "admin.full_access" not in base:
         base.insert(0, "admin.full_access")
     return base
 
@@ -447,6 +637,14 @@ def get_current_user(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Usuário não encontrado.")
     if row["status"] != "Ativo":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Usuário inativo.")
+    # Perfil externo: só alcança as rotas do próprio escopo (ver
+    # FORNECEDOR_PERMITIDO). Vale para qualquer rota, inclusive as que não
+    # declaram permissão própria.
+    if row["role"] == "FORNECEDOR" and not _fornecedor_pode_acessar(request.url.path):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Este perfil acessa somente a visão do fabricante que representa.",
+        )
     # Disponível para rotas que precisam dos tempos da sessão (iat/exp), ex.: /auth/session.
     request.state.token_payload = payload
     return dict(row)
@@ -465,7 +663,7 @@ def require_import_access(
     if _api_key_valid(x_api_key):
         return None
     user = get_current_user(request, credentials)
-    if user["role"] != "ADMIN":
+    if not is_admin(user["role"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Somente administradores podem importar dados.",
@@ -475,7 +673,7 @@ def require_import_access(
 
 def require_roles(*roles: str):
     def _dep(user: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
-        if user["role"] == "ADMIN":
+        if is_admin(user["role"]):
             return user
         if user["role"] not in roles:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem permissão para esta operação.")

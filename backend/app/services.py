@@ -4,7 +4,24 @@ from datetime import date, datetime
 from typing import Any
 
 from app.schemas import DataScope, UserOut
-from app.security import ROLE_APOIO_LABEL_HINT, ROLE_LABELS, ROLES_APOIO_GLOBAL, ROLES_VISAO_GERAL, permissions_for
+from app.security import (
+    ROLE_APOIO_LABEL_HINT,
+    ROLE_LABELS,
+    ROLES_APOIO_GLOBAL,
+    ROLES_VISAO_GERAL,
+    is_admin,
+    permissions_for,
+)
+
+
+#: Chave impossível usada como recorte quando um FORNECEDOR ainda não tem
+#: fabricante vinculado: a consulta volta vazia em vez de voltar a base
+#: inteira. Nunca deve ser exibida ao usuário.
+#:
+#: Sem caractere de controle de propósito: o Postgres recusa o byte NUL dentro
+#: de um parâmetro de texto, e o erro de banco mascararia justamente o caso que
+#: esta constante existe para tratar.
+SEM_VINCULO = "__SEM_VINCULO_FABRICANTE__"
 
 
 def initials(name: str) -> str:
@@ -24,10 +41,27 @@ def format_last_login(value: datetime | None) -> str | None:
 
 def build_scope(row: dict[str, Any]) -> DataScope:
     role = row["role"]
-    if role == "ADMIN":
+    if is_admin(role):
+        descricao = (
+            "Visão Global da Empresa + manutenção da plataforma (acesso técnico irrestrito)"
+            if role == "SUPERADMIN"
+            else "Visão Global da Empresa (Acesso irrestrito a todos os dados e módulos)"
+        )
+        return DataScope(level="EMPRESA", description=descricao)
+    # Representante do fabricante: o escopo é o fabricante do cadastro dele.
+    # Sem vínculo preenchido o escopo fica vazio de propósito — e
+    # `scope_filters` devolve um fabricante impossível, para que a consulta
+    # volte vazia em vez de voltar "tudo".
+    if role == "FORNECEDOR":
+        fabricante = row.get("manufacturer")
         return DataScope(
-            level="EMPRESA",
-            description="Visão Global da Empresa (Acesso irrestrito a todos os dados e módulos)",
+            level="FORNECEDOR",
+            description=(
+                f"Fabricante {fabricante} (Acesso exclusivo aos resultados deste fabricante, sem margens)"
+                if fabricante
+                else "Fabricante não vinculado — nenhum dado comercial é liberado até o vínculo ser definido"
+            ),
+            manufacturer=fabricante,
         )
     # Perfis de apoio (Comprador, Analista, SAR): acompanham a empresa inteira
     # dentro do que o papel permite, mas sem o acesso irrestrito do ADMIN.
@@ -36,7 +70,7 @@ def build_scope(row: dict[str, Any]) -> DataScope:
             level="EMPRESA",
             description=ROLE_APOIO_LABEL_HINT.get(role, "Visão consolidada da empresa"),
         )
-    if role in ("GERENTE", "GERENTE_COMERCIAL", "GERENTE_VENDAS"):
+    if role in ("GERENTE_COMERCIAL", "GERENTE_VENDAS"):
         manager = row.get("manager") or "Gerência"
         return DataScope(
             level="GERENTE",
@@ -84,6 +118,7 @@ def user_to_out(row: dict[str, Any]) -> UserOut:
         team=row.get("team"),
         supervisor=row.get("supervisor"),
         manager=row.get("manager"),
+        manufacturer=row.get("manufacturer"),
         status=row.get("status") or "Ativo",
         lastLoginAt=format_last_login(row.get("last_login_at")),
         scope=build_scope(row),
@@ -115,6 +150,11 @@ def scope_filters(user: dict[str, Any]) -> dict[str, str | None]:
     role = user["role"]
     if role in ROLES_VISAO_GERAL or role in ROLES_APOIO_GLOBAL:
         return {}
+    if role == "FORNECEDOR":
+        # Representante do fabricante: recorte por fabricante, nunca por equipe
+        # ou vendedor. Sem vínculo no cadastro, devolve uma chave que não
+        # existe — a consulta volta vazia em vez de voltar a base inteira.
+        return {"fabricante": user.get("manufacturer") or SEM_VINCULO}
     if role == "SUPERVISOR":
         return {"equipe": user.get("team")}
     return {"vendedor": user.get("seller_code")}

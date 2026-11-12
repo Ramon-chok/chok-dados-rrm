@@ -15,6 +15,7 @@ import {
   ObjetivosFaseamentoResponse,
   DashboardFilterOptions,
 } from '../../lib/api';
+import { podeFiltrarEquipe, podeFiltrarVendedor } from '../../types';
 
 const fmt = (v: number) => `R$ ${v.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}`;
 const fmtPct = (v: number) => `${v.toFixed(1)}%`;
@@ -33,8 +34,8 @@ export const ObjetivosPage: React.FC = () => {
   // Admin/Gerência filtram por equipe ou vendedor; Supervisor só por
   // vendedor da própria equipe (equipe já travada no backend); Vendedor não
   // tem filtro (só vê os próprios dados).
-  const canFilterEquipe = role === 'ADMIN' || role === 'GERENTE';
-  const canFilterVendedor = role === 'ADMIN' || role === 'GERENTE' || role === 'SUPERVISOR';
+  const canFilterEquipe = podeFiltrarEquipe(role);
+  const canFilterVendedor = podeFiltrarVendedor(role);
 
   const [filterOptions, setFilterOptions] = useState<DashboardFilterOptions | null>(null);
   const [selectedEquipe, setSelectedEquipe] = useState('');

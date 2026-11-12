@@ -57,10 +57,12 @@ export const Footer: React.FC = () => {
                 boxShadow: `0 4px 12px ${t.primary}15, inset 0 0 0 1px ${t.primary}20`,
               }}
             >
+              {/* Ícone do grupo: símbolo branco sobre o degradê oficial. */}
               <img
-                src="/img/Chok Logo.png"
-                alt={APP_CONFIG.companyName}
-                style={{ width: 22, height: 'auto', objectFit: 'contain' }}
+                src="/img/marca/favicon.svg"
+                alt=""
+                aria-hidden="true"
+                style={{ width: 26, height: 26, borderRadius: 7, objectFit: 'contain' }}
               />
             </div>
             <div className="app-footer-brand-text">
@@ -68,7 +70,7 @@ export const Footer: React.FC = () => {
                 {APP_CONFIG.companyName}
               </div>
               <div className="app-footer-subtitle" style={{ color: t.primary }}>
-                Chokdados
+                Chok Dados · Grupo Arantes
               </div>
             </div>
           </div>

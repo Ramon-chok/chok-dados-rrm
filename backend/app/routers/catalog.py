@@ -9,7 +9,7 @@ from app.cache import cached
 from app.db import get_connection
 from app.sanitize import like_pattern
 from app.parse import parse_date_only
-from app.security import get_current_user
+from app.security import ROLES_VISAO_GERAL, get_current_user
 from app.services import iso, num, scope_filters
 
 router = APIRouter(tags=["catalog"])
@@ -416,7 +416,7 @@ def top_20_customers(
     próprios registros.
     """
     eff_equipe, eff_vendedor = _resolve_equipe_vendedor(user, equipe, vendedor)
-    eff_gerencia = gerencia if user["role"] in ("ADMIN", "GERENTE") else None
+    eff_gerencia = gerencia if user["role"] in ROLES_VISAO_GERAL else None
 
     params: list[Any] = []
     parts = ["1=1"]
