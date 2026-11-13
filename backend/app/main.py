@@ -31,7 +31,9 @@ from app.routers import (
     imports,
     insights,
     liberacoes,
+    metas,
     purchasing,
+    suporte,
     twofa,
     users,
     visual_fabricantes,
@@ -195,3 +197,7 @@ app.include_router(purchasing.router, prefix="/api")
 app.include_router(visual_fabricantes.router, prefix="/api")
 # Liberações de alteração: o portão de escrita dos perfis de apoio.
 app.include_router(liberacoes.router, prefix="/api")
+# Relato de bug (botão da faixa do topo).
+app.include_router(suporte.router, prefix="/api")
+# Metas definidas na tela (gerais e por fabricante).
+app.include_router(metas.router, prefix="/api")

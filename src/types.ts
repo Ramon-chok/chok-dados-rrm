@@ -247,7 +247,6 @@ export type PageId =
   | 'ai-chat'
   // Comercial
   | 'not-positivated'
-  | 'top-20-customers'
   | 'top-customers'
   | 'sortiments'
   | 'catalog'

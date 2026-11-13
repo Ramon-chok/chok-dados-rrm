@@ -143,6 +143,118 @@ export interface ClienteFabricantesResponse {
   }>;
 }
 
+/** Meta x realizado de um objetivo (faseamento, desconcentração, desafio). */
+export interface ObjetivoClienteBloco {
+  meta: number;
+  realizado: number;
+  pct: number;
+}
+
+/**
+ * Ficha do cliente (GET /analytics/cliente-detalhe).
+ *
+ * `fabricantes` traz valor REAL por fabricante (matriz cliente x fabricante
+ * da planilha de Não Positivados). Categoria e produto não existem por
+ * cliente em nenhuma base — ver `fetchClienteFabricanteItens`.
+ */
+export interface ClienteDetalheResponse {
+  cliente: {
+    codigo: string | null;
+    nome: string;
+    municipio: string | null;
+    codVendedor: string | null;
+    vendedor: string | null;
+    equipe: string | null;
+    gerencia: string | null;
+    eRede: boolean;
+    pontos: number;
+  };
+  venda: {
+    realizado: number;
+    mesAnterior: number;
+    mesAtual: number;
+    pctCrescMes: number;
+    trimestreAnterior: number;
+    trimestreAtual: number;
+    pctCrescTrimestre: number;
+    temComparativo: boolean;
+  };
+  carteira: {
+    total: number;
+    clientes: number;
+    participacao: number;
+    posicao: number;
+  };
+  meta: {
+    metaTotal: number;
+    realizadoVendedor: number;
+    pctAtingimento: number;
+    /** Quanto da meta total do vendedor este cliente sozinho cobre (%). */
+    contribuicaoNaMeta: number;
+    gap: number;
+    objetivos: {
+      faseamento: ObjetivoClienteBloco;
+      faseamentoII: ObjetivoClienteBloco;
+      desconcentracao: ObjetivoClienteBloco;
+      desafio: ObjetivoClienteBloco;
+    };
+  };
+  fabricantes: Array<{ fabricante: string; valor: number; part: number }>;
+  fonteFabricante: string | null;
+  avisos: string[];
+}
+
+export interface ClienteFabricanteItensResponse {
+  fabricante: string;
+  categorias: Array<{
+    categoria: string;
+    skus: number;
+    produtos: Array<{ codigo: string; produto: string; linha: string; precoTabela: number }>;
+  }>;
+  totalSkus: number;
+  /** Sempre false hoje: a base não guarda venda por item. */
+  temValorPorItem: boolean;
+  fonte: string;
+}
+
+/** Quantos meses a janela de análise soma. */
+export type JanelaCrescimento = 'mes' | 'trimestre' | 'semestre';
+/** Com o que a janela é comparada. */
+export type BaseCrescimento = 'anterior' | 'ano_anterior';
+
+export interface ClienteCrescimentoRow {
+  codigo: string;
+  nome: string | null;
+  vendedor: string | null;
+  codVendedor: string | null;
+  equipe: string | null;
+  municipio: string | null;
+  atual: number;
+  anterior: number;
+  diferenca: number;
+  /** null quando não havia base de comparação (cliente novo na janela). */
+  variacao: number | null;
+  movimento: 'cresceu' | 'caiu' | 'entrou' | 'estavel';
+}
+
+export interface ClientesCrescimentoResponse {
+  janela: JanelaCrescimento;
+  base: BaseCrescimento;
+  /** Competências somadas, em MM/AAAA. */
+  periodoAtual: string[];
+  periodoBase: string[];
+  crescimento: ClienteCrescimentoRow[];
+  queda: ClienteCrescimentoRow[];
+  resumo: {
+    clientes: number;
+    cresceram: number;
+    cairam: number;
+    estaveis: number;
+    ganho?: number;
+    perda?: number;
+  };
+}
+
 /**
  * Origem dos valores REALIZADOS devolvidos pelos quadros:
  *  - "api"   → vieram da API externa (ERP/BI) configurada no backend;
@@ -895,6 +1007,60 @@ export function fetchClienteFabricantes(params: {
   return request<ClienteFabricantesResponse>(`/analytics/cliente-fabricantes${qs(params)}`);
 }
 
+/**
+ * Ficha do cliente — abre ao clicar em um cliente no Dashboard, no TOP
+ * Clientes ou nos Não Positivados.
+ *
+ * `codigo` identifica um ponto de venda; `nome` identifica uma rede (vários
+ * códigos sob o mesmo nome comercial) e soma todos eles. O período é o mesmo
+ * já escolhido na tela — a ficha nunca inventa um recorte próprio.
+ */
+export function fetchClienteDetalhe(params: {
+  codigo?: string | null;
+  nome?: string;
+  ano?: number;
+  mes?: number;
+  start?: string;
+  end?: string;
+  equipe?: string;
+  vendedor?: string;
+}): Promise<ClienteDetalheResponse> {
+  return request<ClienteDetalheResponse>(`/analytics/cliente-detalhe${qs(params)}`);
+}
+
+/**
+ * Categorias e produtos de um fabricante, abertos dentro da ficha do cliente.
+ *
+ * Vem da Lista de Sortimento: é o PORTFÓLIO do fabricante, não a compra
+ * daquele cliente item a item — nenhuma base importada registra a venda no
+ * nível de produto (a venda é gravada no total do pedido). A resposta declara
+ * isso em `temValorPorItem: false` e a tela avisa o usuário.
+ */
+export function fetchClienteFabricanteItens(params: {
+  fabricante: string;
+}): Promise<ClienteFabricanteItensResponse> {
+  return request<ClienteFabricanteItensResponse>(`/analytics/cliente-fabricante-itens${qs(params)}`);
+}
+
+/**
+ * Carteira em crescimento x em queda entre duas janelas de tempo.
+ *
+ * `janela` é quanto se soma (1, 3 ou 6 meses terminando no período escolhido)
+ * e `base` é com o que se compara (a janela imediatamente anterior ou a mesma
+ * janela há 12 meses).
+ */
+export function fetchClientesCrescimento(params?: {
+  ano?: number;
+  mes?: number;
+  janela?: JanelaCrescimento;
+  base?: BaseCrescimento;
+  equipe?: string;
+  vendedor?: string;
+  limit?: number;
+}): Promise<ClientesCrescimentoResponse> {
+  return request<ClientesCrescimentoResponse>(`/commercial/clientes-crescimento${qs(params)}`);
+}
+
 export interface BoardQueryParams {
   ano?: number;
   mes?: number;
@@ -1341,4 +1507,122 @@ export function fetchVerbaIndenizatoria(params?: {
   dia?: string;
 }): Promise<VerbaIndenizatoriaResponse> {
   return request<VerbaIndenizatoriaResponse>(`/sar/verba-indenizatoria${qs(params)}`);
+}
+
+/** Relato enviado pelo botão "Reportar bug" da faixa do topo. */
+export interface RelatoBugPayload {
+  titulo: string;
+  descricao: string;
+  gravidade: 'baixa' | 'media' | 'alta';
+  /** Preenchidos automaticamente pela tela — ajudam a reproduzir o problema. */
+  pagina?: string;
+  navegador?: string;
+  tela?: string;
+}
+
+export function enviarRelatoBug(payload: RelatoBugPayload): Promise<{ ok: boolean; id: number; emailEnviado: boolean }> {
+  return request(`/suporte/bugs`, { method: 'POST', body: JSON.stringify(payload) });
+}
+
+
+/**
+ * Ficha do produto (Sortimento): clientes que compraram o item.
+ *
+ * Fonte: API externa do ERP. `fonte` diz de onde veio — "indisponivel" quando
+ * a API ainda não foi configurada, "erro" quando ela não respondeu. Cada
+ * cliente traz o ÚLTIMO pedido com o produto, mesmo fora do período, marcado
+ * por `noPeriodo`.
+ */
+export interface ProdutoClientesResponse {
+  produto: {
+    codigo: string;
+    produto: string | null;
+    fabricante: string | null;
+    categoria: string | null;
+    linha: string | null;
+    precoTabela: number;
+  };
+  fonte: 'api' | 'indisponivel' | 'erro';
+  mensagem: string | null;
+  clientes: Array<{
+    codigo: string;
+    cliente: string | null;
+    codVendedor: string | null;
+    vendedor: string | null;
+    equipe: string | null;
+    dataUltimoPedido: string | null;
+    numeroPedido: string | null;
+    valorUltimoPedido: number;
+    quantidadeUltimoPedido: number;
+    valorPeriodo: number;
+    noPeriodo: boolean;
+  }>;
+  resumo: { clientes: number; noPeriodo: number; foraPeriodo: number; valorPeriodo: number };
+}
+
+export function fetchProdutoClientes(params: {
+  cod_produto: string;
+  start?: string;
+  end?: string;
+  equipe?: string;
+  vendedor?: string;
+}): Promise<ProdutoClientesResponse> {
+  return request<ProdutoClientesResponse>(`/catalog/produto-clientes${qs(params)}`);
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Metas definidas na tela (Administração › Dados, Metas e Exportações)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Meta geral de um vendedor ou de uma equipe numa competência.
+ * Campo `null` = não definido na tela; aí vale o valor importado da aba Mês.
+ */
+export interface MetaGeral {
+  anoMes: string;
+  nivel: 'vendedor' | 'equipe';
+  /** Código do vendedor ou nome da equipe. */
+  chave: string;
+  nome?: string | null;
+  equipe?: string | null;
+  metaCobertura: number | null;
+  metaSortimento: number | null;
+  metaFaseamento: number | null;
+  metaFaseamentoII: number | null;
+  metaDesconcentracao: number | null;
+  metaDesafio: number | null;
+  observacao?: string | null;
+  atualizadoEm?: string | null;
+  criadoPor?: string | null;
+}
+
+export function fetchMetasGerais(anoMes: string): Promise<{ anoMes: string; metas: MetaGeral[]; podeGravar: boolean }> {
+  return request(`/metas/gerais${qs({ ano_mes: anoMes })}`, { noCache: true });
+}
+
+export function salvarMetaGeral(meta: MetaGeral): Promise<{ ok: boolean }> {
+  return request(`/metas/gerais`, { method: 'PUT', body: JSON.stringify(meta) });
+}
+
+export function removerMetaGeral(params: { ano_mes: string; nivel: 'vendedor' | 'equipe'; chave: string }): Promise<{ ok: boolean }> {
+  return request(`/metas/gerais${qs(params)}`, { method: 'DELETE' });
+}
+
+/** Meta de faturamento/cobertura por vendedor × fabricante (mesma tabela da planilha). */
+export interface MetaFabricantePayload {
+  anoMes: string;
+  codVendedor: string;
+  equipe?: string | null;
+  fabricante: string;
+  metaFaturamento: number | null;
+  metaCobertura: number | null;
+}
+
+export function salvarMetaFabricante(meta: MetaFabricantePayload): Promise<{ ok: boolean }> {
+  return request(`/metas/fabricante`, { method: 'PUT', body: JSON.stringify(meta) });
+}
+
+export function removerMetaFabricante(params: { ano_mes: string; cod_vendedor: string; fabricante: string }): Promise<{ ok: boolean }> {
+  return request(`/metas/fabricante${qs(params)}`, { method: 'DELETE' });
 }

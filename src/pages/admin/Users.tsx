@@ -446,14 +446,15 @@ export const UsersPage: React.FC = () => {
       
       {/* LISTA / TABELA */}
       {!loading && !error && filteredUsers.length > 0 && (
-        <div style={{ 
+        <div className="tabela-rolavel" style={{ 
           background: t.surface, 
           border: `1px solid ${t.border}`, 
           borderRadius: '12px', 
-          overflow: 'hidden',
           boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)'
         }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13.5px' }}>
+          {/* min-width: no celular a tabela rola de lado dentro do cartão em
+              vez de esmagar as colunas ou cortar as ações. */}
+          <table style={{ width: '100%', minWidth: 720, borderCollapse: 'collapse', fontSize: '13.5px' }}>
             <thead>
               <tr style={{ color: t.textMuted, borderBottom: `2px solid ${t.border}` }}>
                 {['Usuário', 'Perfil', 'Status', 'Último acesso', 'Ações'].map((h) => (
@@ -838,7 +839,7 @@ export const UsersPage: React.FC = () => {
                       <Briefcase size={16} color={t.primary} />
                       <span style={{ fontSize: '13px', fontWeight: 700, color: t.text }}>Atribuição de Vendas</span>
                     </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    <div className="grade-responsiva" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                       <div>
                         <label style={labelStyle}>Equipe</label>
                         <input
@@ -1191,7 +1192,7 @@ export const UsersPage: React.FC = () => {
                       <Briefcase size={16} color={t.primary} />
                       <span style={{ fontSize: '13px', fontWeight: 700, color: t.text }}>Atribuição de Vendas</span>
                     </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    <div className="grade-responsiva" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                       <div>
                         <label style={labelStyle}>Equipe</label>
                         <input 

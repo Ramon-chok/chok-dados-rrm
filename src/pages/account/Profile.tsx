@@ -344,19 +344,6 @@ export const ProfilePage: React.FC = () => {
             </div>
           </div>
 
-          <div
-            style={{
-              background: 'rgba(227, 6, 19, 0.06)',
-              border: '1px solid rgba(227, 6, 19, 0.25)',
-              borderRadius: '8px',
-              padding: '12px 14px',
-              fontSize: '12.5px',
-              color: t.text,
-            }}
-          >
-            <strong style={{ color: t.primary }}>Escopo Ativo: </strong>
-            {currentUser.scope.description}
-          </div>
         </div>
 
         {/* Dados de Contato Editáveis */}

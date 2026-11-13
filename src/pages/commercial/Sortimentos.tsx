@@ -3,10 +3,15 @@ import { useTheme } from '../../context/ThemeContext';
 import { EmptyBlock, ErrorBlock, LoadingBlock } from '../../components/common/DataState';
 import { SingleSelectFilter } from '../../components/common/SingleSelectFilter';
 import { getErrorMessage, fetchSortimento, SortimentoRow } from '../../lib/api';
-import { Search } from 'lucide-react';
+import { Search, ChevronRight } from 'lucide-react';
+import { useGlobalFilter } from '../../context/GlobalFilterContext';
+import { ProdutoDetalhe, ProdutoAlvo } from '../../components/produtos/ProdutoDetalhe';
 
 export const SortimentosPage: React.FC = () => {
   const { t } = useTheme();
+  const { startDate, endDate, periodLabel } = useGlobalFilter();
+  // Produto cuja ficha (clientes que compraram) está aberta no painel lateral.
+  const [produtoAberto, setProdutoAberto] = useState<ProdutoAlvo | null>(null);
   const [rows, setRows] = useState<SortimentoRow[]>([]);
   const [query, setQuery] = useState('');
   const [fab, setFab] = useState('');
@@ -48,17 +53,18 @@ export const SortimentosPage: React.FC = () => {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
+      <div className="cabeca-pagina">
         <div>
           <h1 className="num" style={{ margin: '0 0 4px', fontSize: 24, fontWeight: 700, color: t.text }}>
             Sortimentos
           </h1>
           <p style={{ margin: 0, fontSize: 13, color: t.textSecondary }}>
-            Lista importada da planilha de sortimento ({rows.length.toLocaleString('pt-BR')} itens).
+            Lista importada da planilha de sortimento ({rows.length.toLocaleString('pt-BR')} itens). Clique em um
+            produto para ver os clientes que compraram.
           </p>
         </div>
       </div>
-      <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
+      <div className="filtros-linha" style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
         <div
           style={{
             display: 'flex',
@@ -106,7 +112,7 @@ export const SortimentosPage: React.FC = () => {
       {error && <ErrorBlock message={error} />}
       {!loading && !error && rows.length === 0 && <EmptyBlock />}
       {!loading && !error && rows.length > 0 && (
-        <div style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 12, overflow: 'auto' }}>
+        <div className="tabela-rolavel" style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 12, maxHeight: 640, overflowY: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
             <thead>
               <tr style={{ color: t.textMuted, textAlign: 'left', borderBottom: `1px solid ${t.border}` }}>
@@ -116,11 +122,18 @@ export const SortimentosPage: React.FC = () => {
                 <th>Categoria</th>
                 <th>Linha</th>
                 <th>Atualizado</th>
+                <th style={{ width: 32 }} />
               </tr>
             </thead>
             <tbody>
               {rows.map((p, idx) => (
-                <tr key={p.id ?? `${p.codigo}-${idx}`} style={{ borderTop: `1px solid ${t.border}`, color: t.text }}>
+                <tr
+                  key={p.id ?? `${p.codigo}-${idx}`}
+                  onClick={() => setProdutoAberto({ codigo: p.codigo, produto: p.produto })}
+                  style={{ borderTop: `1px solid ${t.border}`, color: t.text, cursor: 'pointer' }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = t.surfaceElevated)}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                >
                   <td style={{ padding: 12, fontWeight: 600 }}>{p.codigo}</td>
                   <td>{p.produto || '—'}</td>
                   <td>{p.fabricante || '—'}</td>
@@ -131,12 +144,23 @@ export const SortimentosPage: React.FC = () => {
                       ? new Date(p.atualizadoEm).toLocaleString('pt-BR')
                       : '—'}
                   </td>
+                  <td style={{ color: t.textMuted, textAlign: 'center' }}>
+                    <ChevronRight size={14} />
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       )}
+
+      <ProdutoDetalhe
+        alvo={produtoAberto}
+        onClose={() => setProdutoAberto(null)}
+        start={startDate || undefined}
+        end={endDate || undefined}
+        periodoLabel={periodLabel}
+      />
     </div>
   );
 };

@@ -4,16 +4,14 @@ import {
   ChevronRight,
   CalendarDays,
   CalendarRange,
-  TrendingUp,
-  Users,
-  Layers,
   ShoppingCart,
   Receipt,
   Percent,
   Info,
 } from 'lucide-react';
 import { useTheme } from '../../context/ThemeContext';
-import { KpiBloco, KpiPeriodo, KpisDiaMesResponse } from '../../lib/insights';
+import { AttainmentGauge, ChartGrid } from '../charts/chartKit';
+import { KpiPeriodo, KpisDiaMesResponse } from '../../lib/insights';
 
 /**
  * Seção 5 — indicadores principais (Faturamento, Cobertura e Sortimento) em
@@ -27,6 +25,14 @@ import { KpiBloco, KpiPeriodo, KpisDiaMesResponse } from '../../lib/insights';
  * inércia, acompanha o dedo e respeita `prefers-reduced-motion`, coisas que uma
  * implementação manual de arrastar costuma perder. O `scroll` só é observado
  * para marcar qual painel está ativo.
+ *
+ * FORMATO (mudança pedida): os três indicadores saem no MESMO medidor de
+ * anel da Visão Gráfica (`AttainmentGauge`), e não mais em cartões próprios.
+ * Antes o Dashboard mostrava Faturamento, Cobertura e Sortimento duas vezes
+ * — nos cartões aqui em cima e nos medidores logo abaixo —, com os mesmos
+ * números em duas linguagens visuais. Agora a informação aparece UMA vez, na
+ * forma gráfica, e este bloco é o único dono dela; a Visão Gráfica abaixo
+ * ficou com participação, ranking, evolução e top clientes.
  */
 
 const PERIODOS = [
@@ -46,83 +52,6 @@ function dataExtensa(iso: string | null): string {
     month: 'long',
   });
 }
-
-interface IndicadorProps {
-  titulo: string;
-  bloco: KpiBloco;
-  formatar: (v: number) => string;
-  icone: React.ReactNode;
-}
-
-const CardIndicador: React.FC<IndicadorProps> = ({ titulo, bloco, formatar, icone }) => {
-  const { t } = useTheme();
-  const corStatus = bloco.pct >= 100 ? t.success : bloco.pct >= 80 ? t.warning : t.danger;
-  const progresso = Math.max(0, Math.min(100, bloco.pct));
-
-  return (
-    <div
-      className="ga-card ga-card-hover"
-      style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0 }}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-        <span
-          style={{
-            fontSize: 11,
-            fontWeight: 700,
-            letterSpacing: '0.06em',
-            textTransform: 'uppercase',
-            color: t.textMuted,
-          }}
-        >
-          {titulo}
-        </span>
-        <span
-          style={{
-            width: 28,
-            height: 28,
-            borderRadius: 8,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            background: `${t.accentTeal}1A`,
-            color: t.accentTeal,
-            flexShrink: 0,
-          }}
-        >
-          {icone}
-        </span>
-      </div>
-
-      <div className="num" style={{ fontSize: 26, fontWeight: 700, color: t.text, lineHeight: 1.1 }}>
-        {formatar(bloco.realizado)}
-      </div>
-
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
-        <span className="num" style={{ fontSize: 13, fontWeight: 700, color: corStatus }}>
-          {fmtPct(bloco.pct)}
-        </span>
-        <span style={{ fontSize: 11.5, color: t.textMuted }}>da meta {formatar(bloco.meta)}</span>
-      </div>
-
-      <div style={{ height: 5, borderRadius: 3, background: t.surfaceElevated, overflow: 'hidden' }}>
-        <div
-          style={{
-            width: `${progresso}%`,
-            height: '100%',
-            borderRadius: 3,
-            background: `linear-gradient(90deg, ${t.gradientFrom}, ${t.gradientTo})`,
-            transition: 'width 0.5s ease',
-          }}
-        />
-      </div>
-
-      <div className="num" style={{ fontSize: 11.5, color: bloco.gap >= 0 ? t.success : t.danger }}>
-        {bloco.gap >= 0 ? '+' : ''}
-        {formatar(bloco.gap)} <span style={{ color: t.textMuted }}>vs. meta</span>
-      </div>
-    </div>
-  );
-};
 
 const Secundario: React.FC<{ rotulo: string; valor: string; icone: React.ReactNode }> = ({ rotulo, valor, icone }) => {
   const { t } = useTheme();
@@ -193,11 +122,31 @@ const Painel: React.FC<{ dados: KpiPeriodo; legenda: string; aviso?: string | nu
         </div>
       ) : (
         <>
-          <div className="kpi-grid">
-            <CardIndicador titulo="Faturamento" bloco={dados.faturamento} formatar={fmtBRL} icone={<TrendingUp size={15} />} />
-            <CardIndicador titulo="Cobertura" bloco={dados.cobertura} formatar={fmtInt} icone={<Users size={15} />} />
-            <CardIndicador titulo="Sortimento" bloco={dados.sortimento} formatar={fmtInt} icone={<Layers size={15} />} />
-          </div>
+          {/* Um medidor por indicador — a mesma peça usada na Visão Gráfica,
+              para que a leitura seja idêntica em toda a tela. */}
+          <ChartGrid min={260} style={{ marginBottom: 0 }}>
+            <AttainmentGauge
+              title="Faturamento"
+              pct={dados.faturamento.pct}
+              meta={dados.faturamento.meta}
+              realizado={dados.faturamento.realizado}
+              formatter={fmtBRL}
+            />
+            <AttainmentGauge
+              title="Cobertura"
+              pct={dados.cobertura.pct}
+              meta={dados.cobertura.meta}
+              realizado={dados.cobertura.realizado}
+              formatter={fmtInt}
+            />
+            <AttainmentGauge
+              title="Sortimento"
+              pct={dados.sortimento.pct}
+              meta={dados.sortimento.meta}
+              realizado={dados.sortimento.realizado}
+              formatter={fmtInt}
+            />
+          </ChartGrid>
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
             <Secundario rotulo="Pedidos" valor={fmtInt(dados.pedidos)} icone={<ShoppingCart size={16} />} />
             <Secundario rotulo="Ticket médio" valor={fmtBRL(dados.ticketMedio)} icone={<Receipt size={16} />} />
@@ -420,17 +369,11 @@ export const KpiSwipe: React.FC<KpiSwipeProps> = ({ dados, periodoLabel }) => {
         Deslize para o lado para alternar entre <strong>dia</strong> e <strong>mês</strong>
       </div>
 
+      {/* A grade dos medidores é a própria ChartGrid (auto-fit), que já se
+          ajusta sozinha — sobrou só a regra do celular, onde as setas dão
+          lugar ao gesto de deslizar. */}
       <style>{`
-        .kpi-grid {
-          display: grid;
-          grid-template-columns: repeat(3, minmax(0, 1fr));
-          gap: 12px;
-        }
-        @media (max-width: 860px) {
-          .kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-        }
         @media (max-width: 560px) {
-          .kpi-grid { grid-template-columns: 1fr; }
           .kpi-swipe-setas { display: none !important; }
         }
       `}</style>

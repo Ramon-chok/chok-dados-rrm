@@ -86,6 +86,32 @@ CREATE TABLE IF NOT EXISTS metas_mensais (
   importacao_id     BIGINT,
   PRIMARY KEY (ano_mes, cod_vendedor, fabricante)
 );
+-- Equipe do vendedor na competência da meta (planilha de metas e cadastro na tela).
+ALTER TABLE metas_mensais ADD COLUMN IF NOT EXISTS equipe TEXT;
+
+-- Metas gerais por VENDEDOR ou por EQUIPE, definidas direto na tela
+-- (Administração › Dados, Metas e Exportações › Definir metas).
+-- A planilha de metas só traz faturamento e cobertura POR FABRICANTE; estas
+-- são as metas que não dependem de fabricante. Campo nulo = "não definido
+-- aqui", e aí vale o valor importado da aba Mês (indicadores_vendedor).
+CREATE TABLE IF NOT EXISTS metas_gerais (
+  ano_mes               TEXT NOT NULL,          -- 'YYYY-MM'
+  nivel                 VARCHAR(10) NOT NULL,   -- 'vendedor' | 'equipe'
+  chave                 TEXT NOT NULL,          -- cod_vendedor ou nome da equipe
+  equipe                TEXT,                   -- equipe do vendedor na competência
+  meta_cobertura        NUMERIC(12,2),
+  meta_sortimento       NUMERIC(12,2),
+  meta_faseamento       NUMERIC(14,2),
+  meta_faseamento_ii    NUMERIC(14,2),
+  meta_desconcentracao  NUMERIC(14,2),
+  meta_desafio          NUMERIC(14,2),
+  observacao            TEXT,
+  criado_por            TEXT,
+  atualizado_em         TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (ano_mes, nivel, chave),
+  CHECK (nivel IN ('vendedor', 'equipe'))
+);
+CREATE INDEX IF NOT EXISTS idx_metas_gerais_equipe ON metas_gerais(ano_mes, equipe);
 
 CREATE TABLE IF NOT EXISTS login (
   id            BIGSERIAL PRIMARY KEY,

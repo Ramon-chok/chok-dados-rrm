@@ -87,7 +87,7 @@ export const IMPORT_TYPES: ImportTypeOption[] = [
     id: 'metas',
     label: 'Metas Comerciais',
     description:
-      'Meta de faturamento e de cobertura por vendedor e categoria, com o mês de referência em ano_mes (formato AAAA-MM).',
+      'Meta de faturamento e de cobertura por vendedor, equipe e fabricante, com o mês de referência em ano_mes (formato AAAA-MM). Metas gerais (cobertura, sortimento, faseamento, desconcentração e desafio) são definidas na própria tela, em "Definir metas".',
     templateFile: '/templates/importacao/metas.xlsx',
     sheets: [
       {
@@ -97,12 +97,15 @@ export const IMPORT_TYPES: ImportTypeOption[] = [
         label: 'Metas',
         // Nomes de sistema — devem bater com backend/app/import_types.py,
         // entrada "metas" (tabela metas_mensais).
-        columns: ['ano_mes', 'cod_vendedor', 'fabricante', 'meta_faturamento', 'meta_cobertura'],
+        columns: ['ano_mes', 'cod_vendedor', 'equipe', 'fabricante', 'meta_faturamento', 'meta_cobertura'],
         keyColumns: ['ano_mes', 'cod_vendedor', 'fabricante'],
         headerHints: {
           ano_mes: 'ANO/MÊS',
           cod_vendedor: 'CÓDIGO VENDEDOR',
-          fabricante: 'CATEGORIA',
+          equipe: ['EQUIPE', 'TIME'],
+          // O cabeçalho agora é FABRICANTE; CATEGORIA continua aceito para
+          // planilhas antigas não quebrarem na próxima importação.
+          fabricante: ['FABRICANTE', 'INDÚSTRIA', 'CATEGORIA'],
           meta_faturamento: 'META FATURAMENTO',
           meta_cobertura: 'META COBERTURA',
         },

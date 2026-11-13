@@ -19,10 +19,9 @@ import { podeFiltrarEquipe, podeFiltrarVendedor } from '../../types';
 
 const fmt = (v: number) => `R$ ${v.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}`;
 const fmtPct = (v: number) => `${v.toFixed(1)}%`;
-const SUCCESS_GREEN = { light: '#0EA968', dark: '#1FAE6E' };
 
 export const ObjetivosPage: React.FC = () => {
-  const { t, mode } = useTheme();
+  const { t } = useTheme();
   const { currentUser } = useAuth();
   const { ano, mes, startDate, endDate, periodType } = useGlobalFilter();
   const [rows, setRows] = useState<TargetRow[]>([]);
@@ -166,7 +165,7 @@ export const ObjetivosPage: React.FC = () => {
   ) => {
     const pct = block?.pct || 0;
     const atingiu = pct >= 100;
-    const progressColor = atingiu ? SUCCESS_GREEN[mode] : t.primary;
+    const progressColor = atingiu ? t.success : t.primary;
     const donutData = [
       { name: 'realizado', value: Math.min(100, Math.max(0, pct)) },
       { name: 'restante', value: Math.max(0, 100 - pct) },
@@ -306,7 +305,7 @@ export const ObjetivosPage: React.FC = () => {
   const kpis: [string, string][] = [
     ['Linhas de meta', totais.linhas.toLocaleString('pt-BR')],
     ['Vendedores', totais.vendedores.toLocaleString('pt-BR')],
-    ['Categorias', totais.fabricantes.toLocaleString('pt-BR')],
+    ['Fabricantes', totais.fabricantes.toLocaleString('pt-BR')],
     ['Meta de faturamento', fmt(totais.metaFat)],
     ['Meta de cobertura', totais.metaCob.toLocaleString('pt-BR')],
   ];
@@ -319,7 +318,7 @@ export const ObjetivosPage: React.FC = () => {
             Objetivos
           </h1>
           <p style={{ margin: 0, fontSize: 13, color: t.textSecondary }}>
-            Metas mensais por vendedor e categoria, e o acompanhamento das metas de faseamento e desafio.
+            Metas mensais por vendedor e fabricante, e o acompanhamento das metas de faseamento, desconcentração e desafio.
           </p>
         </div>
       </div>
@@ -377,7 +376,7 @@ export const ObjetivosPage: React.FC = () => {
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Vendedor, equipe ou categoria"
+            placeholder="Vendedor, equipe ou fabricante"
             style={{
               width: '100%',
               padding: '8px 10px',
@@ -480,7 +479,7 @@ export const ObjetivosPage: React.FC = () => {
             >
               <ClipboardList size={16} color={t.primary} />
               <div style={{ fontSize: 14, fontWeight: 600, color: t.text }}>
-                Metas por vendedor e categoria
+                Metas por vendedor e fabricante
                 <span style={{ fontSize: 11.5, fontWeight: 500, color: t.textMuted }}>
                   {' '}
                   — {filtered.length.toLocaleString('pt-BR')} linha{filtered.length === 1 ? '' : 's'}
@@ -496,7 +495,7 @@ export const ObjetivosPage: React.FC = () => {
                     <th style={th}>Ano-Mês</th>
                     <th style={th}>Vendedor</th>
                     <th style={th}>Equipe</th>
-                    <th style={th}>Categoria</th>
+                    <th style={th}>Fabricante</th>
                     <th style={{ ...th, textAlign: 'right' }}>Meta faturamento</th>
                     <th style={{ ...th, textAlign: 'right' }}>Meta cobertura</th>
                   </tr>

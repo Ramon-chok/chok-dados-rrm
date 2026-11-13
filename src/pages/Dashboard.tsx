@@ -10,13 +10,12 @@ import {
   fetchDashboard,
   fetchDashboardFilterOptions,
   fetchImportHistory,
-  fetchClienteFabricantes,
   fetchFabricanteDetalhe,
   DashboardResponse,
   DashboardFilterOptions,
-  ClienteFabricantesResponse,
   FabricanteDetalheResponse,
 } from '../lib/api';
+import { ClienteDetalhe } from '../components/clientes/ClienteDetalhe';
 import {
   ComposedChart,
   BarChart,
@@ -34,9 +33,9 @@ import {
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { KpiSwipe } from '../components/dashboard/KpiSwipe';
 import { TopClientesCard } from '../components/dashboard/TopClientesCard';
+import { ObjetivosResumo } from '../components/dashboard/ObjetivosResumo';
 import { KpisDiaMesResponse, fetchKpisDiaMes } from '../lib/insights';
 import {
-  AttainmentGauge,
   AttainmentRanking,
   ChartCard,
   ChartGrid,
@@ -56,7 +55,10 @@ const fmt = (v: number) => `R$ ${v.toLocaleString('pt-BR', { maximumFractionDigi
 const fmtInt = (v: number) => v.toLocaleString('pt-BR', { maximumFractionDigits: 0 });
 const fmtPct = (v: number) => `${v.toFixed(1)}%`;
 
-export const DashboardPage: React.FC = () => {
+export const DashboardPage: React.FC<{
+  /** Leva à tela de Objetivos (cartões rápidos). Ausente = perfil sem acesso. */
+  onAbrirObjetivos?: () => void;
+}> = ({ onAbrirObjetivos }) => {
   const { t } = useTheme();
   const { currentUser } = useAuth();
   const { selectedPeriod, startDate, endDate, ano, mes, periodType } = useGlobalFilter();
@@ -242,7 +244,10 @@ export const DashboardPage: React.FC = () => {
     border: `1px solid ${t.primary}30`,
   };
 
-  const pctColor = (v: number) => (v >= 100 ? '#3DD68C' : v >= 80 ? '#F59E0B' : t.primaryHover);
+  // Cor de status sai do tema (t.success/t.warning/t.danger), nunca de um
+  // hex solto: fora do token ela não acompanha o tema escuro nem o contraste
+  // conferido pelo padrão do grupo.
+  const pctColor = (v: number) => (v >= 100 ? t.success : v >= 80 ? t.warning : t.danger);
 
   // ─── Fabricantes: expandir para ver a quebra por equipe/vendedor ───
   // Vendedor não tem o que abrir — já vê só o próprio número.
@@ -281,47 +286,22 @@ export const DashboardPage: React.FC = () => {
     }
   };
 
-  // ─── Top Clientes: expandir para ver a quebra por fabricante ───
-  const [expandedCliente, setExpandedCliente] = useState<string | null>(null);
-  const [clienteFabricantes, setClienteFabricantes] = useState<Record<string, ClienteFabricantesResponse | 'loading' | 'error'>>({});
-
-  const handleToggleCliente = async (clienteKey: string, codigo: string | null, nome: string) => {
-    if (expandedCliente === clienteKey) {
-      setExpandedCliente(null);
-      return;
-    }
-    setExpandedCliente(clienteKey);
-    if (clienteFabricantes[clienteKey]) return;
-    setClienteFabricantes((prev) => ({ ...prev, [clienteKey]: 'loading' }));
-    try {
-      const res = await fetchClienteFabricantes({
-        codigo: codigo || undefined,
-        nome: codigo ? undefined : nome,
-        ano: periodType === 'personalizado' ? undefined : ano,
-        mes: periodType === 'mensal' ? mes : undefined,
-        start: startDate || undefined,
-        end: endDate || undefined,
-        equipe: canFilterEquipe && selectedEquipe ? selectedEquipe : undefined,
-        vendedor: canFilterVendedor && selectedVendedor ? selectedVendedor : undefined,
-      });
-      setClienteFabricantes((prev) => ({ ...prev, [clienteKey]: res }));
-    } catch {
-      setClienteFabricantes((prev) => ({ ...prev, [clienteKey]: 'error' }));
-    }
-  };
+  /**
+   * Top Clientes: clicar abre a FICHA DO CLIENTE.
+   *
+   * Antes a linha expandia para uma quebra por fabricante que, na verdade,
+   * era o desempenho do VENDEDOR dono do cliente — a própria tela avisava
+   * que não era a compra daquele cliente. A ficha ocupou o lugar: ela traz o
+   * realizado do cliente, o peso dele na carteira e na meta (com faseamento e
+   * desconcentração) e o valor por fabricante que é mesmo dele.
+   */
+  const [clienteAberto, setClienteAberto] = useState<{ codigo?: string | null; nome: string } | null>(null);
 
   /** Gráfico → tabela: abre o detalhamento do fabricante e rola até a linha dele. */
   const focusFabricante = (fabricante: string) => {
     if (canDrilldownFabricante && expandedFabricante !== fabricante) void handleToggleFabricante(fabricante);
     requestAnimationFrame(() => {
       document.getElementById(`fab-row-${encodeURIComponent(fabricante)}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    });
-  };
-
-  const focusCliente = (clienteKey: string, codigo: string | null, nome: string) => {
-    if (expandedCliente !== clienteKey) void handleToggleCliente(clienteKey, codigo, nome);
-    requestAnimationFrame(() => {
-      document.getElementById(`cli-row-${encodeURIComponent(clienteKey)}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     });
   };
 
@@ -420,11 +400,38 @@ export const DashboardPage: React.FC = () => {
 
       {/* ═══════════════════════════════════════════
           SEÇÃO 0: INDICADORES DIA x MÊS (carrossel — Seção 5 do escopo)
+
           Fica no topo de propósito: é o que o usuário precisa ver com o menor
           número de toques. Deslize lateral, abas ou setas alternam a leitura.
+
+          Faturamento, Cobertura e Sortimento aparecem SÓ aqui, em medidor de
+          anel. Antes eles saíam duas vezes na mesma tela — em cartões neste
+          bloco e em medidores na Visão Gráfica logo abaixo —, repetindo os
+          mesmos números em duas linguagens visuais. Os cartões saíram; a
+          forma gráfica ficou.
       ═══════════════════════════════════════════ */}
       {!loading && !error && kpisDiaMes && (
-        <KpiSwipe dados={kpisDiaMes} periodoLabel={selectedPeriod} />
+        <>
+          <div style={sectionTitleStyle}>
+            Indicadores
+            <span style={sectionBadgeStyle}>Dia x Mês</span>
+          </div>
+          <KpiSwipe dados={kpisDiaMes} periodoLabel={selectedPeriod} />
+        </>
+      )}
+
+      {/* Objetivos em cartões rápidos — só os valores; o detalhe fica na
+          tela de Objetivos, aberta pelo clique. */}
+      {!loading && !error && (
+        <ObjetivosResumo
+          ano={periodType === 'personalizado' ? undefined : ano}
+          mes={periodType === 'mensal' ? mes : undefined}
+          start={startDate || undefined}
+          end={endDate || undefined}
+          equipe={canFilterEquipe && selectedEquipe ? selectedEquipe : undefined}
+          vendedor={canFilterVendedor && selectedVendedor ? selectedVendedor : undefined}
+          onAbrir={onAbrirObjetivos}
+        />
       )}
 
       {/* TOP 5 clientes com alternância dia / mês / período personalizado. */}
@@ -438,16 +445,17 @@ export const DashboardPage: React.FC = () => {
             diaSugerido={kpisDiaMes.referencia.diaSelecionado}
             equipe={canFilterEquipe && selectedEquipe ? selectedEquipe : undefined}
             vendedor={canFilterVendedor && selectedVendedor ? selectedVendedor : undefined}
+            onSelecionar={setClienteAberto}
           />
         </div>
       )}
 
       {!loading && !error && data && kpis && (
         <>
-          {/* A seção "Indicadores de Performance" (meta/realizado/GAP em cards)
-              foi retirada: ela repetia Faturamento, Cobertura e Sortimento que
-              já aparecem no carrossel DIA/MÊS no topo da tela. Os mesmos
-              números seguem disponíveis logo abaixo, na Visão Gráfica. */}
+          {/* Faturamento, Cobertura e Sortimento NÃO se repetem aqui: eles
+              são os medidores do bloco "Indicadores" no topo da tela. Esta
+              seção cuida do que aquele bloco não mostra — participação,
+              ranking, evolução no ano e top clientes. */}
 
           {/* ═══════════════════════════════════════════
               SEÇÃO 1B: VISÃO GRÁFICA (clicar leva ao detalhe nas tabelas)
@@ -457,11 +465,6 @@ export const DashboardPage: React.FC = () => {
               Visão Gráfica
               <span style={sectionBadgeStyle}>Clique para detalhar</span>
             </div>
-            <ChartGrid min={260}>
-              <AttainmentGauge title="Faturamento" pct={kpis.atingimento} meta={kpis.meta} realizado={kpis.realizado} formatter={fmtBRLShort} />
-              <AttainmentGauge title="Cobertura" pct={kpis.pctCobertura} meta={kpis.metaCobertura} realizado={kpis.realizadoCobertura} formatter={fmtInt} />
-              <AttainmentGauge title="Sortimento" pct={kpis.pctSortimento} meta={kpis.metaSortimento} realizado={kpis.realizadoSortimento} formatter={fmtBRLShort} />
-            </ChartGrid>
 
             <ChartGrid min={360}>
               <ChartCard title="Participação no faturamento" subtitle="Realizado por fabricante no período · clique para detalhar">
@@ -539,7 +542,7 @@ export const DashboardPage: React.FC = () => {
                 )}
               </ChartCard>
 
-              <ChartCard title="Top clientes" subtitle="Faturamento no período · clique para ver fabricantes" height={260}>
+              <ChartCard title="Top clientes" subtitle="Faturamento no período · clique para abrir a ficha" height={260}>
                 {topClientesChart.length === 0 ? (
                   <div style={{ fontSize: 12.5, color: t.textMuted }}>Sem clientes no período.</div>
                 ) : (
@@ -566,11 +569,11 @@ export const DashboardPage: React.FC = () => {
                         style={{ cursor: 'pointer' }}
                         onClick={(_: unknown, i: number) => {
                           const c = topClientesChart[i];
-                          if (c) focusCliente(c.key, c.codigo, c.nome);
+                          if (c) setClienteAberto({ codigo: c.codigo, nome: c.nome });
                         }}
                       >
                         {topClientesChart.map((c) => (
-                          <Cell key={c.key} fill={expandedCliente === c.key ? colors.series[1] : colors.series[0]} />
+                          <Cell key={c.key} fill={colors.series[0]} />
                         ))}
                       </Bar>
                     </BarChart>
@@ -613,7 +616,7 @@ export const DashboardPage: React.FC = () => {
                 <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
                   <LegendItem color={t.textMuted} label="Meta" theme={t} />
                   <LegendItem color={t.primary} label="Realizado" theme={t} />
-                  <LegendItem color="#3DD68C" label="Margem %" theme={t} line />
+                  <LegendItem color={t.success} label="Margem %" theme={t} line />
                 </div>
               </div>
 
@@ -688,9 +691,9 @@ export const DashboardPage: React.FC = () => {
                       type="monotone"
                       dataKey="margem"
                       name="Margem %"
-                      stroke="#3DD68C"
+                      stroke={t.success}
                       strokeWidth={2.5}
-                      dot={{ r: 3, fill: '#3DD68C' }}
+                      dot={{ r: 3, fill: t.success }}
                       activeDot={{ r: 5 }}
                     />
                   </ComposedChart>
@@ -708,6 +711,9 @@ export const DashboardPage: React.FC = () => {
               {(data.topClientes || []).length > 0 && (
                 <span style={sectionBadgeStyle}>{data.topClientes.length}</span>
               )}
+              <span style={{ fontSize: 11, fontWeight: 400, color: t.textMuted }}>
+                clique em um cliente para abrir a ficha
+              </span>
             </div>
             <div
               style={{
@@ -735,106 +741,46 @@ export const DashboardPage: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {data.topClientes.map((c, i) => {
-                        const clienteKey = `${c.codigo || c.nome}-${i}`;
-                        const isOpen = expandedCliente === clienteKey;
-                        const detail = clienteFabricantes[clienteKey];
-                        return (
-                          <React.Fragment key={clienteKey}>
-                            <tr
-                              id={`cli-row-${encodeURIComponent(clienteKey)}`}
-                              style={{ transition: 'background 0.15s', cursor: 'pointer' }}
-                              onClick={() => handleToggleCliente(clienteKey, c.codigo, c.nome)}
-                              onMouseEnter={(e) => (e.currentTarget.style.background = t.surfaceElevated)}
-                              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                      {data.topClientes.map((c, i) => (
+                        <tr
+                          key={`${c.codigo || c.nome}-${i}`}
+                          style={{ transition: 'background 0.15s', cursor: 'pointer' }}
+                          onClick={() => setClienteAberto({ codigo: c.codigo, nome: c.nome })}
+                          onMouseEnter={(e) => (e.currentTarget.style.background = t.surfaceElevated)}
+                          onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                        >
+                          <td style={tdStyle}>
+                            <span
+                              className="num"
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                width: 24,
+                                height: 24,
+                                borderRadius: 6,
+                                background: i < 3 ? `${t.primary}15` : t.surfaceElevated,
+                                color: i < 3 ? t.primary : t.textMuted,
+                                fontSize: 11,
+                                fontWeight: 700,
+                              }}
                             >
-                              <td style={tdStyle}>
-                                <span
-                                  style={{
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    width: 24,
-                                    height: 24,
-                                    borderRadius: 6,
-                                    background: i < 3 ? `${t.primary}15` : t.surfaceElevated,
-                                    color: i < 3 ? t.primary : t.textMuted,
-                                    fontSize: 11,
-                                    fontWeight: 700,
-                                  }}
-                                >
-                                  {i + 1}
-                                </span>
-                              </td>
-                              <td style={{ ...tdStyle, color: t.textMuted, fontFamily: 'monospace' }}>
-                                {c.eRede ? '—' : c.codigo || '—'}
-                              </td>
-                              <td style={{ ...tdStyle, fontWeight: 600 }}>{c.nome}</td>
-                              <td style={{ ...tdStyle, color: t.textSecondary }}>{c.equipe || '—'}</td>
-                              <td
-                                className="num"
-                                style={{ ...tdStyle, textAlign: 'right', fontWeight: 700, color: t.text }}
-                              >
-                                {fmt(c.valor)}
-                              </td>
-                              <td style={{ ...tdStyle, textAlign: 'center', color: t.textMuted }}>
-                                {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                              </td>
-                            </tr>
-                            {isOpen && (
-                              <tr>
-                                <td colSpan={6} style={{ padding: 0, background: t.surfaceElevated, borderBottom: `1px solid ${t.border}` }}>
-                                  <div style={{ padding: '10px 16px 14px 58px' }}>
-                                    {detail === 'loading' && (
-                                      <div style={{ fontSize: 12, color: t.textMuted }}>Carregando fabricantes…</div>
-                                    )}
-                                    {detail === 'error' && (
-                                      <div style={{ fontSize: 12, color: t.primaryHover }}>
-                                        Não foi possível carregar a quebra por fabricante.
-                                      </div>
-                                    )}
-                                    {detail && detail !== 'loading' && detail !== 'error' && (
-                                      <>
-                                        <div style={{ fontSize: 10.5, color: t.textMuted, marginBottom: 8, fontStyle: 'italic' }}>
-                                          Desempenho por fabricante do(s) vendedor(es) responsável(is) por este
-                                          cliente — não é a divisão exata da compra deste cliente por fabricante
-                                          (a base de vendas não registra o fabricante do produto).
-                                        </div>
-                                        {detail.fabricantes.length === 0 ? (
-                                          <div style={{ fontSize: 12, color: t.textMuted }}>Sem dados de fabricante para este cliente.</div>
-                                        ) : (
-                                          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                                            <thead>
-                                              <tr>
-                                                <th style={{ ...thStyle, background: 'transparent', position: 'static' }}>Fabricante</th>
-                                                <th style={{ ...thStyle, background: 'transparent', position: 'static', textAlign: 'right' }}>Meta</th>
-                                                <th style={{ ...thStyle, background: 'transparent', position: 'static', textAlign: 'right' }}>Realizado</th>
-                                                <th style={{ ...thStyle, background: 'transparent', position: 'static', textAlign: 'right' }}>% Ating.</th>
-                                                <th style={{ ...thStyle, background: 'transparent', position: 'static', textAlign: 'right' }}>% Cob.</th>
-                                              </tr>
-                                            </thead>
-                                            <tbody>
-                                              {detail.fabricantes.map((f) => (
-                                                <tr key={f.fabricante}>
-                                                  <td style={{ ...tdStyle, fontWeight: 600 }}>{f.fabricante}</td>
-                                                  <td className="num" style={{ ...tdStyle, textAlign: 'right' }}>{fmt(f.meta)}</td>
-                                                  <td className="num" style={{ ...tdStyle, textAlign: 'right', fontWeight: 600 }}>{fmt(f.realizado)}</td>
-                                                  <td className="num" style={{ ...tdStyle, textAlign: 'right' }}>{fmtPct(f.pctR)}</td>
-                                                  <td className="num" style={{ ...tdStyle, textAlign: 'right' }}>{fmtPct(f.pctCob)}</td>
-                                                </tr>
-                                              ))}
-                                            </tbody>
-                                          </table>
-                                        )}
-                                      </>
-                                    )}
-                                  </div>
-                                </td>
-                              </tr>
-                            )}
-                          </React.Fragment>
-                        );
-                      })}
+                              {i + 1}
+                            </span>
+                          </td>
+                          <td style={{ ...tdStyle, color: t.textMuted, fontFamily: 'var(--ga-mono)' }}>
+                            {c.eRede ? '—' : c.codigo || '—'}
+                          </td>
+                          <td style={{ ...tdStyle, fontWeight: 600 }}>{c.nome}</td>
+                          <td style={{ ...tdStyle, color: t.textSecondary }}>{c.equipe || '—'}</td>
+                          <td className="num" style={{ ...tdStyle, textAlign: 'right', fontWeight: 700, color: t.text }}>
+                            {fmt(c.valor)}
+                          </td>
+                          <td style={{ ...tdStyle, textAlign: 'center', color: t.textMuted }}>
+                            <ChevronRight size={14} />
+                          </td>
+                        </tr>
+                      ))}
                     </tbody>
                   </table>
                 </div>
@@ -930,7 +876,7 @@ export const DashboardPage: React.FC = () => {
                                   ...tdStyle,
                                   textAlign: 'right',
                                   fontWeight: 600,
-                                  color: f.pctMargem >= 0 ? '#3DD68C' : t.primaryHover,
+                                  color: f.pctMargem >= 0 ? t.success : t.danger,
                                 }}
                               >
                                 {fmtPct(f.pctMargem)}
@@ -966,6 +912,21 @@ export const DashboardPage: React.FC = () => {
           </div>
         </>
       )}
+
+      {/* Ficha do cliente — a mesma do TOP Clientes e dos Não Positivados.
+          Fica fora do bloco de dados porque também é aberta pelo cartão TOP 5,
+          que aparece mesmo quando o dashboard ainda não terminou de carregar. */}
+      <ClienteDetalhe
+        alvo={clienteAberto}
+        onClose={() => setClienteAberto(null)}
+        ano={periodType === 'personalizado' ? undefined : ano}
+        mes={periodType === 'mensal' ? mes : undefined}
+        start={startDate || undefined}
+        end={endDate || undefined}
+        equipe={canFilterEquipe && selectedEquipe ? selectedEquipe : undefined}
+        vendedor={canFilterVendedor && selectedVendedor ? selectedVendedor : undefined}
+        periodoLabel={selectedPeriod}
+      />
     </div>
   );
 };

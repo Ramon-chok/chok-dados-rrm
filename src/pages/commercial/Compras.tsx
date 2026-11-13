@@ -507,7 +507,7 @@ export const ComprasPage: React.FC = () => {
                       onChange={(e) => setFormFornecedor({ ...formFornecedor, nome: e.target.value })}
                     />
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 12 }}>
+                  <div className="grade-responsiva" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 12 }}>
                     <div>
                       <label style={rotulo}>CNPJ</label>
                       <input
@@ -583,7 +583,7 @@ export const ComprasPage: React.FC = () => {
 
               {formNegociacao && (
                 <>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 12 }}>
+                  <div className="grade-responsiva" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 12 }}>
                     <div>
                       <label style={rotulo}>Fornecedor</label>
                       <select

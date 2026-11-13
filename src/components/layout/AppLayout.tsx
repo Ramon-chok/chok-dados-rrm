@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import { PageId, isAdminRole } from '../../types';
@@ -26,7 +26,6 @@ import {
   ChevronRight,
   ChevronDown,
   ExternalLink,
-  Building,
   Compass,
   Award,
   Activity,
@@ -41,11 +40,12 @@ import {
   ShoppingBag,
   Factory,
   KeyRound,
+  TrendingUp,
+  Home,
 } from 'lucide-react';
 import { ScrollToTopButton } from './ScrollToTopButton';
-import { SessionTimer } from './SessionTimer';
 import { GlobalSearch } from '../common/GlobalSearch';
-import { SeloEscrita } from '../auth/SeloEscrita';
+import { ReportarBug } from './ReportarBug';
 
 interface AppLayoutProps {
   currentPage: PageId;
@@ -60,23 +60,47 @@ interface NavItem {
   icon: React.ReactNode;
   external?: boolean;
   url?: string;
-  requiredPermission?: string;
   adminOnly?: boolean;
+  /** Selo curto à direita do item (ex.: "novo", "validando"). */
+  selo?: string;
 }
 
 interface NavGroup {
   label: string;
+  icon?: React.ReactNode;
   items: NavItem[];
 }
 
+/**
+ * Casca da aplicação: barra lateral, faixa do topo e área de conteúdo.
+ *
+ * Organização (pedido do usuário, referência visual enviada):
+ *
+ *   • Barra lateral — só as telas de TRABALHO, em grupos recolhíveis com a
+ *     seta à direita, itens recuados com linha-guia e o item ativo marcado por
+ *     um traço na borda direita.
+ *   • Faixa do topo — pesquisa, Chok IA, reportar bug, tema e o avatar.
+ *     Conta e Administração saíram da barra lateral e vivem no menu do
+ *     avatar, ao lado do tema: são telas de configuração, não de trabalho.
+ *   • Saíram da faixa: o selo de perfil, o selo de alteração e o contador de
+ *     sessão. Saiu de todas as telas: a tarja "Escopo Ativo". O aviso de
+ *     inatividade (último minuto antes da desconexão) continua, porque ele
+ *     pede uma ação do usuário.
+ */
 export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, children }) => {
   const { currentUser, setIsLogoutModalOpen, canAccessPage, idleWarning, idleSecondsLeft, keepSessionAlive } =
     useAuth();
   const { mode, toggleTheme, t } = useTheme();
   const isAiChatPage = currentPage === 'ai-chat';
+  const ehAdmin = isAdminRole(currentUser?.role);
 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [menuAvatarAberto, setMenuAvatarAberto] = useState(false);
+  const menuAvatarRef = useRef<HTMLDivElement>(null);
+  /** Celular: opções da faixa recolhidas atrás da setinha. */
+  const [extrasAbertos, setExtrasAbertos] = useState(false);
+  const extrasRef = useRef<HTMLDivElement>(null);
+
   const [isNavbarCollapsed, setIsNavbarCollapsed] = useState(() => {
     try {
       return localStorage.getItem('chok_navbar_collapsed') === 'true';
@@ -85,10 +109,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, c
     }
   });
 
-  /**
-   * Grupos do menu que estão recolhidos. Guardado no navegador para a
-   * organização que o usuário montou sobreviver ao recarregar a página.
-   */
+  /** Grupos recolhidos — guardados no navegador para sobreviver ao recarregar. */
   const [gruposFechados, setGruposFechados] = useState<string[]>(() => {
     try {
       const salvo = JSON.parse(localStorage.getItem('chok_menu_grupos_fechados') || '[]');
@@ -100,9 +121,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, c
 
   const alternarGrupo = (rotulo: string) => {
     setGruposFechados((anterior) => {
-      const proximo = anterior.includes(rotulo)
-        ? anterior.filter((x) => x !== rotulo)
-        : [...anterior, rotulo];
+      const proximo = anterior.includes(rotulo) ? anterior.filter((x) => x !== rotulo) : [...anterior, rotulo];
       try {
         localStorage.setItem('chok_menu_grupos_fechados', JSON.stringify(proximo));
       } catch {}
@@ -120,28 +139,30 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, c
     });
   };
 
+  /** Telas de trabalho — barra lateral. */
   const navGroups: NavGroup[] = [
     {
-      // Avulsos: ficam no topo, acima de "Principal", sem título de grupo.
+      // Avulsos: no topo, sem título de grupo.
       label: '',
       items: [
+        { id: 'dashboard', name: 'Início', icon: <Home size={17} /> },
         { id: 'sales-board', name: 'Quadro de Vendas', icon: <ClipboardList size={17} /> },
         { id: 'categories', name: 'Categorias', icon: <Tags size={17} /> },
       ],
     },
     {
       label: 'Principal',
+      icon: <LayoutGrid size={17} />,
       items: [
-        { id: 'dashboard', name: 'Dashboard', icon: <LayoutGrid size={17} /> },
         { id: 'macro-view', name: 'Visão Macro', icon: <Compass size={17} /> },
         { id: 'ai-chat', name: 'Chok IA', icon: <Bot size={17} /> },
       ],
     },
     {
       label: 'Comercial',
+      icon: <TrendingUp size={17} />,
       items: [
         { id: 'not-positivated', name: 'Não Positivados', icon: <AlertTriangle size={17} /> },
-        { id: 'top-20-customers', name: 'TOP 20 Clientes', icon: <Award size={17} /> },
         { id: 'top-customers', name: 'TOP Clientes', icon: <Trophy size={17} /> },
         { id: 'sortiments', name: 'Sortimentos', icon: <Layers size={17} /> },
         { id: 'objectives', name: 'Objetivos', icon: <Target size={17} /> },
@@ -160,65 +181,90 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, c
     },
     {
       label: 'SAR',
+      icon: <Activity size={17} />,
       items: [
         { id: 'sar-raio-x', name: 'Raio-X', icon: <Activity size={17} /> },
         { id: 'sar-base-roteiro', name: 'Base de Roteiro', icon: <Route size={17} /> },
         { id: 'sar-verba-indenizatoria', name: 'Verba Indenizatória', icon: <DollarSign size={17} /> },
       ],
     },
-    {
-      label: 'Conta',
-      items: [
-        { id: 'profile', name: 'Meu Perfil', icon: <User size={17} /> },
-        { id: 'settings', name: 'Configurações', icon: <Settings size={17} /> },
-        { id: 'credits', name: 'Créditos', icon: <Award size={17} /> },
-      ],
-    },
-    {
-      label: 'Administração',
-      items: [
-        { id: 'users', name: 'Usuários & RBAC', icon: <Users size={17} />, adminOnly: true },
-        { id: 'targets', name: 'Dados e Exportações', icon: <Database size={17} />, adminOnly: true },
-        { id: 'import-history', name: 'Histórico de Importações', icon: <Clock size={17} />, adminOnly: true },
-        { id: 'write-grants', name: 'Liberações de Alteração', icon: <KeyRound size={17} />, adminOnly: true },
-      ],
-    },
   ];
 
-  /**
-   * Atalhos da barra inferior (celular): as telas de uso diário que ESTE perfil
-   * pode abrir. Sai tudo do mesmo `navGroups`/`canAccessPage` usado no menu
-   * lateral — não existe uma segunda lista de permissões para manter em dia.
-   */
+  /** Conta e Administração — menu do avatar, ao lado do tema. */
+  const itensConta: NavItem[] = [
+    { id: 'profile', name: 'Meu Perfil', icon: <User size={16} /> },
+    { id: 'settings', name: 'Configurações', icon: <Settings size={16} /> },
+    { id: 'credits', name: 'Créditos', icon: <Award size={16} /> },
+  ];
+  const itensAdmin: NavItem[] = [
+    { id: 'users', name: 'Usuários & RBAC', icon: <Users size={16} />, adminOnly: true },
+    { id: 'targets', name: 'Dados, Metas e Exportações', icon: <Database size={16} />, adminOnly: true },
+    { id: 'import-history', name: 'Histórico de Importações', icon: <Clock size={16} />, adminOnly: true },
+    { id: 'write-grants', name: 'Liberações de Alteração', icon: <KeyRound size={16} />, adminOnly: true },
+  ];
+
+  const podeVer = (item: NavItem) => {
+    if (item.adminOnly && !ehAdmin) return false;
+    return canAccessPage(item.id);
+  };
+
+  /** Atalhos da barra inferior no celular: as telas de uso diário deste perfil. */
   const ORDEM_ATALHOS: PageId[] = [
     'dashboard',
     'manufacturer-visual',
     'sales-board',
+    'top-customers',
     'commercial-calendar',
     'purchasing',
     'sar-raio-x',
-    'top-customers',
     'profile',
   ];
-  const todosItens = navGroups.flatMap((grupo) => grupo.items);
+  const todosItens = [...navGroups.flatMap((g) => g.items), ...itensConta, ...itensAdmin];
   const atalhosMobile = ORDEM_ATALHOS.map((id) => todosItens.find((item) => item.id === id))
-    .filter((item): item is NavItem => {
-      if (!item) return false;
-      if (item.adminOnly && !isAdminRole(currentUser?.role)) return false;
-      return canAccessPage(item.id);
-    })
+    .filter((item): item is NavItem => !!item && podeVer(item))
     .slice(0, 5);
 
-  /**
-   * Se a tela ativa estiver dentro de um grupo recolhido, abre o grupo.
-   * Sem isto, navegar pela barra inferior (celular) ou pela pesquisa deixaria o
-   * item selecionado escondido, e o menu pareceria "fora de sincronia".
-   */
+  /** Se a tela ativa está num grupo recolhido, abre o grupo. */
   useEffect(() => {
     const grupo = navGroups.find((g) => g.label && g.items.some((i) => i.id === currentPage));
     if (grupo && gruposFechados.includes(grupo.label)) alternarGrupo(grupo.label);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPage]);
+
+  // Menu do avatar: fecha com clique fora e com Esc.
+  useEffect(() => {
+    if (!menuAvatarAberto) return;
+    const aoClicar = (e: MouseEvent) => {
+      if (menuAvatarRef.current && !menuAvatarRef.current.contains(e.target as Node)) setMenuAvatarAberto(false);
+    };
+    const aoTeclar = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMenuAvatarAberto(false);
+    };
+    document.addEventListener('mousedown', aoClicar);
+    document.addEventListener('keydown', aoTeclar);
+    return () => {
+      document.removeEventListener('mousedown', aoClicar);
+      document.removeEventListener('keydown', aoTeclar);
+    };
+  }, [menuAvatarAberto]);
+
+  // Opções recolhidas: fecham com clique fora, Esc e ao trocar de tela.
+  useEffect(() => {
+    if (!extrasAbertos) return;
+    const aoClicar = (e: MouseEvent) => {
+      if (extrasRef.current && !extrasRef.current.contains(e.target as Node)) setExtrasAbertos(false);
+    };
+    const aoTeclar = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setExtrasAbertos(false);
+    };
+    document.addEventListener('mousedown', aoClicar);
+    document.addEventListener('keydown', aoTeclar);
+    return () => {
+      document.removeEventListener('mousedown', aoClicar);
+      document.removeEventListener('keydown', aoTeclar);
+    };
+  }, [extrasAbertos]);
+  useEffect(() => setExtrasAbertos(false), [currentPage]);
 
   const handleNavClick = (item: NavItem) => {
     if (item.external && item.url) {
@@ -227,6 +273,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, c
     }
     onNavigate(item.id);
     setIsMobileMenuOpen(false);
+    setMenuAvatarAberto(false);
   };
 
   const pageTitles: Record<PageId, string> = {
@@ -234,9 +281,8 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, c
     categories: 'Categorias',
     'macro-view': 'Visão Macro',
     'ai-chat': 'Chok IA',
-    dashboard: 'Dashboard',
+    dashboard: 'Início',
     'not-positivated': 'Não Positivados',
-    'top-20-customers': 'TOP 20 Clientes',
     'top-customers': 'TOP Clientes',
     sortiments: 'Sortimentos',
     catalog: 'Catálogo de Produtos',
@@ -254,8 +300,39 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, c
     settings: 'Configurações',
     credits: 'Créditos',
     users: 'Usuários & RBAC',
-    targets: 'Dados e Exportações',
+    targets: 'Dados, Metas e Exportações',
   };
+
+  const renderItem = (item: NavItem) => {
+    const ativo = currentPage === item.id;
+    return (
+      <div
+        key={item.id}
+        role="link"
+        tabIndex={0}
+        aria-current={ativo ? 'page' : undefined}
+        onClick={() => handleNavClick(item)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            handleNavClick(item);
+          }
+        }}
+        title={item.name}
+        className={`nav-item${isNavbarCollapsed ? ' nav-item--compacto' : ''}`}
+      >
+        <span className="nav-item__icone">{item.icon}</span>
+        {!isNavbarCollapsed && <span className="nav-item__rotulo">{item.name}</span>}
+        {!isNavbarCollapsed && item.selo && <span className="nav-item__selo">{item.selo}</span>}
+        {!isNavbarCollapsed && item.external && (
+          <ExternalLink size={13} style={{ color: t.textMuted, flexShrink: 0 }} />
+        )}
+      </div>
+    );
+  };
+
+  const contaVisivel = itensConta.filter(podeVer);
+  const adminVisivel = itensAdmin.filter(podeVer);
 
   return (
     <div
@@ -269,24 +346,23 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, c
         position: 'relative',
       }}
     >
-      {/* Mobile Menu Backdrop */}
       {isMobileMenuOpen && (
         <div
           onClick={() => setIsMobileMenuOpen(false)}
           style={{
             position: 'fixed',
             inset: 0,
-            background: 'rgba(0, 0, 0, 0.65)',
+            background: 'rgba(0, 0, 0, 0.6)',
             backdropFilter: 'blur(3px)',
             zIndex: 40,
           }}
         />
       )}
 
-      {/* Sidebar Navigation */}
+      {/* ═══════════════ BARRA LATERAL ═══════════════ */}
       <aside
         style={{
-          width: isNavbarCollapsed ? '68px' : '240px',
+          width: isNavbarCollapsed ? '72px' : '252px',
           height: '100vh',
           position: 'sticky',
           top: 0,
@@ -295,26 +371,24 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, c
           borderRight: `1px solid ${t.border}`,
           display: 'flex',
           flexDirection: 'column',
-          padding: isNavbarCollapsed ? '20px 8px' : '22px 14px',
+          padding: isNavbarCollapsed ? '18px 10px' : '20px 12px',
           zIndex: 50,
           transition: 'width 0.22s ease, padding 0.22s ease, transform 0.25s ease',
           boxSizing: 'border-box',
         }}
         className={`sidebar-container ${isMobileMenuOpen ? 'mobile-open' : ''} ${isNavbarCollapsed ? 'navbar-collapsed' : ''}`}
       >
-        {/* Logo and Brand Identity */}
+        {/* Marca */}
         <div
           style={{
             display: 'flex',
             alignItems: 'center',
             justifyContent: isNavbarCollapsed ? 'center' : 'space-between',
-            padding: isNavbarCollapsed ? '0 0 16px' : '0 4px 24px',
-            position: 'relative',
+            padding: isNavbarCollapsed ? '0 0 14px' : '0 6px 20px',
           }}
         >
           {!isNavbarCollapsed ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
-              {/* Ícone do grupo: símbolo branco sobre o degradê oficial. */}
               <img
                 src="/img/marca/favicon.svg"
                 alt=""
@@ -332,9 +406,8 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, c
                     lineHeight: 1.15,
                   }}
                 >
-                  Chok Dados
+                  {APP_CONFIG.appName}
                 </div>
-                {/* Endosso: o grupo assina o produto. */}
                 <div
                   style={{
                     fontFamily: 'var(--ga-display)',
@@ -347,32 +420,30 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, c
                     marginTop: '1px',
                   }}
                 >
-                  Grupo Arantes
+                  {APP_CONFIG.brandEndorsement}
                 </div>
               </div>
             </div>
           ) : (
-            <div
-              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+            <button
+              type="button"
               onClick={toggleNavbarCollapse}
               title="Expandir barra de navegação"
+              aria-label="Expandir barra de navegação"
+              style={{ background: 'none', border: 0, padding: 0, cursor: 'pointer', minHeight: 0 }}
             >
-              <img
-                src="/img/marca/favicon.svg"
-                alt="Chok Dados · Grupo Arantes"
-                style={{ width: '30px', height: '30px', borderRadius: '8px' }}
-              />
-            </div>
+              <img src="/img/marca/favicon.svg" alt={APP_CONFIG.appFullName} style={{ width: 30, height: 30, borderRadius: 8 }} />
+            </button>
           )}
 
-          {/* Desktop collapse toggle on sidebar */}
           <button
+            type="button"
             onClick={toggleNavbarCollapse}
             className="sidebar-toggle-btn"
             style={{
               background: 'transparent',
               border: `1px solid ${t.border}`,
-              borderRadius: '6px',
+              borderRadius: '7px',
               color: t.textSecondary,
               cursor: 'pointer',
               display: isNavbarCollapsed ? 'none' : 'flex',
@@ -380,8 +451,8 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, c
               justifyContent: 'center',
               width: '26px',
               height: '26px',
+              minHeight: 0,
               padding: 0,
-              transition: 'all 0.15s ease',
             }}
             title="Recolher barra de navegação"
             aria-label="Recolher barra de navegação"
@@ -389,8 +460,8 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, c
             <ChevronLeft size={15} />
           </button>
 
-          {/* Mobile close button */}
           <button
+            type="button"
             onClick={() => setIsMobileMenuOpen(false)}
             className="mobile-close-btn"
             style={{
@@ -407,15 +478,15 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, c
           </button>
         </div>
 
-        {/* Small expand button when collapsed */}
         {isNavbarCollapsed && (
-          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '14px' }}>
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '12px' }}>
             <button
+              type="button"
               onClick={toggleNavbarCollapse}
               style={{
                 background: t.surfaceElevated,
                 border: `1px solid ${t.border}`,
-                borderRadius: '6px',
+                borderRadius: '7px',
                 color: t.textSecondary,
                 cursor: 'pointer',
                 display: 'flex',
@@ -423,8 +494,8 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, c
                 justifyContent: 'center',
                 width: '28px',
                 height: '28px',
+                minHeight: 0,
                 padding: 0,
-                transition: 'all 0.15s ease',
               }}
               title="Expandir barra de navegação"
               aria-label="Expandir barra de navegação"
@@ -434,256 +505,88 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, c
           </div>
         )}
 
-        {/* Navigation Items */}
-        <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', paddingRight: isNavbarCollapsed ? 0 : '2px' }}>
+        {/* Itens */}
+        <nav aria-label="Telas" style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden' }}>
           {navGroups.map((group) => {
-            // Filter items user can access
-            const accessibleItems = group.items.filter((item) => {
-              if (item.adminOnly && !isAdminRole(currentUser?.role)) return false;
-              return canAccessPage(item.id);
-            });
+            const acessiveis = group.items.filter(podeVer);
+            if (acessiveis.length === 0) return null;
 
-            if (accessibleItems.length === 0) return null;
+            // Sem rótulo (avulsos) ou barra recolhida: lista simples.
+            if (!group.label || isNavbarCollapsed) {
+              return (
+                <div key={group.label || 'avulsos'} style={{ marginBottom: 8 }}>
+                  {group.label && isNavbarCollapsed && (
+                    <div style={{ height: 1, background: t.border, margin: '6px 6px 8px' }} />
+                  )}
+                  {acessiveis.map(renderItem)}
+                </div>
+              );
+            }
 
-            // Os itens avulsos do topo não têm rótulo — e, sem rótulo, não há
-            // onde pôr a setinha. Eles entram sempre abertos, como antes.
-            const recolhivel = !!group.label && !isNavbarCollapsed;
-            const fechado = recolhivel && gruposFechados.includes(group.label);
-
+            const fechado = gruposFechados.includes(group.label);
+            const temAtivo = acessiveis.some((i) => i.id === currentPage);
             return (
-              <div key={group.label || 'avulsos'} style={{ marginBottom: isNavbarCollapsed ? '10px' : fechado ? '6px' : '18px', transition: 'margin-bottom 0.24s ease' }}>
-                {recolhivel && (
-                  <button
-                    onClick={() => alternarGrupo(group.label)}
-                    aria-expanded={!fechado}
-                    title={fechado ? `Mostrar telas de ${group.label}` : `Ocultar telas de ${group.label}`}
-                    style={{
-                      width: '100%',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      padding: '4px 10px 6px',
-                      border: 'none',
-                      background: 'transparent',
-                      cursor: 'pointer',
-                      color: fechado ? t.textSecondary : t.textMuted,
-                      fontSize: '11.5px',
-                      fontWeight: 600,
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.04em',
-                      textAlign: 'left',
-                      minHeight: 0,
-                      transition: 'color 0.16s ease',
-                    }}
-                  >
-                    <ChevronDown size={13} className="ga-grupo-seta" data-fechado={fechado} />
-                    <span style={{ flex: 1 }}>{group.label}</span>
-                    {/* Com o grupo fechado, o contador mostra o que ficou escondido. */}
-                    {fechado && (
-                      <span
-                        className="num"
-                        style={{
-                          fontSize: '10px',
-                          padding: '1px 6px',
-                          borderRadius: 20,
-                          background: t.surfaceElevated,
-                          border: `1px solid ${t.border}`,
-                          color: t.textMuted,
-                        }}
-                      >
-                        {accessibleItems.length}
-                      </span>
-                    )}
-                  </button>
-                )}
-                {group.label && isNavbarCollapsed && (
-                  <div style={{ height: '1px', background: t.border, margin: '6px 4px 8px' }} />
-                )}
-
+              <div key={group.label} style={{ marginBottom: 4 }}>
+                <button
+                  type="button"
+                  className="nav-grupo__titulo"
+                  aria-expanded={!fechado}
+                  onClick={() => alternarGrupo(group.label)}
+                  style={temAtivo ? { color: t.primary } : undefined}
+                >
+                  <span style={{ display: 'flex', color: temAtivo ? t.primary : t.textMuted }}>{group.icon}</span>
+                  <span style={{ flex: 1 }}>{group.label}</span>
+                  {fechado && (
+                    <span className="num nav-item__selo" title="Telas neste grupo">
+                      {acessiveis.length}
+                    </span>
+                  )}
+                  <ChevronDown size={15} className="nav-grupo__seta" />
+                </button>
                 <div className="ga-grupo-itens" data-fechado={fechado}>
                   <div>
-                    {accessibleItems.map((item) => {
-                      const isActive = currentPage === item.id;
-                      return (
-                        <div
-                          key={item.id}
-                          onClick={() => handleNavClick(item)}
-                          title={item.name}
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: isNavbarCollapsed ? 'center' : 'flex-start',
-                            gap: isNavbarCollapsed ? 0 : '10px',
-                            padding: isNavbarCollapsed ? '9px 0' : '9px 10px',
-                            borderRadius: '8px',
-                            cursor: 'pointer',
-                            color: isActive ? t.text : t.textSecondary,
-                            background: isActive ? (isNavbarCollapsed ? `${t.primary}18` : t.surfaceElevated) : 'transparent',
-                            fontSize: '13.5px',
-                            fontWeight: isActive ? 600 : 500,
-                            borderLeft: isActive ? `3px solid ${t.primary}` : '3px solid transparent',
-                            transition: 'all 0.15s ease',
-                            marginBottom: '2px',
-                          }}
-                        >
-                          <span style={{ color: isActive ? t.primary : t.textMuted, display: 'flex' }}>
-                            {item.icon}
-                          </span>
-                          {!isNavbarCollapsed && <span style={{ flex: 1 }}>{item.name}</span>}
-                          {!isNavbarCollapsed && item.external && (
-                            <ExternalLink size={13} style={{ color: t.textMuted, marginLeft: 'auto', flexShrink: 0 }} />
-                          )}
-                        </div>
-                      );
-                    })}
+                    <div className="nav-grupo__itens">{acessiveis.map(renderItem)}</div>
                   </div>
                 </div>
               </div>
             );
           })}
-
-          {/* Sair Button as per PRD Section 48 */}
-          <div style={{ marginTop: '8px', paddingTop: '10px', borderTop: `1px solid ${t.border}` }}>
-            <div
-              onClick={() => setIsLogoutModalOpen(true)}
-              title="Sair da Conta"
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: isNavbarCollapsed ? 'center' : 'flex-start',
-                gap: isNavbarCollapsed ? 0 : '10px',
-                padding: isNavbarCollapsed ? '9px 0' : '9px 10px',
-                borderRadius: '8px',
-                cursor: 'pointer',
-                color: t.primaryHover,
-                fontSize: '13.5px',
-                fontWeight: 500,
-                transition: 'background 0.15s ease',
-              }}
-            >
-              <LogOut size={16} />
-              {!isNavbarCollapsed && <span>Sair da Conta</span>}
-            </div>
-          </div>
-        </div>
-
-        {/* User Card in Footer */}
-        {currentUser && (
-          <div
-            style={{
-              marginTop: 'auto',
-              padding: isNavbarCollapsed ? '8px 0' : '12px 10px',
-              borderTop: `1px solid ${t.border}`,
-              background: isNavbarCollapsed ? 'transparent' : t.surface,
-              borderRadius: '10px',
-              display: 'flex',
-              justifyContent: 'center',
-            }}
-            title={isNavbarCollapsed ? `${currentUser.name} (${currentUser.role})` : undefined}
-          >
-            {isNavbarCollapsed ? (
-              <div
-                style={{
-                  width: '32px',
-                  height: '32px',
-                  borderRadius: '50%',
-                  background: t.primary,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: '12px',
-                  fontWeight: 600,
-                  color: '#fff',
-                  flexShrink: 0,
-                }}
-              >
-                {currentUser.avatarInitials}
-              </div>
-            ) : (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', width: '100%' }}>
-                <div
-                  style={{
-                    width: '32px',
-                    height: '32px',
-                    borderRadius: '50%',
-                    background: t.primary,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: '12px',
-                    fontWeight: 600,
-                    color: '#fff',
-                    flexShrink: 0,
-                  }}
-                >
-                  {currentUser.avatarInitials}
-                </div>
-                <div style={{ minWidth: 0, flex: 1 }}>
-                  <div style={{ fontSize: '13px', fontWeight: 600, color: t.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {currentUser.name}
-                  </div>
-                  <div style={{ fontSize: '11px', color: t.textMuted }}>
-                    {currentUser.role}
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
+        </nav>
       </aside>
 
-      {/* Main Content Area */}
+      {/* ═══════════════ ÁREA PRINCIPAL ═══════════════ */}
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
-        {/*
-          Faixa do topo — assinatura da marca (classe .faixa-marca no
-          index.css). Dentro dela o texto é claro sobre o azul, então os
-          controles aqui usam branco translúcido em vez dos tokens de tema.
-
-          Popover, diálogo e painel lateral abertos daqui saem da faixa e
-          voltam ao tema normal, e é assim que deve ser.
-        */}
+        {/* Faixa do topo — assinatura da marca (classe .faixa-marca). */}
         <header
           style={{
-            height: '68px',
+            height: '64px',
             display: isAiChatPage ? 'none' : 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            padding: '0 28px',
+            gap: 12,
+            padding: '0 24px',
             position: 'sticky',
             top: 0,
             zIndex: 30,
           }}
           className="header-bar faixa-marca"
         >
-          <img
-            src="/img/marca/simbolo-branco.svg"
-            alt=""
-            aria-hidden="true"
-            className="faixa-marca__simbolo"
-          />
+          <span className="faixa-marca__mascara" aria-hidden="true">
+            <img src="/img/marca/simbolo-branco.svg" alt="" className="faixa-marca__simbolo" />
+          </span>
+
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0, flex: '1 1 auto' }}>
             <button
+              type="button"
               onClick={() => setIsMobileMenuOpen(true)}
-              className="hamburger"
-              style={{
-                width: '34px',
-                height: '34px',
-                borderRadius: '8px',
-                border: '1px solid rgba(255,255,255,0.28)',
-                background: 'rgba(255,255,255,0.08)',
-                cursor: 'pointer',
-                color: '#fff',
-                display: 'none',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexShrink: 0,
-              }}
+              className="hamburger faixa-botao"
               aria-label="Abrir menu lateral"
             >
-              <Menu size={16} />
+              <Menu size={17} />
             </button>
-            <div
+            <h1
               style={{
+                margin: 0,
                 fontFamily: 'var(--ga-display)',
                 fontSize: '18px',
                 fontWeight: 700,
@@ -695,107 +598,162 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, c
                 whiteSpace: 'nowrap',
               }}
             >
-              {pageTitles[currentPage] || 'Chok'}
-            </div>
+              {pageTitles[currentPage] || APP_CONFIG.appName}
+            </h1>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexShrink: 0 }}>
-            {/* Perfil autenticado via JWT */}
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '6px 12px',
-                borderRadius: '8px',
-                border: '1px solid rgba(255,255,255,0.22)',
-                background: 'rgba(255,255,255,0.10)',
-                color: '#fff',
-                fontSize: '12.5px',
-                fontWeight: 500,
-              }}
-              title="Sessão autenticada com token JWT"
-            >
+          {/* Ações da faixa. No computador ficam todas à vista; no celular,
+              pesquisa · bug · tema recolhem atrás da setinha (itens ocultos) e
+              só o avatar fica sempre visível. O Chok IA saiu daqui: virou o
+              botão flutuante no canto inferior direito. */}
+          <div className="faixa-acoes" style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+            <div ref={extrasRef} style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+              <button
+                type="button"
+                className="faixa-botao faixa-mais"
+                aria-label={extrasAbertos ? 'Ocultar opções' : 'Mostrar mais opções'}
+                aria-expanded={extrasAbertos}
+                aria-controls="faixa-extras"
+                title={extrasAbertos ? 'Ocultar opções' : 'Mais opções'}
+                onClick={() => setExtrasAbertos((v) => !v)}
+              >
+                <ChevronDown size={17} className="faixa-mais__seta" />
+              </button>
+
               <div
-                style={{ width: 8, height: 8, borderRadius: '50%', background: t.brandTurquesa, flexShrink: 0 }}
-              />
-              <span className="profile-switcher-label">
-                Perfil: <strong>{currentUser?.role}</strong>
-              </span>
+                id="faixa-extras"
+                className="faixa-extras"
+                data-aberto={extrasAbertos}
+                // Escolher uma opção recolhe o grupo. O diálogo que ela abre
+                // (pesquisa, bug) continua visível — ver .faixa-extras no CSS.
+                onClick={(e) => {
+                  if ((e.target as HTMLElement).closest('.faixa-botao')) setExtrasAbertos(false);
+                }}
+              >
+                <GlobalSearch onNavigate={onNavigate} naFaixa />
+
+                <ReportarBug paginaAtual={pageTitles[currentPage] || currentPage} />
+
+                <button
+                  type="button"
+                  className="faixa-botao"
+                  onClick={(evento) => {
+                    const caixa = evento.currentTarget.getBoundingClientRect();
+                    toggleTheme({ x: caixa.left + caixa.width / 2, y: caixa.top + caixa.height / 2 });
+                  }}
+                  title={mode === 'dark' ? 'Mudar para modo claro' : 'Mudar para modo escuro'}
+                  aria-label={mode === 'dark' ? 'Mudar para modo claro' : 'Mudar para modo escuro'}
+                  style={{ overflow: 'hidden' }}
+                >
+                  <span key={mode} className="ga-theme-icon">
+                    {mode === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+                  </span>
+                </button>
+              </div>
             </div>
 
-            {/* O que este perfil pode FAZER com os dados: ver tudo e poder
-                alterar são coisas diferentes nesta plataforma. */}
-            <SeloEscrita />
+            {/* Avatar → Conta e Administração */}
+            {currentUser && (
+              <div ref={menuAvatarRef} style={{ position: 'relative' }}>
+                <button
+                  type="button"
+                  className="faixa-avatar"
+                  aria-haspopup="menu"
+                  aria-expanded={menuAvatarAberto}
+                  onClick={() => setMenuAvatarAberto((v) => !v)}
+                  title={currentUser.name}
+                >
+                  {currentUser.avatarInitials}
+                </button>
 
-            {/* Pesquisa inteligente (Seção 7) — também abre com Ctrl/⌘+K */}
-            <GlobalSearch onNavigate={onNavigate} naFaixa />
+                {menuAvatarAberto && (
+                  <div className="menu-avatar" role="menu">
+                    <div className="menu-avatar__cabeca">
+                      <span className="faixa-avatar" style={{ cursor: 'default' }} aria-hidden="true">
+                        {currentUser.avatarInitials}
+                      </span>
+                      <div style={{ minWidth: 0 }}>
+                        <div
+                          style={{
+                            fontSize: 13.5,
+                            fontWeight: 600,
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {currentUser.name}
+                        </div>
+                        <div
+                          style={{
+                            fontSize: 11.5,
+                            color: t.textMuted,
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {currentUser.email}
+                        </div>
+                      </div>
+                    </div>
 
-            {/* Tempo restante da sessão (desconexão automática ao final) */}
-            <SessionTimer naFaixa />
+                    {contaVisivel.length > 0 && <div className="menu-avatar__rotulo">Conta</div>}
+                    {contaVisivel.map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        role="menuitem"
+                        className="menu-avatar__item"
+                        aria-current={currentPage === item.id ? 'page' : undefined}
+                        onClick={() => handleNavClick(item)}
+                      >
+                        {item.icon}
+                        {item.name}
+                      </button>
+                    ))}
 
-            {/* Theme Toggle Button */}
-            <button
-              onClick={(evento) => {
-                // O círculo da animação nasce no centro do próprio botão.
-                const caixa = evento.currentTarget.getBoundingClientRect();
-                toggleTheme({ x: caixa.left + caixa.width / 2, y: caixa.top + caixa.height / 2 });
-              }}
-              style={{
-                width: '34px',
-                height: '34px',
-                borderRadius: '8px',
-                border: '1px solid rgba(255,255,255,0.28)',
-                background: 'rgba(255,255,255,0.08)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: 'pointer',
-                color: '#fff',
-                overflow: 'hidden',
-              }}
-              title={mode === 'dark' ? 'Mudar para Modo Claro' : 'Mudar para Modo Escuro'}
-              aria-label={mode === 'dark' ? 'Mudar para modo claro' : 'Mudar para modo escuro'}
-            >
-              {/* A `key` troca junto com o tema: isso remonta o ícone e faz a
-                  animação de giro rodar a cada alternância. */}
-              <span key={mode} className="ga-theme-icon">
-                {mode === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
-              </span>
-            </button>
+                    {adminVisivel.length > 0 && <div className="menu-avatar__rotulo">Administração</div>}
+                    {adminVisivel.map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        role="menuitem"
+                        className="menu-avatar__item"
+                        aria-current={currentPage === item.id ? 'page' : undefined}
+                        onClick={() => handleNavClick(item)}
+                      >
+                        {item.icon}
+                        {item.name}
+                      </button>
+                    ))}
+
+                    <div style={{ height: 1, background: t.border, margin: '6px 4px' }} />
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="menu-avatar__item menu-avatar__item--sair"
+                      onClick={() => {
+                        setMenuAvatarAberto(false);
+                        setIsLogoutModalOpen(true);
+                      }}
+                    >
+                      <LogOut size={16} />
+                      Sair da conta
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </header>
 
-        {/* Data Scope Banner for non-admin profiles */}
-        {!isAiChatPage && currentUser && currentUser.role !== 'ADMIN' && (
-          <div
-            style={{
-              padding: '8px 28px',
-              background: `${t.primary}0D`,
-              borderBottom: `1px solid ${t.primary}33`,
-              fontSize: '12.5px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: '12px',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: t.text }}>
-              <Building size={14} color={t.primary} />
-              <span>
-                <strong>Escopo Ativo ({currentUser.role}):</strong> {currentUser.scope.description}
-              </span>
-            </div>
-            
-          </div>
-        )}
-
-        {/* Aviso de inatividade (Seção 4): último minuto antes da desconexão. */}
+        {/* Aviso de inatividade: último minuto antes da desconexão. */}
         {idleWarning && (
           <div
             className="ga-fade-in"
             style={{
-              padding: '10px 28px',
+              padding: '10px 24px',
               background: `${t.warning}1A`,
               borderBottom: `1px solid ${t.warning}55`,
               display: 'flex',
@@ -813,6 +771,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, c
               <strong className="num">{idleSecondsLeft}s</strong>.
             </span>
             <button
+              type="button"
               onClick={keepSessionAlive}
               className="ga-tap"
               style={{
@@ -831,23 +790,19 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, c
           </div>
         )}
 
-        {/* Main Content View */}
         <main
           style={{
             flex: 1,
             minHeight: 0,
+            minWidth: 0,
             display: isAiChatPage ? 'flex' : undefined,
-            padding: isAiChatPage ? 0 : '28px',
+            padding: isAiChatPage ? 0 : '24px',
           }}
           className="content-pad"
         >
           {children}
         </main>
 
-        {/* O Chok IA ocupa a tela inteira: nele o rodapé e o botão de voltar
-            ao topo ficam de fora. Antes faltava fechar esta condicional e o
-            par Footer/ScrollToTopButton aparecia duplicado logo abaixo, o que
-            quebrava a compilação. */}
         {!isAiChatPage && (
           <>
             <Footer />
@@ -855,23 +810,19 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, c
           </>
         )}
 
-        {/* Seção 10 — barra inferior no celular: as telas mais usadas a um
-            toque, sem precisar abrir o menu lateral. Só aparece em telas
-            estreitas; no desktop a navegação continua sendo a lateral. */}
+        {/* Barra inferior no celular: as telas mais usadas a um toque. */}
         {atalhosMobile.length > 1 && (
           <nav
             className="mobile-tabbar"
             aria-label="Navegação rápida"
-            style={{
-              background: t.bgSecondary,
-              borderTop: `1px solid ${t.border}`,
-            }}
+            style={{ background: t.bgSecondary, borderTop: `1px solid ${t.border}` }}
           >
             {atalhosMobile.map((item) => {
               const ativo = currentPage === item.id;
               return (
                 <button
                   key={item.id}
+                  type="button"
                   onClick={() => handleNavClick(item)}
                   aria-current={ativo ? 'page' : undefined}
                   style={{
@@ -887,20 +838,12 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, c
                     background: 'transparent',
                     color: ativo ? t.accentTeal : t.textMuted,
                     cursor: 'pointer',
-                    fontSize: 9.5,
+                    fontSize: 10,
                     fontWeight: ativo ? 700 : 500,
-                    transition: 'color 0.16s ease',
                   }}
                 >
                   {item.icon}
-                  <span
-                    style={{
-                      maxWidth: '100%',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
+                  <span style={{ maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {item.name}
                   </span>
                 </button>
@@ -910,52 +853,47 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, c
         )}
       </div>
 
-      {/* Logout confirmation modal */}
+      {/* Chok IA — botão flutuante no canto inferior direito, como nas
+          plataformas de atendimento. Some na própria tela da IA. */}
+      {!isAiChatPage && canAccessPage('ai-chat') && (
+        <button
+          type="button"
+          className="ia-flutuante"
+          onClick={() => onNavigate('ai-chat')}
+          aria-label="Abrir o Chok IA"
+          title="Abrir o Chok IA"
+        >
+          <Bot size={22} />
+          <span className="ia-flutuante__rotulo">Chok IA</span>
+        </button>
+      )}
+
       <LogoutModal />
 
       <style>{`
-        .hamburger { display: none; }
-        .desktop-header-collapse-btn { display: flex; }
+        .hamburger { display: none !important; }
         @media (max-width: 980px) {
           .sidebar-container {
             position: fixed !important;
             top: 0 !important;
             left: 0 !important;
             bottom: 0 !important;
-            height: 100vh !important;
-            width: 240px !important;
-            padding: 22px 14px !important;
+            height: 100dvh !important;
+            width: min(280px, 86vw) !important;
+            padding: 20px 12px !important;
             transform: translateX(-100%);
             box-shadow: 6px 0 28px rgba(0, 0, 0, 0.4);
           }
-          .sidebar-container.mobile-open {
-            transform: translateX(0);
-          }
-          .hamburger {
-            display: flex !important;
-          }
-          .desktop-header-collapse-btn {
-            display: none !important;
-          }
-          .sidebar-toggle-btn {
-            display: none !important;
-          }
-          .mobile-close-btn {
-            display: flex !important;
-          }
+          .sidebar-container.mobile-open { transform: translateX(0); }
+          .hamburger { display: inline-flex !important; }
+          .sidebar-toggle-btn { display: none !important; }
+          .mobile-close-btn { display: flex !important; }
         }
         @media (max-width: 620px) {
-          .content-pad {
-            padding: 16px !important;
-          }
-          .header-bar {
-            padding: 0 16px !important;
-          }
-        }
-        @media (max-width: 480px) {
-          .profile-switcher-label {
-            display: none;
-          }
+          .content-pad { padding: 16px !important; }
+          .header-bar { padding: 0 12px !important; height: 58px !important; }
+          .header-bar h1 { font-size: 16px !important; }
+          .faixa-acoes { gap: 6px !important; }
         }
         .mobile-tabbar { display: none; }
         @media (max-width: 760px) {
@@ -968,8 +906,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentPage, onNavigate, c
             z-index: 45;
             padding-bottom: env(safe-area-inset-bottom, 0px);
           }
-          /* Espaço para o conteúdo não ficar atrás da barra. */
-          .content-pad { padding-bottom: 76px !important; }
+          .content-pad { padding-bottom: 80px !important; }
         }
       `}</style>
     </div>

@@ -1084,3 +1084,578 @@
     scroll-behavior: auto !important;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════
+   Painel lateral (drawer) — ficha do cliente, ficha do produto
+   ═══════════════════════════════════════════════════════════
+   No computador abre encostado à direita, por cima do conteúdo, como um
+   painel de detalhe: a tela de origem continua visível atrás, então quem
+   clicou numa linha não perde o contexto da tabela.
+
+   No celular vira uma folha que sobe de baixo e ocupa a tela inteira: um
+   painel estreito de 600px não cabe num telefone, e uma folha de baixo é o
+   gesto que o celular já ensina (puxar para fechar, X no topo).
+   ─────────────────────────────────────────────────────────── */
+.painel-fundo {
+  position: fixed;
+  inset: 0;
+  background: rgba(6, 10, 18, 0.55);
+  backdrop-filter: blur(2px);
+  z-index: 9000;
+  animation: ga-fade-in 0.18s ease both;
+}
+.painel-lateral {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(640px, 100vw);
+  background: var(--ga-surface);
+  border-left: 1px solid var(--ga-border);
+  box-shadow: -18px 0 48px rgba(0, 0, 0, 0.28);
+  z-index: 9001;
+  display: flex;
+  flex-direction: column;
+  animation: painel-entra 0.26s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.painel-lateral--largo {
+  width: min(820px, 100vw);
+}
+@keyframes painel-entra {
+  from {
+    transform: translateX(28px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+.painel-lateral__corpo {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 18px 22px 28px;
+}
+.painel-lateral__puxador {
+  display: none;
+}
+@keyframes painel-sobe {
+  from {
+    transform: translateY(40px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+@media (max-width: 760px) {
+  .painel-lateral,
+  .painel-lateral--largo {
+    top: auto;
+    left: 0;
+    width: 100vw;
+    height: 94dvh;
+    border-left: 0;
+    border-top: 1px solid var(--ga-border);
+    border-radius: 18px 18px 0 0;
+    animation: painel-sobe 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .painel-lateral__puxador {
+    display: block;
+    width: 44px;
+    height: 4px;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.55);
+    margin: 8px auto 0;
+  }
+  .painel-lateral__corpo {
+    padding: 14px 16px calc(24px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Faixa do topo — ajuste de layout
+   ═══════════════════════════════════════════════════════════
+   O símbolo em contorno estava com altura proporcional à faixa (230%) e
+   posição fixa em px: em telas largas ele crescia e se perdia, em telas
+   estreitas ficava cortado no meio. Agora tem tamanho fixo, ancorado no
+   canto direito, e some no celular, onde a faixa é curta demais para ele.
+   O degradê ficou um pouco mais fechado, como a faixa de referência.
+   ─────────────────────────────────────────────────────────── */
+.faixa-marca {
+  background: linear-gradient(100deg, #1F3B66 0%, #2A4C7F 40%, #2B6078 78%, #3E96A0 112%);
+}
+.faixa-marca__simbolo {
+  height: 210px;
+  right: 96px;
+  opacity: 0.09;
+}
+@media (max-width: 760px) {
+  .faixa-marca__simbolo {
+    display: none;
+  }
+}
+/* Botões-ícone dentro da faixa: um só visual para pesquisa, IA, bug, tema. */
+.faixa-botao {
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  padding: 0;
+  transition: background 0.16s ease, border-color 0.16s ease, transform 0.16s ease;
+}
+.faixa-botao:hover {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.4);
+}
+.faixa-botao:active {
+  transform: scale(0.96);
+}
+.faixa-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  background: #44ABAA;
+  color: #0A0E14;
+  font-family: var(--ga-display);
+  font-weight: 700;
+  font-size: 12.5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  padding: 0;
+  transition: border-color 0.16s ease, transform 0.16s ease;
+}
+.faixa-avatar:hover {
+  border-color: #fff;
+}
+.faixa-avatar[aria-expanded='true'] {
+  border-color: #fff;
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.18);
+}
+
+/* Menu do avatar: conta e administração saíram da barra lateral para cá. */
+.menu-avatar {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 272px;
+  max-width: calc(100vw - 24px);
+  background: var(--ga-surface);
+  border: 1px solid var(--ga-border);
+  border-radius: 14px;
+  box-shadow: var(--ga-shadow);
+  padding: 8px;
+  z-index: 60;
+  animation: ga-fade-in 0.16s ease both;
+  color: var(--ga-text);
+}
+.menu-avatar__cabeca {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px 10px;
+  border-bottom: 1px solid var(--ga-border);
+  margin-bottom: 6px;
+}
+.menu-avatar__rotulo {
+  font-family: var(--ga-display);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ga-textMuted);
+  padding: 8px 10px 4px;
+}
+.menu-avatar__item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--ga-textSecondary);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  min-height: 0;
+  transition: background 0.14s ease, color 0.14s ease;
+}
+.menu-avatar__item:hover,
+.menu-avatar__item[aria-current='page'] {
+  background: var(--ga-surfaceElevated);
+  color: var(--ga-text);
+}
+.menu-avatar__item--sair {
+  color: var(--ga-danger);
+}
+.menu-avatar__item--sair:hover {
+  background: color-mix(in srgb, var(--ga-danger) 12%, transparent);
+  color: var(--ga-danger);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Barra lateral — grupos recolhíveis, subitens recuados
+   ═══════════════════════════════════════════════════════════
+   Formato da referência: o título do grupo tem a seta à DIREITA; os itens
+   ficam recuados com uma linha-guia à esquerda; o item ativo ganha texto
+   mais forte e um traço na borda direita (não na esquerda).
+   ─────────────────────────────────────────────────────────── */
+.nav-grupo__titulo {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--ga-textSecondary);
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  min-height: 0;
+  transition: background 0.14s ease, color 0.14s ease;
+}
+.nav-grupo__titulo:hover {
+  background: var(--ga-surfaceElevated);
+  color: var(--ga-text);
+}
+.nav-grupo__titulo .nav-grupo__seta {
+  margin-left: auto;
+  color: var(--ga-textMuted);
+  transition: transform 0.22s ease;
+}
+.nav-grupo__titulo[aria-expanded='false'] .nav-grupo__seta {
+  transform: rotate(-90deg);
+}
+.nav-grupo__itens {
+  position: relative;
+  margin: 2px 0 6px 20px;
+  padding-left: 10px;
+}
+.nav-grupo__itens::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 1px;
+  background: var(--ga-border);
+}
+.nav-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  margin-bottom: 1px;
+  border-radius: 9px;
+  cursor: pointer;
+  color: var(--ga-textSecondary);
+  font-size: 13.5px;
+  font-weight: 500;
+  transition: background 0.14s ease, color 0.14s ease;
+  min-height: 0;
+}
+.nav-item:hover {
+  background: var(--ga-surfaceElevated);
+  color: var(--ga-text);
+}
+.nav-item__icone {
+  display: flex;
+  color: var(--ga-textMuted);
+  flex-shrink: 0;
+  transition: color 0.14s ease;
+}
+.nav-item__rotulo {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nav-item__selo {
+  font-family: var(--ga-display);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--ga-surfaceElevated);
+  border: 1px solid var(--ga-border);
+  color: var(--ga-textMuted);
+  flex-shrink: 0;
+}
+.nav-item[aria-current='page'] {
+  color: var(--ga-text);
+  font-weight: 600;
+  background: color-mix(in srgb, var(--ga-primary) 10%, transparent);
+}
+.nav-item[aria-current='page'] .nav-item__icone {
+  color: var(--ga-primary);
+}
+.nav-item[aria-current='page']::after {
+  content: '';
+  position: absolute;
+  right: 4px;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  border-radius: 3px;
+  background: var(--ga-primary);
+}
+/* Barra recolhida: só o ícone, centralizado; o ativo mantém o traço. */
+.nav-item--compacto {
+  justify-content: center;
+  padding: 9px 0;
+  gap: 0;
+}
+.nav-item--compacto[aria-current='page']::after {
+  right: 0;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Responsividade — utilitários compartilhados
+   ═══════════════════════════════════════════════════════════ */
+/* Toda tabela larga vai dentro disto: rola na horizontal no celular em vez
+   de estourar a página. */
+.tabela-rolavel {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+/* Grade de cartões de KPI que se ajusta sozinha a qualquer largura. */
+.grade-kpi {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(190px, 100%), 1fr));
+  gap: 12px;
+}
+/* Cabeçalho de página: título à esquerda, filtros à direita; no celular tudo
+   quebra em coluna, sem texto cortado. */
+.cabeca-pagina {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+@media (max-width: 760px) {
+  .cabeca-pagina > * {
+    flex: 1 1 100%;
+  }
+  .cabeca-pagina h1 {
+    font-size: 20px !important;
+  }
+  /* Gráficos Recharts: a altura fixa de 380px não cabe em celular deitado. */
+  .grafico-alto {
+    height: 300px !important;
+  }
+}
+/* Dentro de 480px, filtros ocupam a linha inteira. */
+@media (max-width: 480px) {
+  .filtros-linha > * {
+    flex: 1 1 100% !important;
+    width: 100%;
+  }
+}
+
+/* Formulários de duas colunas: empilham no celular, onde cada campo ficaria
+   com ~150px e o texto digitado sumiria. */
+@media (max-width: 560px) {
+  .grade-responsiva {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* Filtros (SingleSelect/MultiSelect) no celular: ocupam a linha inteira, o
+   texto longo (nome de vendedor) é truncado em vez de estourar a tela, e o
+   painel suspenso usa a largura do filtro — ancorado à esquerda ele saía da
+   tela quando o filtro ficava no canto direito. */
+@media (max-width: 560px) {
+  .filtro-select {
+    display: block !important;
+    flex: 1 1 100%;
+    width: 100%;
+  }
+  .filtro-select__botao {
+    width: 100%;
+    white-space: nowrap;
+    overflow: hidden;
+  }
+  .filtro-select__botao > span:last-of-type {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-align: left;
+  }
+  .filtro-select__painel {
+    left: 0 !important;
+    right: 0 !important;
+    min-width: 0 !important;
+    max-width: none !important;
+  }
+}
+
+/* Máscara do símbolo da faixa.
+   O símbolo é maior que a faixa (de propósito: só um pedaço dele aparece).
+   Sem recorte, ele vazava para baixo da barra e cobria a linha seguinte da
+   página. `overflow: hidden` na própria faixa resolveria, mas cortaria o
+   menu do avatar, que abre para fora dela — por isso o recorte fica só aqui. */
+.faixa-marca__mascara {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: -1;
+}
+.faixa-marca__mascara .faixa-marca__simbolo {
+  z-index: auto;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Faixa do topo — opções recolhidas no celular ("itens ocultos")
+   ═══════════════════════════════════════════════════════════
+   No computador o grupo .faixa-extras fica em linha, à vista, e a setinha
+   não aparece. No celular a setinha aparece e o grupo vira um painel que
+   desce da faixa.
+
+   ATENÇÃO ao esconder: o painel usa só `visibility`. Opacity, transform ou
+   filter no painel quebrariam os diálogos que nascem dentro dele (pesquisa,
+   reportar bug): opacity deixaria o diálogo transparente junto, e transform
+   faria o `position: fixed` dele se prender ao painel em vez da tela. Com
+   visibility, os diálogos declaram `visibility: visible` e seguem à vista
+   mesmo depois que o painel recolhe.
+   ─────────────────────────────────────────────────────────── */
+.faixa-extras {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.faixa-mais {
+  display: none !important;
+}
+.faixa-mais__seta {
+  transition: transform 0.2s ease;
+}
+.faixa-mais[aria-expanded='true'] .faixa-mais__seta {
+  transform: rotate(180deg);
+}
+/* Diálogos abertos de dentro da faixa: sempre visíveis e clicáveis. */
+.faixa-extras .busca-global-fundo,
+.faixa-extras .painel-fundo,
+.faixa-extras .painel-lateral {
+  visibility: visible;
+  pointer-events: auto;
+}
+
+@media (max-width: 760px) {
+  .faixa-mais {
+    display: inline-flex !important;
+  }
+  .faixa-extras {
+    position: absolute;
+    top: calc(100% + 10px);
+    right: 0;
+    z-index: 70;
+    padding: 6px;
+    gap: 6px;
+    border-radius: 12px;
+    background: linear-gradient(135deg, #1F3B66 0%, #2A4C7F 70%, #2B6078 100%);
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35);
+    visibility: hidden;
+    pointer-events: none;
+  }
+  .faixa-extras[data-aberto='true'] {
+    visibility: visible;
+    pointer-events: auto;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Chok IA — botão flutuante (canto inferior direito)
+   ═══════════════════════════════════════════════════════════
+   No computador é uma pílula: ícone + "Chok IA". No celular vira só o
+   círculo, acima da barra de atalhos inferior. O "voltar ao topo" sobe
+   para não disputar o mesmo canto.
+   ─────────────────────────────────────────────────────────── */
+.ia-flutuante {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 8000;
+  height: 52px;
+  min-width: 52px;
+  padding: 0 18px 0 15px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 999px;
+  background: linear-gradient(135deg, #2A4C7F 0%, #2A4C7F 35%, #44ABAA 130%);
+  color: #fff;
+  font-family: var(--ga-display);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  cursor: pointer;
+  box-shadow: 0 10px 28px rgba(20, 40, 80, 0.38), 0 0 0 4px color-mix(in srgb, #44ABAA 18%, transparent);
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+.ia-flutuante:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 32px rgba(20, 40, 80, 0.45), 0 0 0 6px color-mix(in srgb, #44ABAA 22%, transparent);
+}
+.ia-flutuante:active {
+  transform: scale(0.96);
+}
+.voltar-topo {
+  bottom: 92px !important;
+  right: 26px !important;
+}
+@media (max-width: 760px) {
+  .ia-flutuante {
+    right: 16px;
+    bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+    width: 54px;
+    height: 54px;
+    padding: 0;
+  }
+  .ia-flutuante__rotulo {
+    display: none;
+  }
+  .voltar-topo {
+    right: 21px !important;
+    bottom: calc(142px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ia-flutuante,
+  .ia-flutuante:hover {
+    transition: none;
+    transform: none;
+  }
+}

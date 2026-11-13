@@ -9,6 +9,7 @@ from app.db import get_connection
 from app.sanitize import like_pattern
 from app.security import ROLES_VISAO_GERAL, get_current_user
 from app.services import num, scope_filters
+from app.routers.metas import aplicar, metas_definidas
 
 router = APIRouter(tags=["analytics"])
 
@@ -209,6 +210,9 @@ def dashboard(
             top_params,
         ).fetchall()
 
+        # Cobertura geral e sortimento definidos na tela vencem os importados.
+        definidas = metas_definidas(conn, ano, mes, eff_equipe, eff_vendedor)
+
     def pct(realizado_v: float, meta_v: float) -> float:
         return round((realizado_v / meta_v * 100) if meta_v else 0, 1)
 
@@ -217,9 +221,9 @@ def dashboard(
     gap = realizado - meta
     atingimento = (realizado / meta * 100) if meta else 0
 
-    meta_cobertura = num(kpis["meta_cobertura"])
+    meta_cobertura = aplicar(num(kpis["meta_cobertura"]), definidas["meta_cobertura"])
     realizado_cobertura = num(kpis["realizado_cobertura"])
-    meta_sortimento = num(kpis["meta_sortimento"])
+    meta_sortimento = aplicar(num(kpis["meta_sortimento"]), definidas["meta_sortimento"])
     realizado_sortimento = num(kpis["realizado_sortimento"])
 
     return {
@@ -896,3 +900,459 @@ def sales(
         }
         for r in rows
     ]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# FICHA DO CLIENTE
+#
+# Abre ao clicar em um cliente no Dashboard, no TOP Clientes ou nos Não
+# Positivados. Junta, para o MESMO período já filtrado na tela:
+#
+#   • o realizado de venda do cliente (planilha "Top Clientes");
+#   • o peso dele na carteira do vendedor (participação e posição);
+#   • o quanto ele representa da meta do vendedor, incluindo os objetivos de
+#     faseamento, faseamento II, desconcentração e desafio (aba "Mês");
+#   • os fabricantes em que esse cliente comprou, com valor.
+#
+# Honestidade da fonte: o valor por FABRICANTE é real — vem da matriz
+# cliente x fabricante da planilha de Não Positivados, onde cada fabricante é
+# uma coluna com o valor vendido no período. Já CATEGORIA e PRODUTO não
+# existem por cliente em nenhuma base importada (a venda é gravada só no total
+# do pedido), então o nível de item é servido pela Lista de Sortimento — é o
+# portfólio daquele fabricante, não a compra daquele cliente, e a resposta diz
+# isso em `avisos` para a tela poder avisar o usuário.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _blocos_objetivo(
+    row: dict[str, Any] | None, definidas: dict[str, float | None] | None = None
+) -> dict[str, dict[str, float]]:
+    """Meta/realizado/pct de cada objetivo do vendedor no período.
+
+    `definidas` são as metas gravadas na tela; quando existem, vencem as
+    importadas da aba Mês.
+    """
+    definidas = definidas or {}
+
+    def bloco(meta_key: str, real_key: str) -> dict[str, float]:
+        meta_v = aplicar(num(row[meta_key]) if row else 0.0, definidas.get(meta_key))
+        real_v = num(row[real_key]) if row else 0.0
+        return {
+            "meta": meta_v,
+            "realizado": real_v,
+            "pct": round((real_v / meta_v * 100) if meta_v else 0, 1),
+        }
+
+    return {
+        "faseamento": bloco("meta_faseamento", "realizado_faseamento"),
+        "faseamentoII": bloco("meta_faseamento_ii", "realizado_faseamento_ii"),
+        "desconcentracao": bloco("meta_desconcentracao", "realizado_desconcentracao"),
+        "desafio": bloco("meta_desafio", "realizado_desafio"),
+    }
+
+
+@router.get("/analytics/cliente-detalhe")
+@cached()
+def cliente_detalhe(
+    codigo: str | None = None,
+    nome: str | None = None,
+    ano: int | None = None,
+    mes: int | None = None,
+    start: str | None = None,
+    end: str | None = None,
+    equipe: str | None = None,
+    vendedor: str | None = None,
+    user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Ficha de um cliente no período: venda, peso na carteira, peso na meta e
+    quebra por fabricante.
+
+    `codigo` identifica um ponto de venda; `nome` identifica uma REDE (vários
+    códigos sob o mesmo nome comercial), e nesse caso tudo é somado.
+    """
+    if not codigo and not nome:
+        raise HTTPException(status_code=400, detail="Informe codigo ou nome do cliente.")
+
+    scope = _resolve_filters(user, equipe, vendedor)
+    eff_equipe = scope.get("equipe")
+    eff_vendedor = scope.get("vendedor")
+
+    # Identificação do cliente (ou da rede) dentro do recorte do usuário.
+    # O nome segue a mesma expressão usada pelo Dashboard, para que clicar na
+    # linha de lá encontre exatamente a mesma coisa aqui.
+    nome_expr = "COALESCE(c.razao_social, tc.cliente, tc.cod_cliente)"
+    base_params: list[Any] = []
+    base_parts = ["1=1"]
+    periodo_sql = _period_clause("tc", ano, mes, start, end, base_params)
+    if periodo_sql:
+        base_parts.append(periodo_sql.replace(" AND ", "", 1))
+    if eff_vendedor:
+        base_parts.append("tc.cod_vendedor = %s")
+        base_params.append(eff_vendedor)
+    if eff_equipe:
+        base_parts.append("COALESCE(tv.equipe, tc.equipe) = %s")
+        base_params.append(eff_equipe)
+
+    cliente_params = list(base_params)
+    cliente_parts = list(base_parts)
+    if codigo:
+        cliente_parts.append("tc.cod_cliente = %s")
+        cliente_params.append(codigo)
+    else:
+        cliente_parts.append(nome_expr + " = %s")
+        cliente_params.append(nome)
+
+    with get_connection() as conn:
+        cliente = conn.execute(
+            f"""
+            SELECT {nome_expr} AS nome,
+                   MIN(tc.cod_cliente) AS codigo,
+                   COUNT(DISTINCT tc.cod_cliente) AS pontos,
+                   MAX(tc.municipio) AS municipio,
+                   MAX(tc.cod_vendedor) AS cod_vendedor,
+                   MAX(COALESCE(tv.nome, tc.nome_vendedor)) AS vendedor,
+                   MAX(COALESCE(tv.equipe, tc.equipe)) AS equipe,
+                   MAX(tc.gerencia) AS gerencia,
+                   BOOL_OR(COALESCE(c.e_rede, false)) AS e_rede,
+                   COALESCE(SUM(tc.venda_total_mes), 0) AS realizado
+            FROM top_clientes tc
+            LEFT JOIN clientes c ON c.cod_cliente = tc.cod_cliente
+            LEFT JOIN vendedores tv ON tv.cod_vendedor = tc.cod_vendedor
+            WHERE {" AND ".join(cliente_parts)}
+            GROUP BY 1
+            ORDER BY realizado DESC
+            LIMIT 1
+            """,
+            cliente_params,
+        ).fetchone()
+
+        # Cliente SEM venda no período não está em `top_clientes` — e é
+        # exatamente o caso da tela de Não Positivados, onde abrir a ficha é
+        # mais útil do que em qualquer outro lugar. Recorre ao cadastro para
+        # identificá-lo e segue com realizado zero, em vez de devolver 404.
+        sem_venda = cliente is None
+        if sem_venda:
+            cad_params: list[Any] = []
+            cad_parts = ["1=1"]
+            if codigo:
+                cad_parts.append("c.cod_cliente = %s")
+                cad_params.append(codigo)
+            else:
+                cad_parts.append("c.razao_social = %s")
+                cad_params.append(nome)
+            cliente = conn.execute(
+                f"""
+                SELECT COALESCE(c.razao_social, c.cod_cliente) AS nome,
+                       MIN(c.cod_cliente) AS codigo,
+                       COUNT(DISTINCT c.cod_cliente) AS pontos,
+                       NULL::text AS municipio,
+                       MAX(c.cod_vendedor) AS cod_vendedor,
+                       MAX(v.nome) AS vendedor,
+                       MAX(v.equipe) AS equipe,
+                       NULL::text AS gerencia,
+                       BOOL_OR(COALESCE(c.e_rede, false)) AS e_rede,
+                       0::numeric AS realizado
+                FROM clientes c
+                LEFT JOIN vendedores v ON v.cod_vendedor = c.cod_vendedor
+                WHERE {" AND ".join(cad_parts)}
+                GROUP BY 1
+                LIMIT 1
+                """,
+                cad_params,
+            ).fetchone()
+
+            if cliente is None:
+                raise HTTPException(status_code=404, detail="Cliente não encontrado.")
+
+            # O recorte do usuário vale igual no caminho de fallback: sem
+            # isto, um Vendedor abriria a ficha de um cliente de outro.
+            if eff_vendedor and cliente["cod_vendedor"] != eff_vendedor:
+                raise HTTPException(status_code=404, detail="Cliente fora do seu escopo.")
+            if eff_equipe and cliente["equipe"] != eff_equipe:
+                raise HTTPException(status_code=404, detail="Cliente fora do seu escopo.")
+
+        cod_vendedor = cliente["cod_vendedor"]
+        realizado_cliente = num(cliente["realizado"])
+
+        # ── Carteira do vendedor dono do cliente ───────────────────────────
+        # "O que isso influencia na carteira": a carteira de referência é a do
+        # vendedor responsável. Sem vendedor identificado, cai no recorte que
+        # o usuário já está vendo na tela.
+        cart_params = list(base_params)
+        cart_parts = list(base_parts)
+        if cod_vendedor:
+            cart_parts.append("tc.cod_vendedor = %s")
+            cart_params.append(cod_vendedor)
+        carteira = conn.execute(
+            f"""
+            SELECT COALESCE(SUM(tc.venda_total_mes), 0) AS total,
+                   COUNT(DISTINCT tc.cod_cliente) AS clientes
+            FROM top_clientes tc
+            LEFT JOIN clientes c ON c.cod_cliente = tc.cod_cliente
+            LEFT JOIN vendedores tv ON tv.cod_vendedor = tc.cod_vendedor
+            WHERE {" AND ".join(cart_parts)}
+            """,
+            cart_params,
+        ).fetchone()
+
+        # Posição do cliente no ranking dessa carteira.
+        posicao_row = conn.execute(
+            f"""
+            SELECT COUNT(*) + 1 AS posicao
+            FROM (
+              SELECT COALESCE(SUM(tc.venda_total_mes), 0) AS valor
+              FROM top_clientes tc
+              LEFT JOIN clientes c ON c.cod_cliente = tc.cod_cliente
+              LEFT JOIN vendedores tv ON tv.cod_vendedor = tc.cod_vendedor
+              WHERE {" AND ".join(cart_parts)}
+              GROUP BY {nome_expr}
+            ) ranking
+            WHERE ranking.valor > %s
+            """,
+            [*cart_params, realizado_cliente],
+        ).fetchone()
+
+        # ── Meta e objetivos do vendedor ───────────────────────────────────
+        meta_row = None
+        if cod_vendedor:
+            meta_params: list[Any] = [cod_vendedor]
+            meta_parts = ["iv.cod_vendedor = %s"]
+            meta_periodo = _period_clause("iv", ano, mes, start, end, meta_params)
+            if meta_periodo:
+                meta_parts.append(meta_periodo.replace(" AND ", "", 1))
+            meta_row = conn.execute(
+                f"""
+                SELECT COALESCE(SUM(iv.meta_faturamento), 0) AS meta,
+                       COALESCE(SUM(iv.realizado_faturamento), 0) AS realizado,
+                       COALESCE(SUM(iv.meta_cobertura), 0) AS meta_cobertura,
+                       COALESCE(SUM(iv.realizado_cobertura), 0) AS realizado_cobertura,
+                       COALESCE(SUM(iv.meta_faseamento), 0) AS meta_faseamento,
+                       COALESCE(SUM(iv.realizado_faseamento), 0) AS realizado_faseamento,
+                       COALESCE(SUM(iv.meta_faseamento_ii), 0) AS meta_faseamento_ii,
+                       COALESCE(SUM(iv.realizado_faseamento_ii), 0) AS realizado_faseamento_ii,
+                       COALESCE(SUM(iv.meta_desconcentracao), 0) AS meta_desconcentracao,
+                       COALESCE(SUM(iv.realizado_desconcentracao), 0) AS realizado_desconcentracao,
+                       COALESCE(SUM(iv.meta_desafio), 0) AS meta_desafio,
+                       COALESCE(SUM(iv.realizado_desafio), 0) AS realizado_desafio
+                FROM indicadores_vendedor iv
+                WHERE {" AND ".join(meta_parts)}
+                """,
+                meta_params,
+            ).fetchone()
+
+        definidas_vendedor = metas_definidas(conn, ano, mes, None, cod_vendedor) if cod_vendedor else {}
+
+        # ── Crescimento (planilha TOP 20 Clientes) ─────────────────────────
+        cresc_params: list[Any] = []
+        cresc_parts = ["1=1"]
+        cresc_periodo = _period_clause("t", ano, mes, start, end, cresc_params)
+        if cresc_periodo:
+            cresc_parts.append(cresc_periodo.replace(" AND ", "", 1))
+        if codigo:
+            cresc_parts.append("t.cod_cliente = %s")
+            cresc_params.append(codigo)
+        else:
+            cresc_parts.append("t.cliente_redes = %s")
+            cresc_params.append(nome)
+        crescimento = conn.execute(
+            f"""
+            SELECT COALESCE(SUM(t.mes_25), 0) AS mes_ant,
+                   COALESCE(SUM(t.mes_26), 0) AS mes_atual,
+                   COALESCE(SUM(t.trimestre_25), 0) AS tri_ant,
+                   COALESCE(SUM(t.trimestre_26), 0) AS tri_atual,
+                   COUNT(*) AS linhas
+            FROM top_20_clientes t
+            WHERE {" AND ".join(cresc_parts)}
+            """,
+            cresc_params,
+        ).fetchone()
+
+        # ── Fabricantes em que o cliente comprou ───────────────────────────
+        # A matriz cliente x fabricante da planilha de Não Positivados é a
+        # ÚNICA base com valor de venda por fabricante para um cliente.
+        codigos_row = conn.execute(
+            f"""
+            SELECT DISTINCT tc.cod_cliente
+            FROM top_clientes tc
+            LEFT JOIN clientes c ON c.cod_cliente = tc.cod_cliente
+            LEFT JOIN vendedores tv ON tv.cod_vendedor = tc.cod_vendedor
+            WHERE {" AND ".join(cliente_parts)}
+            """,
+            cliente_params,
+        ).fetchall()
+        # Sem linha em `top_clientes` (cliente não positivado), o código vem
+        # do cadastro — senão a quebra por fabricante ficaria vazia justamente
+        # para quem mais precisa dela.
+        cods_cliente = [r["cod_cliente"] for r in codigos_row]
+        if not cods_cliente:
+            cods_cliente = [c for c in (codigo, cliente["codigo"]) if c]
+
+        fab_valores: dict[str, float] = {}
+        fonte_fabricante: str | None = None
+        if cods_cliente:
+            for tabela, rotulo in (
+                ("nao_positivados_vendedor", "Não Positivados · por vendedor"),
+                ("nao_positivados_chok_total", "Não Positivados · Chok total"),
+            ):
+                np_params: list[Any] = [cods_cliente]
+                np_parts = ["n.cod_cliente = ANY(%s)"]
+                np_periodo = _period_clause("n", ano, mes, start, end, np_params)
+                if np_periodo:
+                    np_parts.append(np_periodo.replace(" AND ", "", 1))
+                if tabela == "nao_positivados_vendedor" and cod_vendedor:
+                    np_parts.append("n.cod_vendedor = %s")
+                    np_params.append(cod_vendedor)
+                np_rows = conn.execute(
+                    f"SELECT n.fabricantes FROM {tabela} n WHERE {' AND '.join(np_parts)}",
+                    np_params,
+                ).fetchall()
+                for r in np_rows:
+                    for fab, valor in (r["fabricantes"] or {}).items():
+                        try:
+                            v = float(valor)
+                        except (TypeError, ValueError):
+                            continue
+                        fab_valores[fab] = fab_valores.get(fab, 0.0) + v
+                if fab_valores:
+                    fonte_fabricante = rotulo
+                    break
+
+    total_fab = sum(v for v in fab_valores.values() if v > 0)
+    fabricantes = [
+        {
+            "fabricante": fab,
+            "valor": round(valor, 2),
+            "part": round(valor / total_fab * 100, 1) if total_fab else 0.0,
+        }
+        for fab, valor in fab_valores.items()
+        if valor > 0
+    ]
+    fabricantes.sort(key=lambda f: f["valor"], reverse=True)
+
+    carteira_total = num(carteira["total"]) if carteira else 0.0
+    meta_total = num(meta_row["meta"]) if meta_row else 0.0
+    realizado_vendedor = num(meta_row["realizado"]) if meta_row else 0.0
+
+    mes_ant = num(crescimento["mes_ant"]) if crescimento else 0.0
+    mes_atual = num(crescimento["mes_atual"]) if crescimento else 0.0
+    tri_ant = num(crescimento["tri_ant"]) if crescimento else 0.0
+    tri_atual = num(crescimento["tri_atual"]) if crescimento else 0.0
+
+    avisos: list[str] = []
+    if sem_venda:
+        avisos.append(
+            "Este cliente não tem venda registrada na planilha Top Clientes no período — ele está "
+            "não positivado. Os números de carteira e meta abaixo são do vendedor responsável."
+        )
+    if not fabricantes:
+        avisos.append(
+            "Sem valor por fabricante: a planilha de Não Positivados não traz este cliente no "
+            "período, ou todos os fabricantes estão zerados para ele."
+        )
+    if not meta_total:
+        avisos.append("Sem meta importada para o vendedor deste cliente no período.")
+
+    return {
+        "cliente": {
+            "codigo": cliente["codigo"],
+            "nome": cliente["nome"],
+            "municipio": cliente["municipio"],
+            "codVendedor": cod_vendedor,
+            "vendedor": cliente["vendedor"],
+            "equipe": cliente["equipe"],
+            "gerencia": cliente["gerencia"],
+            "eRede": bool(cliente["e_rede"]) or int(cliente["pontos"] or 1) > 1,
+            "pontos": int(cliente["pontos"] or 1),
+        },
+        "venda": {
+            "realizado": realizado_cliente,
+            "mesAnterior": mes_ant,
+            "mesAtual": mes_atual,
+            "pctCrescMes": round(((mes_atual - mes_ant) / mes_ant * 100) if mes_ant else 0, 1),
+            "trimestreAnterior": tri_ant,
+            "trimestreAtual": tri_atual,
+            "pctCrescTrimestre": round(((tri_atual - tri_ant) / tri_ant * 100) if tri_ant else 0, 1),
+            "temComparativo": bool(crescimento and int(crescimento["linhas"] or 0) > 0),
+        },
+        "carteira": {
+            "total": carteira_total,
+            "clientes": int(carteira["clientes"] or 0) if carteira else 0,
+            "participacao": round(realizado_cliente / carteira_total * 100, 2) if carteira_total else 0.0,
+            "posicao": int(posicao_row["posicao"] or 1) if posicao_row else 1,
+        },
+        "meta": {
+            "metaTotal": meta_total,
+            "realizadoVendedor": realizado_vendedor,
+            "pctAtingimento": round(realizado_vendedor / meta_total * 100, 1) if meta_total else 0.0,
+            # Quanto da meta TOTAL do vendedor este cliente sozinho cobre.
+            "contribuicaoNaMeta": round(realizado_cliente / meta_total * 100, 2) if meta_total else 0.0,
+            "gap": realizado_vendedor - meta_total,
+            "objetivos": _blocos_objetivo(meta_row, definidas_vendedor),
+        },
+        "fabricantes": fabricantes,
+        "fonteFabricante": fonte_fabricante,
+        "avisos": avisos,
+    }
+
+
+@router.get("/analytics/cliente-fabricante-itens")
+@cached()
+def cliente_fabricante_itens(
+    fabricante: str = Query(max_length=160),
+    user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Categorias e produtos de um fabricante, para abrir dentro da ficha do
+    cliente.
+
+    FONTE: Lista de Sortimento (+ preço de tabela do cadastro de produtos).
+    Nenhuma base importada registra a venda do cliente no nível de item — a
+    venda é gravada no total do pedido —, então aqui vem o PORTFÓLIO do
+    fabricante, e a resposta declara isso em `fonte`/`temValorPorItem`.
+    """
+    fab = (fabricante or "").strip()
+    if not fab:
+        raise HTTPException(status_code=400, detail="Informe o fabricante.")
+
+    escopo = scope_filters(user)
+    if escopo.get("fabricante") and escopo["fabricante"] != fab:
+        raise HTTPException(status_code=403, detail="Fabricante fora do seu escopo.")
+
+    with get_connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT COALESCE(s.categoria, 'Sem categoria') AS categoria,
+                   COALESCE(s.linha, 'Sem linha') AS linha,
+                   s.cod_produto,
+                   COALESCE(s.produto, p.descricao, s.cod_produto) AS produto,
+                   p.preco_tabela
+            FROM sortimento s
+            LEFT JOIN produtos p ON p.cod_produto = s.cod_produto
+            WHERE s.fabricante = %s
+            ORDER BY 1, 4
+            """,
+            (fab,),
+        ).fetchall()
+
+    categorias: dict[str, dict[str, Any]] = {}
+    for r in rows:
+        cat = categorias.setdefault(
+            r["categoria"], {"categoria": r["categoria"], "skus": 0, "produtos": []}
+        )
+        cat["skus"] += 1
+        cat["produtos"].append(
+            {
+                "codigo": r["cod_produto"],
+                "produto": r["produto"],
+                "linha": r["linha"],
+                "precoTabela": num(r["preco_tabela"]),
+            }
+        )
+
+    saida = sorted(categorias.values(), key=lambda c: c["skus"], reverse=True)
+    return {
+        "fabricante": fab,
+        "categorias": saida,
+        "totalSkus": sum(c["skus"] for c in saida),
+        "temValorPorItem": False,
+        "fonte": "Lista de Sortimento (portfólio do fabricante, sem valor por cliente)",
+    }

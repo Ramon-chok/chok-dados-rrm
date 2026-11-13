@@ -43,7 +43,8 @@ export const ScrollToTopButton: React.FC = () => {
 			title="Voltar ao topo"
 			onClick={scrollToTop}
 			onKeyDown={onKeyDown}
-			className="scroll-to-top-btn"
+			// voltar-topo: sobe acima do botão flutuante do Chok IA (index.css).
+			className="scroll-to-top-btn voltar-topo"
 			style={{
 				position: 'fixed',
 				right: 20,

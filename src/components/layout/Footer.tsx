@@ -70,7 +70,7 @@ export const Footer: React.FC = () => {
                 {APP_CONFIG.companyName}
               </div>
               <div className="app-footer-subtitle" style={{ color: t.primary }}>
-                Chok Dados · Grupo Arantes
+                {APP_CONFIG.appFullName}
               </div>
             </div>
           </div>

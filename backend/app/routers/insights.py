@@ -35,6 +35,7 @@ from app.db import get_connection
 from app.sanitize import clean_optional, clean_text, like_pattern
 from app.security import get_current_user, has_permission, is_admin, require_permission, require_write
 from app.services import num, scope_filters
+from app.routers.metas import aplicar, metas_definidas
 
 router = APIRouter(tags=["insights"])
 
@@ -259,6 +260,17 @@ def kpis_dia_mes(
             ).fetchone()
             pedidos_dia = int(num(pos_dia["pedidos"]))
 
+        # Cobertura geral e sortimento definidos na tela (Definir metas) vencem
+        # os importados — mesma regra do /dashboard, para os painéis baterem.
+        papel = user.get("role")
+        if papel == "VENDEDOR":
+            eq_meta, vend_meta = None, user.get("seller_code")
+        elif papel == "SUPERVISOR":
+            eq_meta, vend_meta = user.get("team"), vendedor
+        else:
+            eq_meta, vend_meta = equipe, vendedor
+        definidas = metas_definidas(conn, ano, mes, eq_meta, vend_meta)
+
     def montar(row: Any, pedidos: int) -> dict[str, Any]:
         if row is None:
             vazio = _bloco(0, 0)
@@ -274,8 +286,8 @@ def kpis_dia_mes(
         fat = _bloco(num(row["meta_fat"]), num(row["real_fat"]))
         return {
             "faturamento": fat,
-            "cobertura": _bloco(num(row["meta_cob"]), num(row["real_cob"])),
-            "sortimento": _bloco(num(row["meta_sor"]), num(row["real_sor"])),
+            "cobertura": _bloco(aplicar(num(row["meta_cob"]), definidas["meta_cobertura"]), num(row["real_cob"])),
+            "sortimento": _bloco(aplicar(num(row["meta_sor"]), definidas["meta_sortimento"]), num(row["real_sor"])),
             "pedidos": pedidos,
             "ticketMedio": round(fat["realizado"] / pedidos, 2) if pedidos else 0.0,
             # Sem margin.view o servidor devolve None — a tela nem recebe o número.

@@ -95,3 +95,26 @@ CREATE INDEX IF NOT EXISTS idx_negociacoes_fornecedor ON negociacoes_compra(forn
 -- Bancos que já tinham sessoes_log de uma versão anterior desta migration:
 ALTER TABLE sessoes_log ADD COLUMN IF NOT EXISTS ultimo_acesso TIMESTAMPTZ NOT NULL DEFAULT now();
 CREATE INDEX IF NOT EXISTS idx_sessoes_log_abertas ON sessoes_log(jti) WHERE logout_em IS NULL;
+
+-- ---------------------------------------------------------------------------
+-- Relatos de bug — botão "Reportar bug" da faixa do topo.
+-- Qualquer usuário logado pode abrir um relato; só administradores leem.
+-- `pagina` e `navegador` são capturados automaticamente para quem for
+-- reproduzir o problema não precisar perguntar "em qual tela?".
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS relatos_bug (
+  id            BIGSERIAL PRIMARY KEY,
+  usuario_id    TEXT,
+  usuario_nome  TEXT,
+  usuario_email TEXT,
+  papel         TEXT,
+  pagina        TEXT,
+  titulo        TEXT NOT NULL,
+  descricao     TEXT NOT NULL,
+  gravidade     VARCHAR(12) NOT NULL DEFAULT 'media',
+  navegador     TEXT,
+  tela          TEXT,
+  status        VARCHAR(16) NOT NULL DEFAULT 'aberto',
+  criado_em     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_relatos_bug_data ON relatos_bug(criado_em DESC);

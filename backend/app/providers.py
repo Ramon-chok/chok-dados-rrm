@@ -30,6 +30,8 @@ logger = logging.getLogger(__name__)
 _PATHS = {
     "sales_board": "/vendas/realizado-por-vendedor",
     "categories": "/vendas/realizado-por-categoria",
+    # Clientes que compraram um produto (ficha do produto no Sortimento).
+    "produto_clientes": "/vendas/clientes-por-produto",
 }
 
 
@@ -140,3 +142,62 @@ def fetch_categories(
     """Realizado por categoria/fabricante. ``None`` = sem API disponível."""
     rows = _get(_PATHS["categories"], {"start": start, "end": end, "equipe": equipe, "vendedor": vendedor})
     return _normalize_categories(rows) if rows is not None else None
+
+
+def _normalize_produto_clientes(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Uma linha por cliente que comprou o produto, com o ÚLTIMO pedido dele.
+
+    Aceita os nomes de campo mais comuns de ERP/BI; a data volta como texto
+    ISO (AAAA-MM-DD) e o valor como número. Linha sem cliente é descartada.
+    """
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        cod = row.get("cod_cliente") or row.get("codCliente") or row.get("cliente_codigo")
+        if not cod:
+            continue
+        data = (
+            row.get("data_ultimo_pedido")
+            or row.get("dataUltimoPedido")
+            or row.get("ultima_compra")
+            or row.get("data_pedido")
+            or row.get("data")
+        )
+        out.append(
+            {
+                "cod_cliente": str(cod),
+                "cliente": row.get("cliente") or row.get("razao_social") or row.get("nome_cliente"),
+                "cod_vendedor": str(row.get("cod_vendedor") or row.get("codVendedor") or "") or None,
+                "vendedor": row.get("vendedor") or row.get("nome_vendedor"),
+                "equipe": row.get("equipe"),
+                "data_ultimo_pedido": str(data)[:10] if data else None,
+                "numero_pedido": row.get("numero_pedido") or row.get("pedido"),
+                "valor_ultimo_pedido": _as_float(
+                    row.get("valor_ultimo_pedido") or row.get("valorUltimoPedido") or row.get("valor")
+                ),
+                "quantidade_ultimo_pedido": _as_float(row.get("quantidade") or row.get("qtd")),
+                "valor_periodo": _as_float(row.get("valor_periodo") or row.get("valorPeriodo")),
+            }
+        )
+    return out
+
+
+def fetch_produto_clientes(
+    *,
+    cod_produto: str,
+    start: str | None = None,
+    end: str | None = None,
+    equipe: str | None = None,
+    vendedor: str | None = None,
+) -> list[dict[str, Any]] | None:
+    """Clientes que compraram o produto. ``None`` = API não configurada ou fora do ar.
+
+    Contrato esperado da API: ``GET /vendas/clientes-por-produto?cod_produto=…
+    &start=…&end=…`` devolvendo, por cliente, o último pedido que contém o
+    produto (data, número, valor, quantidade) — mesmo que esse pedido seja
+    ANTERIOR ao período — e, se houver, o valor dentro do período.
+    """
+    rows = _get(
+        _PATHS["produto_clientes"],
+        {"cod_produto": cod_produto, "start": start, "end": end, "equipe": equipe, "vendedor": vendedor},
+    )
+    return _normalize_produto_clientes(rows) if rows is not None else None

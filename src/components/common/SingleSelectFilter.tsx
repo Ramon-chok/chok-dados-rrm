@@ -67,8 +67,9 @@ export const SingleSelectFilter: React.FC<SingleSelectFilterProps> = ({
   });
 
   return (
-    <div ref={containerRef} style={{ position: 'relative', display: 'inline-block' }}>
+    <div ref={containerRef} className="filtro-select" style={{ position: 'relative', display: 'inline-block' }}>
       <button
+        className="filtro-select__botao"
         type="button"
         onClick={() => setIsOpen(!isOpen)}
         style={{
@@ -93,6 +94,7 @@ export const SingleSelectFilter: React.FC<SingleSelectFilterProps> = ({
 
       {isOpen && (
         <div
+          className="filtro-select__painel"
           style={{
             position: 'absolute',
             top: 'calc(100% + 4px)',

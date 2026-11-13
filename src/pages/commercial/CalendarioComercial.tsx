@@ -728,7 +728,7 @@ export const CalendarioComercialPage: React.FC = () => {
                 />
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 12 }}>
+              <div className="grade-responsiva" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 12 }}>
                 <div>
                   <label style={rotulo}>Tipo</label>
                   <select

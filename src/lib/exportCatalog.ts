@@ -289,10 +289,13 @@ export const EXPORT_DATASETS: ExportDataset[] = [
     },
   },
   {
+    // A tela "TOP 20 Clientes" saiu (o comparativo dela vive dentro de TOP
+    // Clientes agora), mas a planilha continua sendo importada e esta
+    // extração entrega a aba exatamente como ela chega.
     id: 'top-20-customers',
-    label: 'TOP 20 Clientes',
+    label: 'Clientes · Crescimento (planilha TOP 20)',
     group: 'Comercial',
-    description: 'Comparativo de trimestre e mês por cliente/rede.',
+    description: 'Comparativo de trimestre e mês por cliente/rede, como importado.',
     build: async (ctx) => {
       const rows = await fetchTop20Customers(periodParams(ctx));
       return [

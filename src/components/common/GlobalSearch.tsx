@@ -129,31 +129,40 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ naFaixa = false }) =
 
   return (
     <>
+      {/* Na faixa usa a classe compartilhada `.faixa-botao` — o mesmo
+          tamanho e borda da IA, do bug e do tema, para os ícones alinharem. */}
       <button
+        type="button"
         onClick={() => setAberto(true)}
         title="Pesquisar (Ctrl+K)"
         aria-label="Abrir pesquisa"
-        style={{
-          width: 34,
-          height: 34,
-          borderRadius: 8,
-          border: `1px solid ${naFaixa ? 'rgba(255,255,255,0.28)' : t.border}`,
-          background: naFaixa ? 'rgba(255,255,255,0.08)' : 'transparent',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          cursor: 'pointer',
-          color: naFaixa ? '#fff' : t.textSecondary,
-          flexShrink: 0,
-        }}
+        className={naFaixa ? 'faixa-botao' : undefined}
+        style={
+          naFaixa
+            ? undefined
+            : {
+                width: 34,
+                height: 34,
+                borderRadius: 8,
+                border: `1px solid ${t.border}`,
+                background: 'transparent',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                color: t.textSecondary,
+                flexShrink: 0,
+              }
+        }
       >
-        <Search size={15} />
+        <Search size={16} />
       </button>
 
       {aberto && (
         <div
           onClick={fechar}
           role="presentation"
+          className="busca-global-fundo"
           style={{
             position: 'fixed',
             inset: 0,

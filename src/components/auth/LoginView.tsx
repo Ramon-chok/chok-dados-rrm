@@ -1,6 +1,7 @@
 ﻿import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
+import { APP_CONFIG } from '../../config/appConfig';
 import {
   Mail,
   Lock,
@@ -335,7 +336,7 @@ export const LoginView: React.FC = () => {
               color: 'rgba(255,255,255,0.72)',
             }}
           >
-            Chok Dados · Inteligência Comercial
+            {APP_CONFIG.appName} · Inteligência Comercial
           </span>
 
           <h1
@@ -735,7 +736,7 @@ export const LoginView: React.FC = () => {
             </div>
             {/* Endosso do grupo: o produto tem nome próprio, a casa é a mesma. */}
             <span style={{ fontSize: '11px', color: t.textMuted, textAlign: 'center', lineHeight: 1.5 }}>
-              Grupo Arantes · Chok Dados · uso interno
+              {APP_CONFIG.brandEndorsement} · {APP_CONFIG.appName} · uso interno
             </span>
           </div>
         </div>

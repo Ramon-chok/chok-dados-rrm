@@ -40,6 +40,8 @@ function descrever(metodo: string, caminho: string): { acao: string; alvo: strin
     [/^\/purchasing\/suppliers/, 'um fornecedor'],
     [/^\/purchasing\/negotiations/, 'uma negociação de compra'],
     [/^\/acessos\/liberacoes/, 'uma liberação de alteração'],
+    [/^\/metas\/gerais/, 'uma meta geral de vendedor ou equipe'],
+    [/^\/metas\/fabricante/, 'uma meta por fabricante'],
   ];
   const achado = alvos.find(([re]) => re.test(caminho));
   return { acao: verbo, alvo: achado ? achado[1] : 'um registro do sistema' };

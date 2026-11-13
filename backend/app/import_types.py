@@ -82,6 +82,10 @@ IMPORT_TYPE_CONFIGS: dict[str, ImportTypeConfig] = {
 		columns=(
 			ImportColumn("ano_mes", "text"),
 			ImportColumn("cod_vendedor", "text"),
+			# Equipe do vendedor NA COMPETÊNCIA da meta: o vendedor pode
+			# trocar de equipe depois, e a meta precisa continuar contando
+			# para a equipe em que foi definida.
+			ImportColumn("equipe", "text"),
 			ImportColumn("fabricante", "text"),
 			ImportColumn("meta_faturamento", "numeric"),
 			ImportColumn("meta_cobertura", "numeric"),

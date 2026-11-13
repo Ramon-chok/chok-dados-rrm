@@ -11,6 +11,7 @@ from app.sanitize import like_pattern
 from app.parse import parse_date_only
 from app.security import ROLES_VISAO_GERAL, get_current_user
 from app.services import iso, num, scope_filters
+from app.routers.metas import aplicar, metas_definidas
 
 router = APIRouter(tags=["catalog"])
 
@@ -232,7 +233,10 @@ def targets(
     with get_connection() as conn:
         rows = conn.execute(
             f"""
-            SELECT m.ano_mes, m.cod_vendedor, ve.nome, ve.equipe, m.fabricante,
+            SELECT m.ano_mes, m.cod_vendedor, ve.nome,
+                   -- Equipe gravada com a meta (planilha/tela) tem prioridade:
+                   -- é a equipe do vendedor NAQUELA competência.
+                   COALESCE(m.equipe, ve.equipe) AS equipe, m.fabricante,
                    m.meta_faturamento, m.meta_cobertura
             FROM metas_mensais m
             LEFT JOIN vendedores ve ON ve.cod_vendedor = m.cod_vendedor
@@ -312,9 +316,11 @@ def objetivos_faseamento(
             """,
             params,
         ).fetchone()
+        # Meta definida na tela (Definir metas) vence a importada da aba Mês.
+        definidas = metas_definidas(conn, ano, mes, eff_equipe, eff_vendedor)
 
     def block(meta_key: str, realizado_key: str) -> dict[str, float]:
-        meta_v = num(row[meta_key])
+        meta_v = aplicar(num(row[meta_key]), definidas.get(meta_key))
         real_v = num(row[realizado_key])
         return {
             "meta": meta_v,
@@ -1353,4 +1359,312 @@ def sar_verba_indenizatoria(
         "dia": dia_ok,
         "anosDisponiveis": anos_disponiveis,
         "rows": out_rows,
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CLIENTES EM CRESCIMENTO x EM QUEDA
+#
+# Alimenta as duas tabelas lado a lado do TOP Clientes. Diferente da planilha
+# "TOP 20 Clientes" (que traz só os 20 primeiros de cada vendedor, com um
+# comparativo fixo), aqui entra a CARTEIRA INTEIRA do recorte do usuário: toda
+# linha da planilha "Top Clientes" (venda total no mês por cliente) dentro da
+# janela escolhida, comparada com a janela de referência.
+#
+# O usuário escolhe o período de análise em dois eixos:
+#   janela → quantos meses somar  (mes = 1, trimestre = 3, semestre = 6)
+#   base   → com o que comparar   (anterior = janela imediatamente anterior;
+#                                  ano_anterior = mesma janela há 12 meses)
+#
+# Cliente que só aparece numa das janelas também conta: entrou (cresceu a
+# partir do zero) ou saiu (caiu a zero). Esconder isso daria a impressão de
+# carteira estável quando ela mudou de composição.
+# ─────────────────────────────────────────────────────────────────────────────
+
+#: Quantos meses cada janela soma.
+_MESES_DA_JANELA = {"mes": 1, "trimestre": 3, "semestre": 6}
+
+
+def _janela_meses(ano: int, mes: int, quantidade: int, deslocamento: int = 0) -> list[int]:
+    """Chaves `ano*100 + mes` da janela que TERMINA em (ano, mes).
+
+    `deslocamento` recua a janela inteira em N meses — é assim que se obtém a
+    janela anterior (N = tamanho da janela) ou a do ano passado (N = 12).
+    """
+    chaves: list[int] = []
+    base = ano * 12 + (mes - 1) - deslocamento
+    for passo in range(quantidade):
+        indice = base - passo
+        chaves.append((indice // 12) * 100 + (indice % 12) + 1)
+    return sorted(chaves)
+
+
+@router.get("/commercial/clientes-crescimento")
+@cached()
+def clientes_crescimento(
+    ano: int | None = None,
+    mes: int | None = None,
+    janela: str = Query(default="mes", pattern="^(mes|trimestre|semestre)$"),
+    base: str = Query(default="anterior", pattern="^(anterior|ano_anterior)$"),
+    equipe: str | None = None,
+    vendedor: str | None = None,
+    limit: int = Query(default=50, ge=1, le=300),
+    user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Clientes da carteira em crescimento e em queda entre duas janelas."""
+    eff_equipe, eff_vendedor = _resolve_equipe_vendedor(user, equipe, vendedor)
+
+    with get_connection() as conn:
+        # Sem período escolhido, usa a competência mais recente com carga —
+        # é o que o usuário espera ver ao abrir a tela.
+        if not ano or not mes:
+            ultimo = conn.execute(
+                """
+                SELECT ano_referencia AS ano, mes_referencia AS mes
+                FROM top_clientes
+                ORDER BY ano_referencia DESC, mes_referencia DESC
+                LIMIT 1
+                """
+            ).fetchone()
+            if ultimo is None:
+                return {
+                    "janela": janela,
+                    "base": base,
+                    "periodoAtual": [],
+                    "periodoBase": [],
+                    "crescimento": [],
+                    "queda": [],
+                    "resumo": {"clientes": 0, "cresceram": 0, "cairam": 0, "estaveis": 0},
+                }
+            ano = ano or int(ultimo["ano"])
+            mes = mes or int(ultimo["mes"])
+
+        meses = _MESES_DA_JANELA[janela]
+        deslocamento = meses if base == "anterior" else 12
+        chaves_atual = _janela_meses(ano, mes, meses)
+        chaves_base = _janela_meses(ano, mes, meses, deslocamento)
+
+        def agregar(chaves: list[int]) -> dict[str, dict[str, Any]]:
+            params: list[Any] = [chaves]
+            parts = ["(tc.ano_referencia * 100 + tc.mes_referencia) = ANY(%s)"]
+            if eff_vendedor:
+                parts.append("tc.cod_vendedor = %s")
+                params.append(eff_vendedor)
+            if eff_equipe:
+                parts.append("COALESCE(tv.equipe, tc.equipe) = %s")
+                params.append(eff_equipe)
+            rows = conn.execute(
+                f"""
+                SELECT tc.cod_cliente AS codigo,
+                       MAX(COALESCE(c.razao_social, tc.cliente, tc.cod_cliente)) AS nome,
+                       MAX(COALESCE(tv.nome, tc.nome_vendedor)) AS vendedor,
+                       MAX(tc.cod_vendedor) AS cod_vendedor,
+                       MAX(COALESCE(tv.equipe, tc.equipe)) AS equipe,
+                       MAX(tc.municipio) AS municipio,
+                       COALESCE(SUM(tc.venda_total_mes), 0) AS valor
+                FROM top_clientes tc
+                LEFT JOIN clientes c ON c.cod_cliente = tc.cod_cliente
+                LEFT JOIN vendedores tv ON tv.cod_vendedor = tc.cod_vendedor
+                WHERE {" AND ".join(parts)}
+                GROUP BY tc.cod_cliente
+                """,
+                params,
+            ).fetchall()
+            return {
+                r["codigo"]: {
+                    "codigo": r["codigo"],
+                    "nome": r["nome"],
+                    "vendedor": r["vendedor"],
+                    "codVendedor": r["cod_vendedor"],
+                    "equipe": r["equipe"],
+                    "municipio": r["municipio"],
+                    "valor": num(r["valor"]),
+                }
+                for r in rows
+            }
+
+        atual = agregar(chaves_atual)
+        anterior = agregar(chaves_base)
+
+    linhas: list[dict[str, Any]] = []
+    for codigo in set(atual) | set(anterior):
+        a = anterior.get(codigo)
+        b = atual.get(codigo)
+        fonte = b or a or {}
+        valor_atual = (b or {}).get("valor", 0.0)
+        valor_base = (a or {}).get("valor", 0.0)
+        diferenca = valor_atual - valor_base
+        if valor_base > 0:
+            variacao = round(diferenca / valor_base * 100, 1)
+            movimento = "cresceu" if diferenca > 0 else ("caiu" if diferenca < 0 else "estavel")
+        elif valor_atual > 0:
+            # Sem base de comparação não existe percentual honesto: a tela
+            # mostra "novo" em vez de um número inventado.
+            variacao = None
+            movimento = "entrou"
+        else:
+            variacao = None
+            movimento = "estavel"
+        linhas.append(
+            {
+                "codigo": codigo,
+                "nome": fonte.get("nome"),
+                "vendedor": fonte.get("vendedor"),
+                "codVendedor": fonte.get("codVendedor"),
+                "equipe": fonte.get("equipe"),
+                "municipio": fonte.get("municipio"),
+                "atual": round(valor_atual, 2),
+                "anterior": round(valor_base, 2),
+                "diferenca": round(diferenca, 2),
+                "variacao": variacao,
+                "movimento": movimento,
+            }
+        )
+
+    crescimento = sorted(
+        [r for r in linhas if r["diferenca"] > 0], key=lambda r: r["diferenca"], reverse=True
+    )
+    queda = sorted([r for r in linhas if r["diferenca"] < 0], key=lambda r: r["diferenca"])
+
+    def rotulo(chaves: list[int]) -> list[str]:
+        return [f"{k % 100:02d}/{k // 100}" for k in chaves]
+
+    return {
+        "janela": janela,
+        "base": base,
+        "periodoAtual": rotulo(chaves_atual),
+        "periodoBase": rotulo(chaves_base),
+        "crescimento": crescimento[:limit],
+        "queda": queda[:limit],
+        "resumo": {
+            "clientes": len(linhas),
+            "cresceram": len(crescimento),
+            "cairam": len(queda),
+            "estaveis": len(linhas) - len(crescimento) - len(queda),
+            "ganho": round(sum(r["diferenca"] for r in crescimento), 2),
+            "perda": round(sum(r["diferenca"] for r in queda), 2),
+        },
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# FICHA DO PRODUTO (Sortimento) — clientes que compraram o item
+#
+# Nenhuma tabela local guarda venda por item (a venda é gravada no total do
+# pedido), então a fonte é a API externa do ERP/BI (app.providers). Enquanto
+# ela não estiver configurada, a rota responde `fonte: "indisponivel"` com a
+# explicação — a tela mostra isso em vez de uma lista vazia que pareceria
+# "ninguém comprou".
+#
+# Regra pedida: só entram clientes COM venda do produto. Se a última compra foi
+# fora do período escolhido, ela aparece mesmo assim, com a data e o valor
+# desse último pedido, marcada como "fora do período".
+# ─────────────────────────────────────────────────────────────────────────────
+@router.get("/catalog/produto-clientes")
+@cached(ttl=60)
+def produto_clientes(
+    cod_produto: str = Query(min_length=1, max_length=60),
+    start: str | None = Query(default=None, max_length=10),
+    end: str | None = Query(default=None, max_length=10),
+    equipe: str | None = Query(default=None, max_length=120),
+    vendedor: str | None = Query(default=None, max_length=40),
+    user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    from app.providers import external_source_enabled, fetch_produto_clientes
+
+    eff_equipe, eff_vendedor = _resolve_equipe_vendedor(user, equipe, vendedor)
+
+    with get_connection() as conn:
+        produto = conn.execute(
+            """
+            SELECT s.cod_produto, COALESCE(s.produto, p.descricao) AS produto,
+                   s.fabricante, s.categoria, s.linha, p.preco_tabela
+            FROM sortimento s
+            LEFT JOIN produtos p ON p.cod_produto = s.cod_produto
+            WHERE s.cod_produto = %s
+            LIMIT 1
+            """,
+            (cod_produto,),
+        ).fetchone()
+
+    escopo = scope_filters(user)
+    if escopo.get("fabricante") and produto and produto["fabricante"] != escopo["fabricante"]:
+        raise HTTPException(status_code=403, detail="Produto fora do seu escopo.")
+
+    info_produto = {
+        "codigo": cod_produto,
+        "produto": produto["produto"] if produto else None,
+        "fabricante": produto["fabricante"] if produto else None,
+        "categoria": produto["categoria"] if produto else None,
+        "linha": produto["linha"] if produto else None,
+        "precoTabela": num(produto["preco_tabela"]) if produto else 0.0,
+    }
+
+    if not external_source_enabled():
+        return {
+            "produto": info_produto,
+            "fonte": "indisponivel",
+            "mensagem": (
+                "A venda por produto vem da API do ERP, que ainda não está configurada neste "
+                "ambiente (EXTERNAL_API_BASE_URL). Assim que ela for ligada, os clientes aparecem aqui."
+            ),
+            "clientes": [],
+            "resumo": {"clientes": 0, "noPeriodo": 0, "foraPeriodo": 0, "valorPeriodo": 0.0},
+        }
+
+    linhas = fetch_produto_clientes(
+        cod_produto=cod_produto, start=start, end=end, equipe=eff_equipe, vendedor=eff_vendedor
+    )
+    if linhas is None:
+        return {
+            "produto": info_produto,
+            "fonte": "erro",
+            "mensagem": "A API do ERP não respondeu agora. Tente novamente em instantes.",
+            "clientes": [],
+            "resumo": {"clientes": 0, "noPeriodo": 0, "foraPeriodo": 0, "valorPeriodo": 0.0},
+        }
+
+    # O recorte do usuário vale mesmo que a API devolva a mais: Vendedor só vê
+    # os próprios clientes, Supervisor só a própria equipe.
+    if eff_vendedor:
+        linhas = [r for r in linhas if r["cod_vendedor"] in (None, eff_vendedor)]
+    if eff_equipe:
+        linhas = [r for r in linhas if r["equipe"] in (None, eff_equipe)]
+
+    clientes = []
+    for r in linhas:
+        data = r["data_ultimo_pedido"]
+        if not data and r["valor_ultimo_pedido"] <= 0 and r["valor_periodo"] <= 0:
+            continue  # sem venda do produto: fora da lista, como pedido
+        no_periodo = bool(data) and (not start or data >= start) and (not end or data <= end)
+        clientes.append(
+            {
+                "codigo": r["cod_cliente"],
+                "cliente": r["cliente"],
+                "codVendedor": r["cod_vendedor"],
+                "vendedor": r["vendedor"],
+                "equipe": r["equipe"],
+                "dataUltimoPedido": data,
+                "numeroPedido": r["numero_pedido"],
+                "valorUltimoPedido": round(r["valor_ultimo_pedido"], 2),
+                "quantidadeUltimoPedido": r["quantidade_ultimo_pedido"],
+                "valorPeriodo": round(r["valor_periodo"], 2),
+                "noPeriodo": no_periodo,
+            }
+        )
+    # Mais recentes primeiro: quem comprou agora vem antes de quem comprou há meses.
+    clientes.sort(key=lambda c: c["dataUltimoPedido"] or "", reverse=True)
+
+    no_periodo = sum(1 for c in clientes if c["noPeriodo"])
+    return {
+        "produto": info_produto,
+        "fonte": "api",
+        "mensagem": None,
+        "clientes": clientes,
+        "resumo": {
+            "clientes": len(clientes),
+            "noPeriodo": no_periodo,
+            "foraPeriodo": len(clientes) - no_periodo,
+            "valorPeriodo": round(sum(c["valorPeriodo"] for c in clientes), 2),
+        },
     }

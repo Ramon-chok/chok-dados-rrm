@@ -14,7 +14,8 @@ import {
   NaoPositivadoRow,
   DashboardFilterOptions,
 } from '../../lib/api';
-import { Search } from 'lucide-react';
+import { Search, ChevronRight } from 'lucide-react';
+import { ClienteDetalhe, ClienteAlvo } from '../../components/clientes/ClienteDetalhe';
 import { podeFiltrarEquipe, podeFiltrarVendedor } from '../../types';
 
 const NIVEL_LABELS: Record<NaoPositivadoNivel, string> = {
@@ -25,12 +26,10 @@ const NIVEL_LABELS: Record<NaoPositivadoNivel, string> = {
 
 const fmtValor = (v: number) => `R$ ${v.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}`;
 
-const SUCCESS_GREEN = { light: '#0EA968', dark: '#1FAE6E' };
-
 export const NaoPositivadosPage: React.FC = () => {
-  const { t, mode } = useTheme();
+  const { t } = useTheme();
   const { currentUser } = useAuth();
-  const { startDate, endDate, ano, mes, periodType } = useGlobalFilter();
+  const { startDate, endDate, ano, mes, periodType, periodLabel } = useGlobalFilter();
 
   const role = currentUser?.role;
   // Mesmo critério do Dashboard: Admin/Gerência podem escolher equipe e
@@ -46,6 +45,9 @@ export const NaoPositivadosPage: React.FC = () => {
   const [selectedMunicipios, setSelectedMunicipios] = useState<string[]>([]);
 
   const [data, setData] = useState<NaoPositivadosImportResponse | null>(null);
+  // Cliente cuja ficha está aberta — a mesma ficha do Dashboard e do TOP
+  // Clientes, para a leitura ser idêntica venha de onde vier.
+  const [clienteAberto, setClienteAberto] = useState<ClienteAlvo | null>(null);
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -156,7 +158,8 @@ export const NaoPositivadosPage: React.FC = () => {
             Não Positivados
           </h1>
           <p style={{ margin: 0, fontSize: 13, color: t.textSecondary }}>
-            {NIVEL_LABELS[effectiveNivel]} — dados exatamente como importados.
+            {NIVEL_LABELS[effectiveNivel]} — dados exatamente como importados. Clique em um cliente
+            para abrir a ficha completa.
           </p>
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -234,11 +237,20 @@ export const NaoPositivadosPage: React.FC = () => {
                   {effectiveNivel === 'vendedor' && <th style={{ position: 'sticky', top: 0, background: t.surfaceElevated }}>Vendedor</th>}
                   {(effectiveNivel === 'vendedor' || effectiveNivel === 'equipe') && <th style={{ position: 'sticky', top: 0, background: t.surfaceElevated }}>Equipe</th>}
                   <th style={{ textAlign: 'right', position: 'sticky', top: 0, background: t.surfaceElevated, minWidth: 140 }}>{lastColLabel}</th>
+                  <th style={{ width: 36, position: 'sticky', top: 0, background: t.surfaceElevated }} />
                 </tr>
               </thead>
               <tbody>
                 {filtered.map((c) => (
-                  <tr key={c.codCliente} style={{ borderTop: `1px solid ${t.border}`, color: t.text }}>
+                  <tr
+                    key={c.codCliente}
+                    onClick={() =>
+                      setClienteAberto({ codigo: c.codCliente, nome: c.razaoSocial || c.nomeFantasia || c.codCliente })
+                    }
+                    style={{ borderTop: `1px solid ${t.border}`, color: t.text, cursor: 'pointer' }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = t.surfaceElevated)}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                  >
                     <td style={{ padding: 12, fontFamily: 'monospace', color: t.textMuted }}>{c.codCliente}</td>
                     <td style={{ fontWeight: 600 }}>{c.razaoSocial || '—'}</td>
                     <td>{c.nomeFantasia || '—'}</td>
@@ -246,7 +258,10 @@ export const NaoPositivadosPage: React.FC = () => {
                     {effectiveNivel === 'vendedor' && <td>{c.vendedor || c.codVendedor || '—'}</td>}
                     {(effectiveNivel === 'vendedor' || effectiveNivel === 'equipe') && <td>{c.equipe || '—'}</td>}
                     <td style={{ textAlign: 'right', padding: '10px 12px' }}>
-                      <ValueStatus value={lastColValue(c)} theme={t} mode={mode} formatter={fmtValor} />
+                      <ValueStatus value={lastColValue(c)} theme={t} formatter={fmtValor} />
+                    </td>
+                    <td style={{ textAlign: 'center', color: t.textMuted, padding: '10px 6px' }}>
+                      <ChevronRight size={14} />
                     </td>
                   </tr>
                 ))}
@@ -255,20 +270,33 @@ export const NaoPositivadosPage: React.FC = () => {
           </div>
         </div>
       )}
+
+      <ClienteDetalhe
+        alvo={clienteAberto}
+        onClose={() => setClienteAberto(null)}
+        ano={periodType === 'personalizado' ? undefined : ano}
+        mes={periodType === 'mensal' ? mes : undefined}
+        start={startDate || undefined}
+        end={endDate || undefined}
+        equipe={canFilterEquipe && selectedEquipe ? selectedEquipe : undefined}
+        vendedor={canFilterVendedor && selectedVendedor ? selectedVendedor : undefined}
+        periodoLabel={periodLabel}
+      />
     </div>
   );
 };
 
 // Valor com sinalização de cor: verde quando houve venda no período/categoria
 // exibida, vermelho quando o valor é zero (sem venda).
-const ValueStatus: React.FC<{ value: number; theme: any; mode: 'light' | 'dark'; formatter: (v: number) => string }> = ({
+const ValueStatus: React.FC<{ value: number; theme: any; formatter: (v: number) => string }> = ({
   value,
   theme: t,
-  mode,
   formatter,
 }) => {
   const hasSale = value > 0;
-  const color = hasSale ? SUCCESS_GREEN[mode] : t.complementaryRed;
+  // Verde/vermelho pelo token de status do tema — o padrão do grupo exige
+  // que a cor venha do token, para o contraste valer nos dois temas.
+  const color = hasSale ? t.success : t.danger;
   return (
     <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
       <span style={{ width: 8, height: 8, borderRadius: '50%', background: color, flexShrink: 0 }} />

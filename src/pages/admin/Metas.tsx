@@ -31,6 +31,7 @@ import {
 // com o catálogo de exportações desta tela.
 import { IMPORT_TYPES, type ImportSheetOption, type ImportType } from './importTypes';
 import { ExportCenter } from '../../components/common/ExportCenter';
+import { CadastroMetas } from '../../components/metas/CadastroMetas';
 
 interface ImportProgressState {
   sheetLabel: string;
@@ -700,16 +701,21 @@ export const MetasPage: React.FC = () => {
 
       <div style={{ marginBottom: '22px' }}>
         <h1 className="num" style={{ margin: '0 0 6px', fontSize: '24px', fontWeight: 700, color: t.text }}>
-          Dados e Exportações
+          Dados, Metas e Exportações
         </h1>
         <p style={{ margin: 0, fontSize: '13px', color: t.textSecondary }}>
-          Entrada e saída de dados do sistema. Importe aqui as metas comerciais (faturamento e cobertura por vendedor
-          e categoria), a Lista de Sortimento e as planilhas operacionais do SAR — Verba Indenizatória, Raio-X e Base
+          Entrada e saída de dados do sistema. Defina ou importe aqui as metas comerciais (faturamento e cobertura por vendedor, equipe
+          e fabricante, além das metas gerais de cobertura, sortimento, faseamento, desconcentração e desafio), a Lista de Sortimento e as planilhas operacionais do SAR — Verba Indenizatória, Raio-X e Base
           de Roteiro; planilhas grandes são enviadas em lotes seguros. Os resultados realizados do comercial vêm das
           APIs integradas e são comparados automaticamente contra estas metas nos quadros de Vendas e Categorias. E
           quando a informação precisar sair do sistema, use a extração abaixo — as telas não exportam mais sozinhas.
         </p>
       </div>
+
+      {/* METAS: cadastro direto na tela — gerais (vendedor/equipe) e por
+          fabricante. Fica antes da importação porque é o ajuste do dia a dia;
+          a planilha é a carga em lote. */}
+      <CadastroMetas />
 
       {/* SAÍDA: central única de extração em Excel */}
       <ExportCenter />

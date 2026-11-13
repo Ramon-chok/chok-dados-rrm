@@ -48,6 +48,9 @@ class Settings(BaseSettings):
     smtp_password: str = ""
     smtp_secure: bool = True
     smtp_from: str | None = None
+    # Para onde vai o aviso de "Reportar bug". Vazio = o relato só fica
+    # gravado no banco (tabela relatos_bug), sem e-mail.
+    suporte_email: str = ""
     # JWT cookie settings (for HttpOnly auth cookie)
     jwt_cookie_name: str = "chok_auth_token"
     jwt_cookie_secure: bool = True

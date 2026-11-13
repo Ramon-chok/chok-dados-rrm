@@ -82,6 +82,7 @@ export const IMPORT_TYPE_CONFIGS: Record<string, ImportTypeConfig> = {
     columns: [
       { name: 'ano_mes', kind: 'text' },
       { name: 'cod_vendedor', kind: 'text' },
+      { name: 'equipe', kind: 'text' },
       { name: 'fabricante', kind: 'text' },
       { name: 'meta_faturamento', kind: 'numeric' },
       { name: 'meta_cobertura', kind: 'numeric' },

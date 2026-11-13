@@ -27,6 +27,12 @@ export interface TopClientesCardProps {
   equipe?: string;
   vendedor?: string;
   limite?: number;
+  /**
+   * Abre a ficha do cliente. Quando não vier, o cartão continua sendo só
+   * leitura — nenhuma linha fica clicável, para não prometer um clique que
+   * não leva a lugar nenhum.
+   */
+  onSelecionar?: (cliente: { codigo?: string | null; nome: string }) => void;
 }
 
 export const TopClientesCard: React.FC<TopClientesCardProps> = ({
@@ -38,6 +44,7 @@ export const TopClientesCard: React.FC<TopClientesCardProps> = ({
   equipe,
   vendedor,
   limite = 5,
+  onSelecionar,
 }) => {
   const { t } = useTheme();
   const [escopo, setEscopo] = useState<Escopo>('mes');
@@ -195,7 +202,25 @@ export const TopClientesCard: React.FC<TopClientesCardProps> = ({
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {itens.map((cliente, posicao) => (
-          <div key={`${cliente.codigo || cliente.nome}-${posicao}`} className="ga-fade-in">
+          <div
+            key={`${cliente.codigo || cliente.nome}-${posicao}`}
+            className="ga-fade-in"
+            role={onSelecionar ? 'button' : undefined}
+            tabIndex={onSelecionar ? 0 : undefined}
+            onClick={onSelecionar ? () => onSelecionar({ codigo: cliente.codigo, nome: cliente.nome }) : undefined}
+            onKeyDown={
+              onSelecionar
+                ? (e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      onSelecionar({ codigo: cliente.codigo, nome: cliente.nome });
+                    }
+                  }
+                : undefined
+            }
+            style={onSelecionar ? { cursor: 'pointer', borderRadius: 8, outlineOffset: 3 } : undefined}
+            title={onSelecionar ? 'Abrir a ficha deste cliente' : undefined}
+          >
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 5 }}>
               <span
                 className="num"

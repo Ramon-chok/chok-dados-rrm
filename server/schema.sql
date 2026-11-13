@@ -117,6 +117,8 @@ CREATE TABLE IF NOT EXISTS metas_mensais (
   importacao_id     BIGINT,
   PRIMARY KEY (ano_mes, cod_vendedor, fabricante)
 );
+-- Equipe do vendedor na competência da meta (planilha de metas e cadastro na tela).
+ALTER TABLE metas_mensais ADD COLUMN IF NOT EXISTS equipe TEXT;
 
 -- ---------------------------------------------------------------------------
 -- FATOS TRANSACIONAIS — upsert pela chave natural do próprio registro

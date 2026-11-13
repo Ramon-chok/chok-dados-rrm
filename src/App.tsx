@@ -8,7 +8,6 @@ import { AppLayout } from './components/layout/AppLayout';
 import { VisaoMacroPage } from './pages/macro/VisaoMacro';
 import { DashboardPage } from './pages/Dashboard';
 import { NaoPositivadosPage } from './pages/commercial/NaoPositivados';
-import { Top20ClientesPage } from './pages/commercial/Top20Clientes';
 import { TopClientesPage } from './pages/commercial/TopClientes';
 import { SortimentosPage } from './pages/commercial/Sortimentos';
 import { CatalogoPage } from './pages/commercial/Catalogo';
@@ -53,7 +52,6 @@ const PAGINAS_INICIAIS: PageId[] = [
   'dashboard',
   'ai-chat',
   'not-positivated',
-  'top-20-customers',
   'top-customers',
   'sortiments',
   'catalog',
@@ -178,23 +176,10 @@ function MainApp() {
           <h2 style={{ margin: '0 0 8px', fontSize: '20px', fontWeight: 700, color: t.text }}>
             Acesso Restrito ao seu Escopo
           </h2>
-          <p style={{ margin: '0 0 20px', fontSize: '13.5px', color: t.textSecondary, lineHeight: 1.5 }}>
+          <p style={{ margin: '0 0 24px', fontSize: '13.5px', color: t.textSecondary, lineHeight: 1.5 }}>
             O perfil atual (<strong>{currentUser?.roleLabel}</strong>) não possui permissão para acessar o módulo selecionado conforme a matriz RBAC do PRD (Seção 6).
           </p>
 
-          <div
-            style={{
-              background: t.bgSecondary,
-              borderRadius: '8px',
-              padding: '12px 14px',
-              fontSize: '12.5px',
-              color: t.textMuted,
-              marginBottom: '24px',
-              textAlign: 'left',
-            }}
-          >
-            <strong>Escopo Ativo:</strong> {currentUser?.scope.description}
-          </div>
 
           <button
             onClick={() => setCurrentPage(paginaInicial())}
@@ -229,11 +214,13 @@ function MainApp() {
       case 'ai-chat':
         return <AiChatPage />;
       case 'dashboard':
-        return <DashboardPage />;
+        return (
+          <DashboardPage
+            onAbrirObjetivos={canAccessPage('objectives') ? () => navegar('objectives') : undefined}
+          />
+        );
       case 'not-positivated':
         return <NaoPositivadosPage />;
-      case 'top-20-customers':
-        return <Top20ClientesPage />;
       case 'top-customers':
         return <TopClientesPage />;
       case 'sortiments':
