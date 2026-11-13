@@ -1,3 +1,5 @@
+import logging
+import secrets
 from functools import lru_cache
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -12,12 +14,14 @@ class Settings(BaseSettings):
 
     database_url: str = ""
     import_api_key: str = ""
-    jwt_secret: str = "dev-only-change-me"
+    # Sem valor padrão no código: um segredo público permitiria forjar qualquer
+    # sessão. Vazio => em desenvolvimento gera-se um segredo aleatório por
+    # processo (get_settings); em produção a subida é recusada.
+    jwt_secret: str = ""
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 60 * 12
     # Origens explícitas (separadas por vírgula). "*" só é aceito fora de produção.
     cors_origins: str = "http://localhost:3000,http://localhost:5173"
-    seed_password: str = "Chok@2026"
     # "production" liga as verificações de startup (segredo, CORS, cookie Secure).
     environment: str = "development"
     # Confiar no X-Forwarded-For (só habilite atrás de proxy/CDN que o sobrescreve).
@@ -86,4 +90,11 @@ def get_settings() -> Settings:
     settings = Settings()
     if settings.environment.lower() == "production":
         _validate_for_production(settings)
+    elif settings.jwt_secret in _INSECURE_SECRETS or len(settings.jwt_secret) < 32:
+        # Desenvolvimento sem segredo forte: efêmero e imprevisível. As sessões
+        # caem a cada reinício do servidor, o que é o comportamento desejado.
+        settings.jwt_secret = secrets.token_urlsafe(48)
+        logging.getLogger(__name__).warning(
+            "JWT_SECRET ausente/fraco: usando segredo temporário (sessões caem ao reiniciar)."
+        )
     return settings

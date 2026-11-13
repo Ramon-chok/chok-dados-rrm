@@ -113,16 +113,6 @@ CREATE TABLE IF NOT EXISTS metas_gerais (
 );
 CREATE INDEX IF NOT EXISTS idx_metas_gerais_equipe ON metas_gerais(ano_mes, equipe);
 
-CREATE TABLE IF NOT EXISTS login (
-  id            BIGSERIAL PRIMARY KEY,
-  username      TEXT NOT NULL,
-  password_hash TEXT NOT NULL,
-  email         TEXT,
-  role VARCHAR(50),
-  criado_em     TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
-
 CREATE TABLE IF NOT EXISTS vendas (
   numero_pedido   TEXT PRIMARY KEY,
   data_emissao    DATE NOT NULL,

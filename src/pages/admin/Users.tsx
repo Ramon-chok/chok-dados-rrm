@@ -4,7 +4,7 @@ import { useTheme } from '../../context/ThemeContext';
 import { RoleBadge } from '../../components/auth/RoleBadge';
 import { EmptyBlock, ErrorBlock, LoadingBlock } from '../../components/common/DataState';
 import { Role } from '../../types';
-import { Search, Plus, X, User, MapPin, Briefcase, Eye, EyeOff, Pencil, Trash2, Ban, CheckCircle2 } from 'lucide-react';
+import { Search, Plus, X, User, MapPin, Briefcase, Pencil, Trash2, Ban, CheckCircle2 } from 'lucide-react';
 import { getErrorMessage, apiCreateUser, apiUpdateUser, apiDeleteUser, apiSetUserStatus } from '../../lib/api';
 
 /**
@@ -45,8 +45,6 @@ export const UsersPage: React.FC = () => {
   const [createAddress, setCreateAddress] = useState('');
   const [createNeighborhood, setCreateNeighborhood] = useState('');
   const [createMunicipality, setCreateMunicipality] = useState('');
-  const [createPassword, setCreatePassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
   const [createRole, setCreateRole] = useState<Role>('VENDEDOR');
   const [createTeam, setCreateTeam] = useState('');
   const [createSupervisor, setCreateSupervisor] = useState('');
@@ -69,8 +67,6 @@ export const UsersPage: React.FC = () => {
   const [editAddress, setEditAddress] = useState('');
   const [editNeighborhood, setEditNeighborhood] = useState('');
   const [editMunicipality, setEditMunicipality] = useState('');
-  const [editPassword, setEditPassword] = useState('');
-  const [showEditPassword, setShowEditPassword] = useState(false);
   const [editRole, setEditRole] = useState<Role>('VENDEDOR');
   const [editTeam, setEditTeam] = useState('');
   const [editSupervisor, setEditSupervisor] = useState('');
@@ -115,7 +111,6 @@ export const UsersPage: React.FC = () => {
     setEditAddress(user.address || '');
     setEditNeighborhood(user.neighborhood || '');
     setEditMunicipality(user.city || user.municipality || '');
-    setEditPassword(''); // Senha inicia em branco (opcional para alteração)
     setEditRole((user.role as Role) || 'VENDEDOR');
     setEditTeam(user.team || '');
     setEditSupervisor(user.supervisor || '');
@@ -138,7 +133,6 @@ export const UsersPage: React.FC = () => {
     setCreateAddress('');
     setCreateNeighborhood('');
     setCreateMunicipality('');
-    setCreatePassword('');
     setCreateRole('VENDEDOR');
     setCreateTeam('');
     setCreateSupervisor('');
@@ -149,7 +143,6 @@ export const UsersPage: React.FC = () => {
   const handleCloseEditModal = () => {
     setIsEditModalOpen(false);
     setEditUserId(null);
-    setEditPassword('');
     setEditError(null);
   };
 
@@ -213,64 +206,6 @@ export const UsersPage: React.FC = () => {
     fontSize: '13.5px',
     transition: 'border-color 0.2s ease',
   };
-
-  // Password helpers
-  function computePasswordScore(pw: string) {
-    let score = 0;
-    if (pw.length >= 8) score++;
-    if (pw.length >= 12) score++;
-    if (/[A-Z]/.test(pw)) score++;
-    if (/[a-z]/.test(pw)) score++;
-    if (/[0-9]/.test(pw)) score++;
-    if (/[^A-Za-z0-9]/.test(pw)) score++;
-    return Math.min(score, 4);
-  }
-
-  function passwordLabel(score: number) {
-    switch (score) {
-      case 0: return 'Muito fraca';
-      case 1: return 'Fraca';
-      case 2: return 'Razoável';
-      case 3: return 'Boa';
-      case 4: return 'Muito forte';
-      default: return '';
-    }
-  }
-
-  function passwordColor(score: number) {
-    switch (score) {
-      case 0: return '#e23f3f';
-      case 1: return '#f25c5c';
-      case 2: return '#f5a623';
-      case 3: return '#3dd68c';
-      case 4: return '#0f9b7c';
-      default: return '#ccc';
-    }
-  }
-
-  function generateStrongPassword(len = 12) {
-    const upper = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-    const lower = 'abcdefghijklmnopqrstuvwxyz';
-    const digits = '0123456789';
-    const symbols = '!@#$%&*()-_=+[]{};:,.<>?';
-    const all = upper + lower + digits + symbols;
-    const getRand = (chars: string) =>
-      chars[Math.floor((crypto.getRandomValues(new Uint32Array(1))[0] / 0xffffffff) * chars.length)];
-    
-    let pw = '';
-    pw += getRand(upper);
-    pw += getRand(lower);
-    pw += getRand(digits);
-    pw += getRand(symbols);
-    for (let i = 4; i < len; i++) pw += getRand(all);
-    
-    const arr = pw.split('');
-    for (let i = arr.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [arr[i], arr[j]] = [arr[j], arr[i]];
-    }
-    return arr.join('');
-  }
 
   // CEP lookup genérico
   async function lookupCep(cepRaw: string, isEdit: boolean) {
@@ -688,7 +623,6 @@ export const UsersPage: React.FC = () => {
                     neighborhood: createNeighborhood || undefined,
                     city: createMunicipality || undefined,
                     number: createNumber || undefined,
-                    password: createPassword, 
                     role: createRole,
                     team: createRole === 'VENDEDOR' ? createTeam || undefined : undefined,
                     supervisor: createRole === 'VENDEDOR' ? createSupervisor || undefined : undefined,
@@ -766,34 +700,6 @@ export const UsersPage: React.FC = () => {
                         style={inputStyle}
                         placeholder="(00) 00000-0000"
                       />
-                    </div>
-                    <div style={{ gridColumn: 'span 6' }}>
-                      <label style={labelStyle}>Senha temporária</label>
-                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                        <input required type={showPassword ? 'text' : 'password'} disabled={createLoading} value={createPassword} onChange={(e) => setCreatePassword(e.target.value)} style={{ ...inputStyle, flex: 1 }} placeholder="Mínimo 8 caracteres" minLength={8} maxLength={72} />
-                        <button type="button" disabled={createLoading} onClick={() => setCreatePassword(generateStrongPassword(12))} style={{ padding: '8px 10px', borderRadius: 8, border: `1px solid ${t.border}`, background: t.surfaceElevated, color: t.text, cursor: 'pointer', fontSize: '12.5px', whiteSpace: 'nowrap' }}>Gerar</button>
-                        <button type="button" onClick={() => setShowPassword(s => !s)} style={{ padding: '8px', marginLeft: 6, borderRadius: 8, border: `1px solid ${t.border}`, background: t.surfaceElevated, color: t.text, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                        </button>
-                      </div>
-
-                      {/* Força de senha */}
-                      {createPassword && (
-                        <div style={{ marginTop: '10px' }}>
-                          <div style={{ display: 'flex', gap: '4px', marginBottom: '4px' }}>
-                            {[1, 2, 3, 4].map((bar) => {
-                              const score = computePasswordScore(createPassword);
-                              const isActive = bar <= score;
-                              return (
-                                <div key={bar} style={{ flex: 1, height: '4px', borderRadius: '2px', background: isActive ? passwordColor(score) : `${t.border}`, transition: 'all 0.15s ease' }} />
-                              );
-                            })}
-                          </div>
-                          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                            <span style={{ fontSize: '11.5px', fontWeight: 700, color: passwordColor(computePasswordScore(createPassword)) }}>{passwordLabel(computePasswordScore(createPassword))}</span>
-                          </div>
-                        </div>
-                      )}
                     </div>
                     <div style={{ gridColumn: 'span 6' }}>
                       <label style={labelStyle}>Perfil de acesso</label>
@@ -996,7 +902,7 @@ export const UsersPage: React.FC = () => {
                   Editar Informações do Usuário
                 </h3>
                 <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: t.textSecondary }}>
-                  Modifique os campos necessários. Deixe a senha em branco se não desejar alterá-la.
+                  Modifique os campos necessários.
                 </p>
               </div>
               <button 
@@ -1036,8 +942,6 @@ export const UsersPage: React.FC = () => {
                     city: editMunicipality || undefined,
                     number: editNumber || undefined,
                     role: editRole,
-                    // Se o usuário digitou senha, enviamos ela, senão ignoramos
-                    ...(editPassword ? { password: editPassword } : {}),
                     team: editRole === 'VENDEDOR' ? editTeam || undefined : undefined,
                     supervisor: editRole === 'VENDEDOR' ? editSupervisor || undefined : undefined,
                     manufacturer: editRole === 'FORNECEDOR' ? editManufacturer || undefined : undefined,
@@ -1110,34 +1014,6 @@ export const UsersPage: React.FC = () => {
                         style={inputStyle}
                         placeholder="(00) 00000-0000"
                       />
-                    </div>
-                    
-                    <div style={{ gridColumn: 'span 6' }}>
-                      <label style={labelStyle}>Alterar Senha (Opcional)</label>
-                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                        <input type={showEditPassword ? 'text' : 'password'} disabled={editLoading} value={editPassword} onChange={(e) => setEditPassword(e.target.value)} style={{ ...inputStyle, flex: 1 }} placeholder="Nova senha se desejar mudar" />
-                        <button type="button" disabled={editLoading} onClick={() => setEditPassword(generateStrongPassword(12))} style={{ padding: '8px 10px', borderRadius: 8, border: `1px solid ${t.border}`, background: t.surfaceElevated, color: t.text, cursor: 'pointer', fontSize: '12.5px', whiteSpace: 'nowrap' }}>Gerar</button>
-                        <button type="button" onClick={() => setShowEditPassword(s => !s)} style={{ padding: '8px', marginLeft: 6, borderRadius: 8, border: `1px solid ${t.border}`, background: t.surfaceElevated, color: t.text, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          {showEditPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                        </button>
-                      </div>
-
-                      {editPassword && (
-                        <div style={{ marginTop: '10px' }}>
-                          <div style={{ display: 'flex', gap: '4px', marginBottom: '4px' }}>
-                            {[1, 2, 3, 4].map((bar) => {
-                              const score = computePasswordScore(editPassword);
-                              const isActive = bar <= score;
-                              return (
-                                <div key={bar} style={{ flex: 1, height: '4px', borderRadius: '2px', background: isActive ? passwordColor(score) : `${t.border}`, transition: 'all 0.15s ease' }} />
-                              );
-                            })}
-                          </div>
-                          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                            <span style={{ fontSize: '11.5px', fontWeight: 700, color: passwordColor(computePasswordScore(editPassword)) }}>{passwordLabel(computePasswordScore(editPassword))}</span>
-                          </div>
-                        </div>
-                      )}
                     </div>
 
                     <div style={{ gridColumn: 'span 3' }}>

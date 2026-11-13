@@ -10,7 +10,7 @@ from pathlib import Path
 
 from app.db import get_connection
 from app.schemas import UserCreate, UserOut, UserUpdate
-from app.security import USER_SELECT, hash_password, is_admin, require_roles, require_write
+from app.security import USER_SELECT, is_admin, require_roles, require_write
 from app.services import user_to_out
 from app.mail import send_welcome_email
 import logging
@@ -40,8 +40,28 @@ def list_users(_admin: dict[str, Any] = Depends(require_roles())) -> list[UserOu
     return [user_to_out(dict(r)) for r in rows]
 
 
+def _is_superadmin(role: str | None) -> bool:
+    return str(role or "").upper() == "SUPERADMIN"
+
+
+def _guard_superadmin(actor: dict[str, Any], *, target_role: str | None = None, new_role: str | None = None) -> None:
+    """Só SUPERADMIN mexe em SUPERADMIN.
+
+    Sem isto um ADMIN (que a matriz põe abaixo do SUPERADMIN) promoveria a si
+    mesmo ou alteraria o e-mail/status de um SUPERADMIN: escalada de privilégio.
+    """
+    if _is_superadmin(actor.get("role")):
+        return
+    if _is_superadmin(target_role) or _is_superadmin(new_role):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Somente um Super Administrador pode criar, alterar ou excluir contas desse perfil.",
+        )
+
+
 @router.post("", response_model=UserOut, status_code=201)
-def create_user(payload: UserCreate, _admin: dict[str, Any] = Depends(require_write("admin.full_access"))) -> UserOut:
+def create_user(payload: UserCreate, admin: dict[str, Any] = Depends(require_write("admin.full_access"))) -> UserOut:
+    _guard_superadmin(admin, new_role=payload.role)
     with get_connection() as conn:
         existing = conn.execute(
             "SELECT id FROM usuarios WHERE lower(email) = %s",
@@ -52,17 +72,16 @@ def create_user(payload: UserCreate, _admin: dict[str, Any] = Depends(require_wr
         conn.execute(
             """
             INSERT INTO usuarios (
-                name, email, password_hash, role, telefone, endereco, bairro,
+                name, email, role, telefone, endereco, bairro,
                 municipio, estado, cep, codigo, equipe, supervisor, fabricante, status
             ) VALUES (
-                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
             )
             RETURNING id
             """,
             (
                 payload.name,
                 payload.email.lower(),
-                hash_password(payload.password),
                 payload.role,
                 payload.phone,
                 payload.address,
@@ -127,14 +146,16 @@ def update_user(
                 value = str(value).lower()
             fields.append(f"{column} = %s")
             values.append(value)
-    if "password" in data and data["password"]:
-        fields.append("password_hash = %s")
-        values.append(hash_password(data["password"]))
     if not fields:
         raise HTTPException(status_code=400, detail="Nenhum campo para atualizar.")
     fields.append("updated_at = now()")
     values.append(user_id)
     with get_connection() as conn:
+        current = conn.execute("SELECT role FROM usuarios WHERE id::text = %s", (user_id,)).fetchone()
+        if not current:
+            raise HTTPException(status_code=404, detail="Usuário não encontrado.")
+        _guard_superadmin(admin, target_role=current.get("role"), new_role=data.get("role"))
+
         # Impede rebaixar (role) ou inativar o último ADMIN.
         if data.get("status") == "Inativo" or ("role" in data and not is_admin(data["role"])):
             target = conn.execute(
@@ -175,6 +196,7 @@ def delete_user(user_id: UserId, admin: dict[str, Any] = Depends(require_write("
         ).fetchone()
         if not target:
             raise HTTPException(status_code=404, detail="Usuário não encontrado.")
+        _guard_superadmin(admin, target_role=target.get("role"))
 
         # Evita remover o último ADMIN do sistema.
         if is_admin(target.get("role")):

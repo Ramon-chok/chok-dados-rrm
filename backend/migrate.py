@@ -1,4 +1,5 @@
-"""Aplica schema.sql + auth.sql e faz seed dos usuários de demonstração."""
+"""Aplica schema.sql + auth.sql. Não cria usuários nem senhas: o acesso é
+provisionado direto no banco (tabela `usuarios`)."""
 
 from __future__ import annotations
 
@@ -8,15 +9,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from app.db import apply_schema, close_pool, get_connection  # noqa: E402
-from app.seed import seed_users  # noqa: E402
 
 
 def main() -> None:
     print("[migrate] Aplicando schema.sql e auth.sql...")
     with get_connection() as conn:
         apply_schema(conn)
-    print("[migrate] Semear usuários de demonstração...")
-    seed_users()
     print("[migrate] Concluído com sucesso.")
     close_pool()
 

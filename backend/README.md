@@ -26,24 +26,16 @@ Variáveis (pode usar o `.env` da raiz do projeto):
 |---|---|
 | `DATABASE_URL` | Postgres |
 | `IMPORT_API_KEY` | Header `x-api-key` em `POST /api/imports` (vazio = sem checagem, só em dev) |
-| `JWT_SECRET` | Segredo dos tokens de login |
-| `SEED_PASSWORD` | Senha inicial dos usuários de demonstração (padrão `Chok@2026`) |
+| `JWT_SECRET` | Segredo dos tokens de login (obrigatório em produção, ≥ 32 caracteres) |
 | `SERVER_PORT` | Porta (padrão `8787`, igual ao Node, para o proxy do Vite) |
 
-## Migrar o banco e semear usuários
+## Migrar o banco
 
 ```bash
 python migrate.py
 ```
 
-Idempotente. Cria as tabelas históricas + `usuarios` / `audit_log` e insere:
-
-| E-mail | Perfil | Senha |
-|---|---|---|
-| ramon21.empresa@gmail.com | ADMIN | `Chok@2026` |
-| carlos.mendes@chok.com.br | GERENTE | `Chok@2026` |
-| marcos.valerio@chok.com.br | SUPERVISOR | `Chok@2026` |
-| joao.vendedor003@chok.com.br | VENDEDOR | `Chok@2026` |
+Idempotente. Cria as tabelas históricas + `usuarios` / `audit_log`. **Não cria usuários nem senhas**: o acesso é provisionado direto no banco (`usuarios.password_hash`, hash bcrypt), sem senha em código, `.env` ou migration.
 
 ## Rodar
 

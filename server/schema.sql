@@ -21,19 +21,6 @@ CREATE TABLE IF NOT EXISTS gerencias (
   atualizado_em   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS login (
-  id BIGSERIAL PRIMARY KEY,
-  cod VARCHAR(200) NOT NULL,
-  nome VARCHAR(200),
-  password VARCHAR(200) NOT NULL,
-  role VARCHAR(200) NOT NULL
-);
-
-INSERT INTO login (cod, nome, password, role) VALUES ('admin', 'Administrador', 'Chok@2026', 'admin');
-INSERT INTO login (cod, nome, password, role) VALUES ('admin', 'Administrador', 'Chok@2026', 'admin');
-INSERT INTO login (cod, nome, password, role) VALUES ('admin', 'Administrador', 'Chok@2026', 'admin');
-INSERT INTO login (cod, nome, password, role) VALUES ('admin', 'Administrador', 'Chok@2026', 'admin');
-
 CREATE TABLE IF NOT EXISTS fabricantes (
   nome_fabricante TEXT PRIMARY KEY,
   razao_social    TEXT,

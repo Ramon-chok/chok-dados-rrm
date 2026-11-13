@@ -918,7 +918,6 @@ export function apiListUsers(): Promise<import('../types').User[]> {
 export interface UserCreatePayload {
   name: string;
   email: string;
-  password: string;
   role: string;
   phone?: string | null;
   address?: string | null;

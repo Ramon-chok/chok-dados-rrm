@@ -8,8 +8,7 @@ import express from 'express';
 import cors from 'cors';
 import { randomBytes } from 'crypto';
 import { importsRouter } from './routes/imports.js';
-import { authRouter } from './routes/auth.js';
-import { allowedOrigins, isProduction, rateLimit, securityHeaders } from './security.js';
+import { allowedOrigins, rateLimit, securityHeaders } from './security.js';
 
 const app = express();
 
@@ -39,12 +38,8 @@ app.get('/api/health', (_req, res) => {
 
 app.use('/api/imports', rateLimit(60, 60_000, 'imports'), importsRouter);
 
-// O login deste servidor legado é um STUB de desenvolvimento (aceita a senha
-// semente de qualquer usuário e devolve um token falso). Nunca em produção; a
-// autenticação real está no backend Python (backend/app/routers/auth.py).
-if (!isProduction && process.env.ALLOW_DEV_AUTH === 'true') {
-  app.use('/api/auth', rateLimit(10, 60_000, 'auth'), authRouter);
-}
+// Este servidor legado NÃO autentica usuários (o stub de login foi removido):
+// a autenticação real está no backend Python (backend/app/routers/auth.py).
 
 // Rede de segurança: qualquer erro que escape de uma rota (ex: JSON malformado
 // no corpo da requisição) cai aqui em vez de deixar a requisição sem resposta.

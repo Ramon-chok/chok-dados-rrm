@@ -18,8 +18,8 @@ if not logger.handlers:
 
 
 def send_welcome_email(to_email: str, name: Optional[str]) -> None:
-    """Avisa o novo usuário que a conta foi criada. NÃO envia a senha (e-mail é texto puro,
-    fica arquivado e pode ser encaminhado): o administrador repassa a senha por canal seguro.
+    """Avisa o novo usuário que a conta foi criada. Nunca envia senha (e-mail é texto puro,
+    fica arquivado e pode ser encaminhado): o acesso é provisionado direto no banco.
 
     Não lança exceções em caso de falha: apenas registra o erro.
     """
@@ -40,7 +40,7 @@ def send_welcome_email(to_email: str, name: Optional[str]) -> None:
         f"Olá {name or ''},\n\n"
         "Seu usuário foi criado com sucesso.\n\n"
         f"Usuário de acesso: {to_email}\n"
-        "A senha inicial foi definida pelo administrador, que a informará por um canal seguro. "
+        "Seu acesso será liberado pela administração. "
         "Nunca compartilhe sua senha e, se possível, ative a verificação em duas etapas em Configurações.\n\n"
         "Atenciosamente,\n"
         "Equipe"

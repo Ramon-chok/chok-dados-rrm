@@ -109,7 +109,12 @@ _OPTIONAL_TEXT_FIELDS = (
 
 
 class _UserInputMixin(BaseModel):
-    """Sanitiza TODOS os campos de texto de usuário na entrada."""
+    """Sanitiza TODOS os campos de texto de usuário na entrada.
+
+    Senha NÃO entra por aqui: as credenciais são provisionadas direto no banco
+    (`usuarios.password_hash`). Campo `password` enviado por engano é ignorado
+    (pydantic descarta campos desconhecidos) — nunca é gravado.
+    """
 
     @field_validator("name", mode="before", check_fields=False)
     @classmethod
@@ -147,16 +152,9 @@ class _UserInputMixin(BaseModel):
             raise ValueError("Telefone inválido.")
         return cleaned
 
-    @field_validator("password", mode="after", check_fields=False)
-    @classmethod
-    def _password_ok(cls, v: str | None) -> str | None:
-        return _check_password(v)
-
-
 class UserCreate(_UserInputMixin):
     name: str = Field(min_length=1, max_length=120)
     email: str = Field(max_length=254)
-    password: str = Field(min_length=8, max_length=128)
     role: Role
     phone: str | None = None
     address: str | None = None
@@ -175,7 +173,6 @@ class UserCreate(_UserInputMixin):
 class UserUpdate(_UserInputMixin):
     name: str | None = Field(default=None, min_length=1, max_length=120)
     email: str | None = Field(default=None, max_length=254)
-    password: str | None = Field(default=None, min_length=8, max_length=128)
     role: Role | None = None
     phone: str | None = None
     address: str | None = None
